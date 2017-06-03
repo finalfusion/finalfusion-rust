@@ -126,6 +126,11 @@ impl Embeddings {
         self.indices.get(word).map(|idx| self.matrix.subview(Axis(0), *idx))
     }
 
+    /// Get the mapping from words to row indices of the embedding matrix.
+    pub fn indices(&self) -> &HashMap<String, usize> {
+        &self.indices
+    }
+
     /// Get an iterator over pairs of words and the corresponding embeddings.
     pub fn iter(&self) -> Iter {
         Iter {
