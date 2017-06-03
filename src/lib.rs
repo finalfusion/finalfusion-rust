@@ -3,10 +3,8 @@ extern crate byteorder;
 #[macro_use]
 extern crate error_chain;
 
-#[macro_use]
 extern crate itertools;
 
-#[macro_use(s)]
 extern crate ndarray;
 
 macro_rules! try_opt {
