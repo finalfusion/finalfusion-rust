@@ -1,6 +1,6 @@
 [package]
 name = "rust2vec"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 description = "Read/writer for the word2vec binary/text files"
 documentation = "https://docs.rs/rust2vec/"
