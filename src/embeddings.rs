@@ -145,7 +145,11 @@ impl Embeddings {
     /// normalize the embeddings to get good query results.
     pub fn normalize(&mut self) {
         for mut embedding in self.matrix.outer_iter_mut() {
-            embedding /= embedding.dot(&embedding).sqrt();
+            let l2norm = embedding.dot(&embedding).sqrt();
+            if l2norm != 0f32 {
+                embedding /= l2norm;
+            }
+
         }
     }
 
