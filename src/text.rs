@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Write, Seek, SeekFrom};
 
+use failure::{Error, err_msg};
 use itertools::Itertools;
 use ndarray::{Array, Axis, Ix1};
 
@@ -17,13 +18,13 @@ pub trait ReadText<R>
     where R: BufRead + Seek
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text(reader: &mut R) -> Result<Embeddings>;
+    fn read_text(reader: &mut R) -> Result<Embeddings, Error>;
 }
 
 impl<R> ReadText<R> for Embeddings
     where R: BufRead + Seek
 {
-    fn read_text(reader: &mut R) -> Result<Embeddings> {
+    fn read_text(reader: &mut R) -> Result<Embeddings, Error> {
         let (n_words, embed_size) = text_vectors_dims(reader)?;
         let mut matrix = Array::zeros((n_words, embed_size));
         let mut indices = HashMap::new();
@@ -37,7 +38,7 @@ impl<R> ReadText<R> for Embeddings
 
             let word = match parts.next() {
                 Some(word) => word,
-                None => return Err("Empty line".into()),
+                None => return Err(err_msg("Empty line")),
             };
 
             let word = word.trim();
@@ -53,7 +54,7 @@ impl<R> ReadText<R> for Embeddings
     }
 }
 
-pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize)>
+pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
     where R: BufRead + Seek
 {
     let mut line = String::new();
@@ -76,14 +77,14 @@ pub trait WriteText<W>
     where W: Write
 {
     /// Read the embeddings from the given buffered reader.
-    fn write_text(&self, writer: &mut W) -> Result<()>;
+    fn write_text(&self, writer: &mut W) -> Result<(), Error>;
 }
 
 
 impl<W> WriteText<W> for Embeddings
     where W: Write
 {
-    fn write_text(&self, write: &mut W) -> Result<()> {
+    fn write_text(&self, write: &mut W) -> Result<(), Error> {
         for (word, embed) in self.words().iter().zip(self.data().outer_iter()) {
             let embed_str = embed.iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", word, embed_str)?;

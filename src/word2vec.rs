@@ -4,6 +4,7 @@ use std::io::{BufRead, Write};
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
+use failure::{Error, err_msg};
 use ndarray::{Array, Axis};
 
 use super::*;
@@ -16,13 +17,13 @@ pub trait ReadWord2Vec<R>
     where R: BufRead
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary(reader: &mut R) -> Result<Embeddings>;
+    fn read_word2vec_binary(reader: &mut R) -> Result<Embeddings, Error>;
 }
 
 impl<R> ReadWord2Vec<R> for Embeddings
     where R: BufRead
 {
-    fn read_word2vec_binary(reader: &mut R) -> Result<Embeddings> {
+    fn read_word2vec_binary(reader: &mut R) -> Result<Embeddings, Error> {
         let n_words = try!(read_number(reader, b' '));
         let embed_len = try!(read_number(reader, b'\n'));
 
@@ -41,7 +42,7 @@ impl<R> ReadWord2Vec<R> for Embeddings
             {
                 let mut embedding_raw = match embedding.as_slice_mut() {
                     Some(s) => unsafe { typed_to_bytes(s) },
-                    None => return Err("Matrix not contiguous".into()),
+                    None => return Err(err_msg("Matrix not contiguous")),
                 };
                 try!(reader.read_exact(&mut embedding_raw));
             }
@@ -51,12 +52,12 @@ impl<R> ReadWord2Vec<R> for Embeddings
     }
 }
 
-fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize> {
+fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize, Error> {
     let field_str = try!(read_string(reader, delim));
     Ok(try!(field_str.parse()))
 }
 
-fn read_string(reader: &mut BufRead, delim: u8) -> Result<String> {
+fn read_string(reader: &mut BufRead, delim: u8) -> Result<String, Error> {
     let mut buf = Vec::new();
     try!(reader.read_until(delim, &mut buf));
     buf.pop();
@@ -76,13 +77,13 @@ pub trait WriteWord2Vec<W>
     where W: Write
 {
     /// Write the embeddings from the given writer.
-    fn write_word2vec_binary(&self, w: &mut W) -> Result<()>;
+    fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>;
 }
 
 impl<W> WriteWord2Vec<W> for Embeddings
     where W: Write
 {
-    fn write_word2vec_binary(&self, w: &mut W) -> Result<()>
+    fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>
         where W: Write
     {
         write!(w, "{} {}\n", self.len(), self.embed_len())?;
