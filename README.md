@@ -15,4 +15,4 @@ supports similarity and analogy queries. Please consult the
 This package can be used with Cargo:
 
     [dependencies]
-    rust2vec = 0.2
+    rust2vec = 0.3
