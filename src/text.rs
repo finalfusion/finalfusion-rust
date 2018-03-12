@@ -48,6 +48,13 @@ where
             indices.insert(word.to_owned(), idx);
 
             let embedding: Array1<f32> = try!(parts.map(str::parse).collect());
+            ensure!(
+                embedding.shape()[0] == embed_size,
+                "Expected embedding size: {}, got: {}",
+                embed_size,
+                embedding.shape()[0]
+            );
+
             matrix.subview_mut(Axis(0), idx).assign(&embedding);
         }
 
