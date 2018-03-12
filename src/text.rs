@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::io::{BufRead, Write, Seek, SeekFrom};
+use std::io::{BufRead, Seek, SeekFrom, Write};
 
-use failure::{Error, err_msg};
+use failure::{err_msg, Error};
 use itertools::Itertools;
 use ndarray::{Array, Axis, Ix1};
 
@@ -15,14 +15,16 @@ use super::*;
 ///
 /// *word0 component_1 component_2 ... component_n*
 pub trait ReadText<R>
-    where R: BufRead + Seek
+where
+    R: BufRead + Seek,
 {
     /// Read the embeddings from the given buffered reader.
     fn read_text(reader: &mut R) -> Result<Embeddings, Error>;
 }
 
 impl<R> ReadText<R> for Embeddings
-    where R: BufRead + Seek
+where
+    R: BufRead + Seek,
 {
     fn read_text(reader: &mut R) -> Result<Embeddings, Error> {
         let (n_words, embed_size) = text_vectors_dims(reader)?;
@@ -49,13 +51,18 @@ impl<R> ReadText<R> for Embeddings
             matrix.subview_mut(Axis(0), idx).assign(&embedding);
         }
 
-
-        Ok(super::embeddings::new_embeddings(matrix, embed_size, indices, words))
+        Ok(super::embeddings::new_embeddings(
+            matrix,
+            embed_size,
+            indices,
+            words,
+        ))
     }
 }
 
 pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
-    where R: BufRead + Seek
+where
+    R: BufRead + Seek,
 {
     let mut line = String::new();
     reader.read_line(&mut line)?;
@@ -74,15 +81,16 @@ pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
 ///
 /// *word0 component_1 component_2 ... component_n*
 pub trait WriteText<W>
-    where W: Write
+where
+    W: Write,
 {
     /// Read the embeddings from the given buffered reader.
     fn write_text(&self, writer: &mut W) -> Result<(), Error>;
 }
 
-
 impl<W> WriteText<W> for Embeddings
-    where W: Write
+where
+    W: Write,
 {
     fn write_text(&self, write: &mut W) -> Result<(), Error> {
         for (word, embed) in self.words().iter().zip(self.data().outer_iter()) {

@@ -63,17 +63,16 @@ impl Embeddings {
     /// *embedding(word2) - embedding(word1) + embedding(word3)*
     ///
     /// At most, `limit` results are returned.
-    pub fn analogy(&self,
-                   word1: &str,
-                   word2: &str,
-                   word3: &str,
-                   limit: usize)
-                   -> Option<Vec<WordSimilarity>> {
-        self.analogy_by(word1,
-                        word2,
-                        word3,
-                        limit,
-                        |embeds, embed| embeds.dot(&embed))
+    pub fn analogy(
+        &self,
+        word1: &str,
+        word2: &str,
+        word3: &str,
+        limit: usize,
+    ) -> Option<Vec<WordSimilarity>> {
+        self.analogy_by(word1, word2, word3, limit, |embeds, embed| {
+            embeds.dot(&embed)
+        })
     }
 
     /// Perform an analogy query using the given similarity function.
@@ -85,24 +84,32 @@ impl Embeddings {
     /// *embedding(word2) - embedding(word1) + embedding(word3)*
     ///
     /// At most, `limit` results are returned.
-    pub fn analogy_by<F>(&self,
-                         word1: &str,
-                         word2: &str,
-                         word3: &str,
-                         limit: usize,
-                         similarity: F)
-                         -> Option<Vec<WordSimilarity>>
-        where F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>
+    pub fn analogy_by<F>(
+        &self,
+        word1: &str,
+        word2: &str,
+        word3: &str,
+        limit: usize,
+        similarity: F,
+    ) -> Option<Vec<WordSimilarity>>
+    where
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let embedding1 = try_opt!(self.indices
-            .get(word1)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
-        let embedding2 = try_opt!(self.indices
-            .get(word2)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
-        let embedding3 = try_opt!(self.indices
-            .get(word3)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
+        let embedding1 = try_opt!(
+            self.indices
+                .get(word1)
+                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
+        );
+        let embedding2 = try_opt!(
+            self.indices
+                .get(word2)
+                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
+        );
+        let embedding3 = try_opt!(
+            self.indices
+                .get(word3)
+                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
+        );
 
         let embedding = (embedding2 - embedding1) + embedding3;
 
@@ -123,7 +130,9 @@ impl Embeddings {
 
     /// Get the embedding of a word.
     pub fn embedding(&self, word: &str) -> Option<ArrayView1<f32>> {
-        self.indices.get(word).map(|idx| self.matrix.subview(Axis(0), *idx))
+        self.indices
+            .get(word)
+            .map(|idx| self.matrix.subview(Axis(0), *idx))
     }
 
     /// Get the mapping from words to row indices of the embedding matrix.
@@ -149,7 +158,6 @@ impl Embeddings {
             if l2norm != 0f32 {
                 embedding /= l2norm;
             }
-
         }
     }
 
@@ -169,12 +177,14 @@ impl Embeddings {
     /// The similarity function should return, given the embeddings matrix and
     /// the word vector a vector of similarity scores. At most, `limit` results
     /// are returned.
-    pub fn similarity_by<F>(&self,
-                            word: &str,
-                            limit: usize,
-                            similarity: F)
-                            -> Option<Vec<WordSimilarity>>
-        where F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>
+    pub fn similarity_by<F>(
+        &self,
+        word: &str,
+        limit: usize,
+        similarity: F,
+    ) -> Option<Vec<WordSimilarity>>
+    where
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
         self.indices.get(word).map(|idx| {
             let embedding = self.matrix.subview(Axis(0), *idx);
@@ -184,14 +194,16 @@ impl Embeddings {
         })
     }
 
-    fn similarity_<F, S>(&self,
-                         embed: ArrayBase<S, Ix1>,
-                         skip: &HashSet<&str>,
-                         limit: usize,
-                         mut similarity: F)
-                         -> Vec<WordSimilarity>
-        where F: FnMut(ArrayView2<f32>, ArrayBase<S, Ix1>) -> Array1<f32>,
-              S: Data<Elem = f32>
+    fn similarity_<F, S>(
+        &self,
+        embed: ArrayBase<S, Ix1>,
+        skip: &HashSet<&str>,
+        limit: usize,
+        mut similarity: F,
+    ) -> Vec<WordSimilarity>
+    where
+        F: FnMut(ArrayView2<f32>, ArrayBase<S, Ix1>) -> Array1<f32>,
+        S: Data<Elem = f32>,
     {
         let sims = similarity(self.matrix.view(), embed);
 
@@ -251,11 +263,12 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-pub fn new_embeddings(matrix: Array2<f32>,
-                      embed_len: usize,
-                      indices: HashMap<String, usize>,
-                      words: Vec<String>)
-                      -> Embeddings {
+pub fn new_embeddings(
+    matrix: Array2<f32>,
+    embed_len: usize,
+    indices: HashMap<String, usize>,
+    words: Vec<String>,
+) -> Embeddings {
     Embeddings {
         matrix: matrix,
         embed_len: embed_len,
