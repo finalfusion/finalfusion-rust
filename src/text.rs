@@ -3,7 +3,7 @@ use std::io::{BufRead, Seek, SeekFrom, Write};
 
 use failure::{err_msg, Error};
 use itertools::Itertools;
-use ndarray::{Array, Axis, Ix1};
+use ndarray::{Array1, Array2, Axis};
 
 use super::*;
 
@@ -28,7 +28,7 @@ where
 {
     fn read_text(reader: &mut R) -> Result<Embeddings, Error> {
         let (n_words, embed_size) = text_vectors_dims(reader)?;
-        let mut matrix = Array::zeros((n_words, embed_size));
+        let mut matrix = Array2::zeros((n_words, embed_size));
         let mut indices = HashMap::new();
         let mut words = Vec::with_capacity(1);
 
@@ -47,7 +47,7 @@ where
             words.push(word.to_owned());
             indices.insert(word.to_owned(), idx);
 
-            let embedding: Array<f32, Ix1> = try!(parts.map(str::parse).collect());
+            let embedding: Array1<f32> = try!(parts.map(str::parse).collect());
             matrix.subview_mut(Axis(0), idx).assign(&embedding);
         }
 

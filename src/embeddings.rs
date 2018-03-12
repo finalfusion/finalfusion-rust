@@ -5,7 +5,7 @@ use std::iter::Enumerate;
 use std::slice;
 
 use failure::Error;
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Axis, Data, Ix1};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis};
 
 /// A word similarity.
 ///
@@ -282,16 +282,15 @@ impl Embeddings {
         })
     }
 
-    fn similarity_<F, S>(
+    fn similarity_<F>(
         &self,
-        embed: ArrayBase<S, Ix1>,
+        embed: ArrayView1<f32>,
         skip: &HashSet<&str>,
         limit: usize,
         mut similarity: F,
     ) -> Vec<WordSimilarity>
     where
-        F: FnMut(ArrayView2<f32>, ArrayBase<S, Ix1>) -> Array1<f32>,
-        S: Data<Elem = f32>,
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
         let sims = similarity(self.matrix.view(), embed);
 

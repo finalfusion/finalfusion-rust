@@ -5,7 +5,7 @@ use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{err_msg, Error};
-use ndarray::{Array, Axis};
+use ndarray::{Array2, Axis};
 
 use super::*;
 
@@ -29,7 +29,7 @@ where
         let n_words = try!(read_number(reader, b' '));
         let embed_len = try!(read_number(reader, b'\n'));
 
-        let mut matrix = Array::zeros((n_words, embed_len));
+        let mut matrix = Array2::zeros((n_words, embed_len));
         let mut indices = HashMap::new();
         let mut words = Vec::with_capacity(n_words);
 
