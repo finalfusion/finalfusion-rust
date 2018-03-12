@@ -1,5 +1,6 @@
 extern crate byteorder;
 
+#[macro_use]
 extern crate failure;
 
 extern crate itertools;
@@ -14,7 +15,7 @@ macro_rules! try_opt {
 }
 
 mod embeddings;
-pub use embeddings::{Embeddings, Iter, WordSimilarity};
+pub use embeddings::{Builder, BuilderError, Embeddings, Iter, WordSimilarity};
 
 mod text;
 pub use text::{ReadText, WriteText};
