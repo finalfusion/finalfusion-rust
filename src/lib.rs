@@ -15,7 +15,7 @@ macro_rules! try_opt {
 }
 
 mod embeddings;
-pub use embeddings::{Embeddings, WordSimilarity};
+pub use embeddings::{Embeddings, Iter, WordSimilarity};
 
 mod error;
 pub use error::*;

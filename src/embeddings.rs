@@ -235,6 +235,7 @@ impl Embeddings {
     }
 }
 
+/// Iterator over embeddings.
 pub struct Iter<'a> {
     embeddings: &'a Embeddings,
     inner: Enumerate<slice::Iter<'a, String>>,
