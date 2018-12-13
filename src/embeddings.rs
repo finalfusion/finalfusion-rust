@@ -334,6 +334,15 @@ impl Embeddings {
     }
 }
 
+impl<'a> IntoIterator for &'a Embeddings {
+    type Item = (&'a str, ArrayView1<'a, f32>);
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// Iterator over embeddings.
 pub struct Iter<'a> {
     embeddings: &'a Embeddings,
