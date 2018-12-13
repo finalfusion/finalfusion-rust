@@ -155,11 +155,9 @@ fn test_builder_duplicate() {
     builder
         .push("hello", Array1::from_vec(vec![1.0, 2.0, 3.0]))
         .unwrap();
-    assert!(
-        builder
-            .push("hello", Array1::from_vec(vec![4.0, 5.0, 6.0]))
-            .is_err()
-    );
+    assert!(builder
+        .push("hello", Array1::from_vec(vec![4.0, 5.0, 6.0]))
+        .is_err());
 }
 
 #[test]
@@ -168,11 +166,9 @@ fn test_builder_invalid_embedding_length() {
     builder
         .push("hello", Array1::from_vec(vec![1.0, 2.0, 3.0]))
         .unwrap();
-    assert!(
-        builder
-            .push("hello", Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0]))
-            .is_err()
-    );
+    assert!(builder
+        .push("hello", Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0]))
+        .is_err());
 }
 
 #[test]

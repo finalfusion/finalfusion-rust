@@ -59,10 +59,7 @@ where
         }
 
         Ok(super::embeddings::new_embeddings(
-            matrix,
-            embed_size,
-            indices,
-            words,
+            matrix, embed_size, indices, words,
         ))
     }
 }

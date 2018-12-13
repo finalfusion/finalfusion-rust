@@ -8,10 +8,12 @@ extern crate itertools;
 extern crate ndarray;
 
 macro_rules! try_opt {
-    ($expr:expr) => (match $expr {
-        Some(val) => val,
-        None      => return None
-    })
+    ($expr:expr) => {
+        match $expr {
+            Some(val) => val,
+            None => return None,
+        }
+    };
 }
 
 mod embeddings;

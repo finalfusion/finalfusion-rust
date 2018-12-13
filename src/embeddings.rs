@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::collections::hash_map::Entry;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::iter::Enumerate;
 use std::slice;
 
@@ -45,7 +45,10 @@ impl<'a> PartialEq for WordSimilarity<'a> {
 
 #[derive(Debug, Fail)]
 pub enum BuilderError {
-    #[fail(display = "invalid embedding shape, expected: {}, got: {}", expected_len, len)]
+    #[fail(
+        display = "invalid embedding shape, expected: {}, got: {}",
+        expected_len, len
+    )]
     InvalidEmbeddingLength { expected_len: usize, len: usize },
     #[fail(display = "word not unique: {}", word)]
     DuplicateWord { word: String },
@@ -183,21 +186,18 @@ impl Embeddings {
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let embedding1 = try_opt!(
-            self.indices
-                .get(word1)
-                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
-        );
-        let embedding2 = try_opt!(
-            self.indices
-                .get(word2)
-                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
-        );
-        let embedding3 = try_opt!(
-            self.indices
-                .get(word3)
-                .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())
-        );
+        let embedding1 = try_opt!(self
+            .indices
+            .get(word1)
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
+        let embedding2 = try_opt!(self
+            .indices
+            .get(word2)
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
+        let embedding3 = try_opt!(self
+            .indices
+            .get(word3)
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
 
         let embedding = (embedding2 - embedding1) + embedding3;
 

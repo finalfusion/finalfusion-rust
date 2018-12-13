@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::mem;
 use std::io::{BufRead, Write};
+use std::mem;
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -51,10 +51,7 @@ where
         }
 
         Ok(super::embeddings::new_embeddings(
-            matrix,
-            embed_len,
-            indices,
-            words,
+            matrix, embed_len, indices, words,
         ))
     }
 }
