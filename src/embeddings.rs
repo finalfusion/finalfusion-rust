@@ -186,18 +186,18 @@ impl Embeddings {
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let embedding1 = try_opt!(self
+        let embedding1 = self
             .indices
             .get(word1)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
-        let embedding2 = try_opt!(self
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
+        let embedding2 = self
             .indices
             .get(word2)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
-        let embedding3 = try_opt!(self
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
+        let embedding3 = self
             .indices
             .get(word3)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned()));
+            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
 
         let embedding = (embedding2 - embedding1) + embedding3;
 

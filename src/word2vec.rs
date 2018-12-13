@@ -26,15 +26,15 @@ where
     R: BufRead,
 {
     fn read_word2vec_binary(reader: &mut R) -> Result<Embeddings, Error> {
-        let n_words = try!(read_number(reader, b' '));
-        let embed_len = try!(read_number(reader, b'\n'));
+        let n_words = read_number(reader, b' ')?;
+        let embed_len = read_number(reader, b'\n')?;
 
         let mut matrix = Array2::zeros((n_words, embed_len));
         let mut indices = HashMap::new();
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {
-            let word = try!(read_string(reader, ' ' as u8));
+            let word = read_string(reader, ' ' as u8)?;
             let word = word.trim();
             words.push(word.to_owned());
             indices.insert(word.to_owned(), idx);
@@ -46,7 +46,7 @@ where
                     Some(s) => unsafe { typed_to_bytes(s) },
                     None => return Err(err_msg("Matrix not contiguous")),
                 };
-                try!(reader.read_exact(&mut embedding_raw));
+                reader.read_exact(&mut embedding_raw)?;
             }
         }
 
@@ -57,15 +57,15 @@ where
 }
 
 fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize, Error> {
-    let field_str = try!(read_string(reader, delim));
-    Ok(try!(field_str.parse()))
+    let field_str = read_string(reader, delim)?;
+    Ok(field_str.parse()?)
 }
 
 fn read_string(reader: &mut BufRead, delim: u8) -> Result<String, Error> {
     let mut buf = Vec::new();
-    try!(reader.read_until(delim, &mut buf));
+    reader.read_until(delim, &mut buf)?;
     buf.pop();
-    Ok(try!(String::from_utf8(buf)))
+    Ok(String::from_utf8(buf)?)
 }
 
 unsafe fn typed_to_bytes<T>(slice: &mut [T]) -> &mut [u8] {
