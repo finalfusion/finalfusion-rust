@@ -39,7 +39,7 @@ where
             words.push(word.to_owned());
             indices.insert(word.to_owned(), idx);
 
-            let mut embedding = matrix.subview_mut(Axis(0), idx);
+            let mut embedding = matrix.index_axis_mut(Axis(0), idx);
 
             {
                 let mut embedding_raw = match embedding.as_slice_mut() {

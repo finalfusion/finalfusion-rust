@@ -83,7 +83,7 @@ impl Builder {
         let embed_len = self.embeddings.first()?.shape()[0];
         let mut matrix = Array2::zeros((self.embeddings.len(), embed_len));
         for (idx, embed) in self.embeddings.into_iter().enumerate() {
-            matrix.subview_mut(Axis(0), idx).assign(&embed);
+            matrix.index_axis_mut(Axis(0), idx).assign(&embed);
         }
 
         Some(Embeddings {
@@ -189,15 +189,15 @@ impl Embeddings {
         let embedding1 = self
             .indices
             .get(word1)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
+            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
         let embedding2 = self
             .indices
             .get(word2)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
+            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
         let embedding3 = self
             .indices
             .get(word3)
-            .map(|idx| self.matrix.subview(Axis(0), *idx).to_owned())?;
+            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
 
         let embedding = (embedding2 - embedding1) + embedding3;
 
@@ -220,7 +220,7 @@ impl Embeddings {
     pub fn embedding(&self, word: &str) -> Option<ArrayView1<f32>> {
         self.indices
             .get(word)
-            .map(|idx| self.matrix.subview(Axis(0), *idx))
+            .map(|idx| self.matrix.index_axis(Axis(0), *idx))
     }
 
     /// Get the mapping from words to row indices of the embedding matrix.
@@ -275,7 +275,7 @@ impl Embeddings {
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
         self.indices.get(word).map(|idx| {
-            let embedding = self.matrix.subview(Axis(0), *idx);
+            let embedding = self.matrix.index_axis(Axis(0), *idx);
             let mut skip = HashSet::new();
             skip.insert(word);
             self.similarity_(embedding, &skip, limit, similarity)
@@ -355,7 +355,7 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner
             .next()
-            .map(|(idx, word)| (word.as_str(), self.embeddings.matrix.subview(Axis(0), idx)))
+            .map(|(idx, word)| (word.as_str(), self.embeddings.matrix.index_axis(Axis(0), idx)))
     }
 }
 

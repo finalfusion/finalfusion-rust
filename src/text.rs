@@ -55,7 +55,7 @@ where
                 embedding.shape()[0]
             );
 
-            matrix.subview_mut(Axis(0), idx).assign(&embedding);
+            matrix.index_axis_mut(Axis(0), idx).assign(&embedding);
         }
 
         Ok(super::embeddings::new_embeddings(
