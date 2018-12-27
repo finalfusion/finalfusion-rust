@@ -17,4 +17,4 @@ exclude = [
 byteorder = "1"
 failure = "0.1"
 ndarray = "0.12"
-itertools = "0.6"
+itertools = "0.8"
