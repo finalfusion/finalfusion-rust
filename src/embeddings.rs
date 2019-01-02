@@ -150,6 +150,20 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
+    pub(crate) fn new(
+        matrix: Array2<f32>,
+        embed_len: usize,
+        indices: HashMap<String, usize>,
+        words: Vec<String>,
+    ) -> Embeddings {
+        Embeddings {
+            matrix: matrix,
+            embed_len: embed_len,
+            indices: indices,
+            words: words,
+        }
+    }
+
     /// Get (a view of) the raw embedding matrix.
     pub fn data(&self) -> ArrayView2<f32> {
         self.matrix.view()
@@ -230,19 +244,5 @@ impl<'a> Iterator for Iter<'a> {
                 self.embeddings.matrix.index_axis(Axis(0), idx),
             )
         })
-    }
-}
-
-pub fn new_embeddings(
-    matrix: Array2<f32>,
-    embed_len: usize,
-    indices: HashMap<String, usize>,
-    words: Vec<String>,
-) -> Embeddings {
-    Embeddings {
-        matrix: matrix,
-        embed_len: embed_len,
-        indices: indices,
-        words: words,
     }
 }

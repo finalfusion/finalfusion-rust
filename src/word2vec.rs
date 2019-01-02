@@ -50,9 +50,7 @@ where
             }
         }
 
-        Ok(super::embeddings::new_embeddings(
-            matrix, embed_len, indices, words,
-        ))
+        Ok(Embeddings::new(matrix, embed_len, indices, words))
     }
 }
 
