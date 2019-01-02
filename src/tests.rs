@@ -39,7 +39,7 @@ fn test_builder() {
 
     let mut builder = Builder::new();
     for (word, embed) in embeddings.iter() {
-        builder.push(word, embed.to_owned()).unwrap();
+        builder.push(word, embed).unwrap();
     }
 
     let embeddings_builder = builder.build().unwrap();

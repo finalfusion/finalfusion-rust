@@ -5,7 +5,7 @@ use std::iter::Enumerate;
 use std::slice;
 
 use failure::{bail, ensure, Error, Fail};
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis};
+use ndarray::{Array2, ArrayBase, ArrayView1, ArrayView2, Axis, Data, Ix1};
 
 /// A word similarity.
 ///
@@ -63,7 +63,7 @@ pub enum BuilderError {
 pub struct Builder {
     words: Vec<String>,
     indices: HashMap<String, usize>,
-    embeddings: Vec<Array1<f32>>,
+    embeddings: Vec<f32>,
 }
 
 impl Builder {
@@ -80,17 +80,21 @@ impl Builder {
     ///
     /// The `None` is returned when no embedding was added to the builder.
     pub fn build(self) -> Option<Embeddings> {
-        let embed_len = self.embeddings.first()?.shape()[0];
-        let mut matrix = Array2::zeros((self.embeddings.len(), embed_len));
-        for (idx, embed) in self.embeddings.into_iter().enumerate() {
-            matrix.index_axis_mut(Axis(0), idx).assign(&embed);
-        }
+        let vocab_len = self.words.len();
+        let embed_len = self.embeddings.len() / vocab_len;
+        let data_len = self.words.len();
 
         Some(Embeddings {
             embed_len,
             indices: self.indices,
             words: self.words,
-            matrix,
+            matrix: Array2::from_shape_vec((vocab_len, embed_len), self.embeddings).expect(
+                &format!(
+                    "Data length: {}, expected: {}",
+                    data_len,
+                    vocab_len * embed_len
+                ),
+            ),
         })
     }
 
@@ -99,22 +103,23 @@ impl Builder {
     /// An `Err` value is returned when the word has been inserted in the
     /// builder before or when the embedding has a different size than
     /// previously inserted embeddings.
-    pub fn push<S, E>(&mut self, word: S, embedding: E) -> Result<(), Error>
+    pub fn push<W, S>(&mut self, word: W, embedding: ArrayBase<S, Ix1>) -> Result<(), Error>
     where
-        S: Into<String>,
-        E: Into<Array1<f32>>,
+        W: Into<String>,
+        S: Data<Elem = f32>,
     {
         let word = word.into();
-        let embedding = embedding.into();
 
         // Check that the embedding has the same length as embeddings that
         // were inserted before.
-        if let Some(first) = self.embeddings.first() {
+        if !self.embeddings.is_empty() {
+            let embed_len = self.embeddings.len() / self.words.len();
+
             ensure!(
-                embedding.shape() == first.shape(),
+                embedding.len() == embed_len,
                 BuilderError::InvalidEmbeddingLength {
-                    expected_len: first.shape()[0],
-                    len: embedding.shape()[0],
+                    expected_len: embed_len,
+                    len: embedding.len(),
                 }
             );
         }
@@ -126,7 +131,7 @@ impl Builder {
         };
 
         self.words.push(word.clone());
-        self.embeddings.push(embedding);
+        self.embeddings.extend(embedding.iter());
 
         Ok(())
     }
