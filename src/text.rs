@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
-use failure::{err_msg, Error};
+use failure::{err_msg, Error, ResultExt};
 use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 
@@ -27,41 +27,98 @@ where
     R: BufRead + Seek,
 {
     fn read_text(reader: &mut R) -> Result<Embeddings, Error> {
-        let (n_words, embed_size) = text_vectors_dims(reader)?;
-        let mut matrix = Array2::zeros((n_words, embed_size));
-        let mut indices = HashMap::new();
-        let mut words = Vec::with_capacity(1);
-
+        let (vocab_len, embed_len) = text_vectors_dims(reader)?;
         reader.seek(SeekFrom::Start(0))?;
-
-        for (idx, line) in (0..n_words).zip(reader.lines()) {
-            let line = line?;
-            let mut parts = line.split_whitespace();
-
-            let word = match parts.next() {
-                Some(word) => word,
-                None => return Err(err_msg("Empty line")),
-            };
-
-            let word = word.trim();
-            words.push(word.to_owned());
-            indices.insert(word.to_owned(), idx);
-
-            let embedding: Array1<f32> = try!(parts.map(str::parse).collect());
-            ensure!(
-                embedding.shape()[0] == embed_size,
-                "Expected embedding size: {}, got: {}",
-                embed_size,
-                embedding.shape()[0]
-            );
-
-            matrix.index_axis_mut(Axis(0), idx).assign(&embedding);
-        }
-
-        Ok(super::embeddings::new_embeddings(
-            matrix, embed_size, indices, words,
-        ))
+        read_embeds(reader, vocab_len, embed_len)
     }
+}
+
+/// Method to construct `Embeddings` from a text file with dimensions.
+///
+/// This trait defines an extension to `Embeddings` to read the word embeddings
+/// from a text stream. The text must contain as the first line the shape of
+/// the embedding matrix:
+///
+/// *vocab_size n_components*
+///
+/// The remainder of the stream should contain one word embedding per line in
+/// the following format:
+///
+/// *word0 component_1 component_2 ... component_n*
+pub trait ReadTextDims<R>
+where
+    R: BufRead + Seek,
+{
+    /// Read the embeddings from the given buffered reader.
+    fn read_text_dims(reader: &mut R) -> Result<Embeddings, Error>;
+}
+
+impl<R> ReadTextDims<R> for Embeddings
+where
+    R: BufRead + Seek,
+{
+    fn read_text_dims(reader: &mut R) -> Result<Embeddings, Error> {
+        let mut dims = String::new();
+        reader.read_line(&mut dims)?;
+
+        let mut dims_iter = dims.split_whitespace();
+        let vocab_len = dims_iter
+            .next()
+            .ok_or(failure::err_msg("Missing vocabulary size"))?
+            .parse::<usize>()
+            .context("Cannot parse vocabulary size")?;
+        let embed_len = dims_iter
+            .next()
+            .ok_or(failure::err_msg("Missing vocabulary size"))?
+            .parse::<usize>()
+            .context("Cannot parse vocabulary size")?;
+
+        read_embeds(reader, vocab_len, embed_len)
+    }
+}
+
+fn read_embeds<R>(reader: &mut R, vocab_len: usize, embed_len: usize) -> Result<Embeddings, Error>
+where
+    R: BufRead,
+{
+    let mut matrix = Array2::zeros((vocab_len, embed_len));
+    let mut indices = HashMap::with_capacity(vocab_len);
+    let mut words = Vec::with_capacity(vocab_len);
+
+    for (idx, line) in reader.lines().enumerate() {
+        let line = line?;
+        let mut parts = line.split_whitespace();
+
+        let word = match parts.next() {
+            Some(word) => word,
+            None => return Err(err_msg("Empty line")),
+        };
+
+        let word = word.trim();
+        words.push(word.to_owned());
+        indices.insert(word.to_owned(), idx);
+
+        let embedding: Array1<f32> = try!(parts.map(str::parse).collect());
+        ensure!(
+            embedding.shape()[0] == embed_len,
+            "Expected embedding size: {}, got: {}",
+            embed_len,
+            embedding.shape()[0]
+        );
+
+        matrix.index_axis_mut(Axis(0), idx).assign(&embedding);
+    }
+
+    ensure!(
+        words.len() == vocab_len,
+        "Vocabulary size: {}, expected: {}",
+        words.len(),
+        vocab_len
+    );
+
+    Ok(super::embeddings::new_embeddings(
+        matrix, embed_len, indices, words,
+    ))
 }
 
 pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
@@ -103,5 +160,45 @@ where
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    use {Embeddings, ReadWord2Vec};
+
+    use super::{ReadText, ReadTextDims};
+
+    fn read_word2vec() -> Embeddings {
+        let f = File::open("testdata/similarity.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        Embeddings::read_word2vec_binary(&mut reader).unwrap()
+    }
+
+    #[test]
+    fn read_text() {
+        let f = File::open("testdata/similarity.nodims").unwrap();
+        let mut reader = BufReader::new(f);
+        let text_embeddings = Embeddings::read_text(&mut reader).unwrap();
+
+        let embeddings = read_word2vec();
+        assert_eq!(text_embeddings.indices(), embeddings.indices());
+        assert_eq!(text_embeddings.words(), embeddings.words());
+        assert_eq!(text_embeddings.data(), embeddings.data());
+    }
+
+    #[test]
+    fn read_text_dims() {
+        let f = File::open("testdata/similarity.txt").unwrap();
+        let mut reader = BufReader::new(f);
+        let text_embeddings = Embeddings::read_text_dims(&mut reader).unwrap();
+
+        let embeddings = read_word2vec();
+        assert_eq!(text_embeddings.indices(), embeddings.indices());
+        assert_eq!(text_embeddings.words(), embeddings.words());
+        assert_eq!(text_embeddings.data(), embeddings.data());
     }
 }
