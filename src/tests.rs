@@ -3,7 +3,8 @@ use std::io::{BufReader, Read, Seek, SeekFrom};
 
 use ndarray::Array1;
 
-use super::*;
+use crate::word2vec::{ReadWord2Vec, WriteWord2Vec};
+use crate::{Builder, Embeddings};
 
 #[test]
 fn test_read_word2vec_binary() {

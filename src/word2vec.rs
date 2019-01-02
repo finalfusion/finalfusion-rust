@@ -1,3 +1,5 @@
+//! Reader and writer for the word2vec binary format.
+
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::mem;

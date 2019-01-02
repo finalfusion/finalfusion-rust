@@ -3,11 +3,9 @@ pub use crate::embeddings::{Builder, BuilderError, Embeddings, Iter};
 
 pub mod similarity;
 
-mod text;
-pub use crate::text::{ReadText, WriteText};
+pub mod text;
 
-mod word2vec;
-pub use crate::word2vec::{ReadWord2Vec, WriteWord2Vec};
+pub mod word2vec;
 
 #[cfg(test)]
 mod tests;

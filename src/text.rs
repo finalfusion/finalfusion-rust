@@ -1,3 +1,5 @@
+//! Readers and writers for text formats.
+
 use std::collections::HashMap;
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
@@ -192,7 +194,8 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Read, Seek, SeekFrom};
 
-    use crate::{Embeddings, ReadWord2Vec};
+    use crate::word2vec::ReadWord2Vec;
+    use crate::Embeddings;
 
     use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
 
