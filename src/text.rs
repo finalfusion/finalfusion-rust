@@ -153,6 +153,7 @@ impl<W> WriteText<W> for Embeddings
 where
     W: Write,
 {
+    /// Write the embeddings to the given writer.
     fn write_text(&self, write: &mut W) -> Result<(), Error> {
         for (word, embed) in self.words().iter().zip(self.data().outer_iter()) {
             let embed_str = embed.iter().map(ToString::to_string).join(" ");
@@ -163,14 +164,39 @@ where
     }
 }
 
+/// Method to write `Embeddings` to a text file.
+///
+/// This trait defines an extension to `Embeddings` to write the word embeddings
+/// as text. The text will contain one word embedding per line in the following
+/// format:
+///
+/// *word0 component_1 component_2 ... component_n*
+pub trait WriteTextDims<W>
+where
+    W: Write,
+{
+    /// Write the embeddings to the given writer.
+    fn write_text_dims(&self, writer: &mut W) -> Result<(), Error>;
+}
+
+impl<W> WriteTextDims<W> for Embeddings
+where
+    W: Write,
+{
+    fn write_text_dims(&self, write: &mut W) -> Result<(), Error> {
+        writeln!(write, "{} {}", self.len(), self.embed_len())?;
+        self.write_text(write)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::BufReader;
+    use std::io::{BufReader, Read, Seek, SeekFrom};
 
     use {Embeddings, ReadWord2Vec};
 
-    use super::{ReadText, ReadTextDims};
+    use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
 
     fn read_word2vec() -> Embeddings {
         let f = File::open("testdata/similarity.bin").unwrap();
@@ -200,5 +226,39 @@ mod tests {
         assert_eq!(text_embeddings.indices(), embeddings.indices());
         assert_eq!(text_embeddings.words(), embeddings.words());
         assert_eq!(text_embeddings.data(), embeddings.data());
+    }
+
+    #[test]
+    fn test_word2vec_text_roundtrip() {
+        let mut reader = BufReader::new(File::open("testdata/similarity.nodims").unwrap());
+        let mut check = String::new();
+        reader.read_to_string(&mut check).unwrap();
+
+        // Read embeddings.
+        reader.seek(SeekFrom::Start(0)).unwrap();
+        let embeddings = Embeddings::read_text(&mut reader).unwrap();
+
+        // Write embeddings to a byte vector.
+        let mut output = Vec::new();
+        embeddings.write_text(&mut output).unwrap();
+
+        assert_eq!(check, String::from_utf8_lossy(&output));
+    }
+
+    #[test]
+    fn test_word2vec_text_dims_roundtrip() {
+        let mut reader = BufReader::new(File::open("testdata/similarity.txt").unwrap());
+        let mut check = String::new();
+        reader.read_to_string(&mut check).unwrap();
+
+        // Read embeddings.
+        reader.seek(SeekFrom::Start(0)).unwrap();
+        let embeddings = Embeddings::read_text_dims(&mut reader).unwrap();
+
+        // Write embeddings to a byte vector.
+        let mut output = Vec::new();
+        embeddings.write_text_dims(&mut output).unwrap();
+
+        assert_eq!(check, String::from_utf8_lossy(&output));
     }
 }
