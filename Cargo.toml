@@ -16,5 +16,6 @@ exclude = [
 [dependencies]
 byteorder = "1"
 failure = "0.1"
-ndarray = "0.12"
 itertools = "0.8"
+ndarray = "0.12"
+ordered-float = "1"

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::HashMap;
 use std::iter::Enumerate;
 use std::slice;
 
@@ -145,67 +145,6 @@ pub struct Embeddings {
 }
 
 impl Embeddings {
-    /// Perform an analogy query.
-    ///
-    /// This method returns words that are close in vector space the analogy
-    /// query `word1` is to `word2` as `word3` is to `?`. More concretely,
-    /// it searches embeddings that are similar to:
-    ///
-    /// *embedding(word2) - embedding(word1) + embedding(word3)*
-    ///
-    /// At most, `limit` results are returned.
-    pub fn analogy(
-        &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
-    ) -> Option<Vec<WordSimilarity>> {
-        self.analogy_by(word1, word2, word3, limit, |embeds, embed| {
-            embeds.dot(&embed)
-        })
-    }
-
-    /// Perform an analogy query using the given similarity function.
-    ///
-    /// This method returns words that are close in vector space the analogy
-    /// query `word1` is to `word2` as `word3` is to `?`. More concretely,
-    /// it searches embeddings that are similar to:
-    ///
-    /// *embedding(word2) - embedding(word1) + embedding(word3)*
-    ///
-    /// At most, `limit` results are returned.
-    pub fn analogy_by<F>(
-        &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        let embedding1 = self
-            .indices
-            .get(word1)
-            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
-        let embedding2 = self
-            .indices
-            .get(word2)
-            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
-        let embedding3 = self
-            .indices
-            .get(word3)
-            .map(|idx| self.matrix.index_axis(Axis(0), *idx).to_owned())?;
-
-        let embedding = (embedding2 - embedding1) + embedding3;
-
-        let skip = [word1, word2, word3].iter().cloned().collect();
-
-        Some(self.similarity_(embedding.view(), &skip, limit, similarity))
-    }
-
     /// Get (a view of) the raw embedding matrix.
     pub fn data(&self) -> ArrayView2<f32> {
         self.matrix.view()
@@ -249,79 +188,6 @@ impl Embeddings {
         }
     }
 
-    /// Find words that are similar to the query word.
-    ///
-    /// The similarity between two words is defined by the dot product of
-    /// the embeddings. If the vectors are unit vectors (e.g. by virtue of
-    /// calling `normalize`), this is the cosine similarity. At most, `limit`
-    /// results are returned.
-    pub fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>> {
-        self.similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
-    }
-
-    /// Find words that are similar to the query word using the given similarity
-    /// function.
-    ///
-    /// The similarity function should return, given the embeddings matrix and
-    /// the word vector a vector of similarity scores. At most, `limit` results
-    /// are returned.
-    pub fn similarity_by<F>(
-        &self,
-        word: &str,
-        limit: usize,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        self.indices.get(word).map(|idx| {
-            let embedding = self.matrix.index_axis(Axis(0), *idx);
-            let mut skip = HashSet::new();
-            skip.insert(word);
-            self.similarity_(embedding, &skip, limit, similarity)
-        })
-    }
-
-    fn similarity_<F>(
-        &self,
-        embed: ArrayView1<f32>,
-        skip: &HashSet<&str>,
-        limit: usize,
-        mut similarity: F,
-    ) -> Vec<WordSimilarity>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        let sims = similarity(self.matrix.view(), embed);
-
-        let mut results: BinaryHeap<WordSimilarity> = BinaryHeap::new();
-        for (idx, sim) in sims.iter().enumerate() {
-            let word = self.words[idx].as_ref();
-
-            // Don't add words that we are explicitly asked to skip.
-            if skip.contains(word) {
-                continue;
-            }
-
-            let word_distance = WordSimilarity {
-                word: word,
-                similarity: *sim,
-            };
-
-            if results.len() == limit {
-                if let Some(mut min_distance) = results.peek_mut() {
-                    if word_distance.similarity > min_distance.similarity {
-                        *min_distance = word_distance
-                    }
-                }
-            } else {
-                results.push(word_distance);
-            }
-        }
-
-        results.into_sorted_vec()
-    }
-
     /// Get the number of words for which embeddings are stored.
     pub fn len(&self) -> usize {
         self.words.len()
@@ -353,9 +219,12 @@ impl<'a> Iterator for Iter<'a> {
     type Item = (&'a str, ArrayView1<'a, f32>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner
-            .next()
-            .map(|(idx, word)| (word.as_str(), self.embeddings.matrix.index_axis(Axis(0), idx)))
+        self.inner.next().map(|(idx, word)| {
+            (
+                word.as_str(),
+                self.embeddings.matrix.index_axis(Axis(0), idx),
+            )
+        })
     }
 }
 

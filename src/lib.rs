@@ -5,10 +5,15 @@ extern crate failure;
 
 extern crate itertools;
 
+#[macro_use]
 extern crate ndarray;
 
+extern crate ordered_float;
+
 mod embeddings;
-pub use embeddings::{Builder, BuilderError, Embeddings, Iter, WordSimilarity};
+pub use embeddings::{Builder, BuilderError, Embeddings, Iter};
+
+pub mod similarity;
 
 mod text;
 pub use text::{ReadText, WriteText};
