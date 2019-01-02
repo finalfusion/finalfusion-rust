@@ -3,10 +3,10 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 
-use ndarray::{Array1, ArrayView1, ArrayView2, ArrayViewMut1};
+use ndarray::{s, Array1, ArrayView1, ArrayView2, ArrayViewMut1};
 use ordered_float::NotNan;
 
-use Embeddings;
+use crate::Embeddings;
 
 /// A word with its similarity.
 ///
@@ -234,9 +234,9 @@ mod tests {
     use std::fs::File;
     use std::io::BufReader;
 
-    use similarity::{Analogy, Similarity};
-    use word2vec::ReadWord2Vec;
-    use Embeddings;
+    use crate::similarity::{Analogy, Similarity};
+    use crate::word2vec::ReadWord2Vec;
+    use crate::Embeddings;
 
     static SIMILARITY_ORDER_STUTTGART_10: &'static [&'static str] = &[
         "Karlsruhe",

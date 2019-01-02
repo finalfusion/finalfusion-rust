@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
-use failure::{err_msg, Error, ResultExt};
+use failure::{ensure, err_msg, Error, ResultExt};
 use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 
@@ -98,7 +98,7 @@ where
         words.push(word.to_owned());
         indices.insert(word.to_owned(), idx);
 
-        let embedding: Array1<f32> = try!(parts.map(str::parse).collect());
+        let embedding: Array1<f32> = r#try!(parts.map(str::parse).collect());
         ensure!(
             embedding.shape()[0] == embed_len,
             "Expected embedding size: {}, got: {}",
@@ -194,7 +194,7 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Read, Seek, SeekFrom};
 
-    use {Embeddings, ReadWord2Vec};
+    use crate::{Embeddings, ReadWord2Vec};
 
     use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
 

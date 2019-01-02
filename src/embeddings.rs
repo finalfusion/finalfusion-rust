@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::iter::Enumerate;
 use std::slice;
 
-use failure::Error;
+use failure::{bail, ensure, Error, Fail};
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2, Axis};
 
 /// A word similarity.
