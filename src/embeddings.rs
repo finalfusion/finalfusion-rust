@@ -1,11 +1,9 @@
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::iter::Enumerate;
 use std::slice;
 
-use failure::{bail, ensure, Error, Fail};
-use ndarray::{Array2, ArrayBase, ArrayView1, ArrayView2, Axis, Data, Ix1};
+use ndarray::{Array2, ArrayView1, ArrayView2, Axis};
 
 /// A word similarity.
 ///
@@ -40,100 +38,6 @@ impl<'a> Eq for WordSimilarity<'a> {}
 impl<'a> PartialEq for WordSimilarity<'a> {
     fn eq(&self, other: &WordSimilarity) -> bool {
         self.cmp(other) == Ordering::Equal
-    }
-}
-
-#[derive(Debug, Fail)]
-pub enum BuilderError {
-    #[fail(
-        display = "invalid embedding shape, expected: {}, got: {}",
-        expected_len, len
-    )]
-    InvalidEmbeddingLength { expected_len: usize, len: usize },
-    #[fail(display = "word not unique: {}", word)]
-    DuplicateWord { word: String },
-}
-
-/// Builder for word embedding matrices.
-///
-/// This builder can be used to construct an embedding matrix. The builder
-/// does not assume that the number of embeddings is known ahead of time.
-/// The embedding size is determined by the size of the first embedding that
-/// is added. All subsequently added embeddings should have the same size.
-pub struct Builder {
-    words: Vec<String>,
-    indices: HashMap<String, usize>,
-    embeddings: Vec<f32>,
-}
-
-impl Builder {
-    /// Create a builder.
-    pub fn new() -> Self {
-        Builder {
-            words: Vec::new(),
-            indices: HashMap::new(),
-            embeddings: Vec::new(),
-        }
-    }
-
-    /// Construct the final embeddin matrix.
-    ///
-    /// The `None` is returned when no embedding was added to the builder.
-    pub fn build(self) -> Option<Embeddings> {
-        let vocab_len = self.words.len();
-        let embed_len = self.embeddings.len() / vocab_len;
-        let data_len = self.words.len();
-
-        Some(Embeddings {
-            embed_len,
-            indices: self.indices,
-            words: self.words,
-            matrix: Array2::from_shape_vec((vocab_len, embed_len), self.embeddings).expect(
-                &format!(
-                    "Data length: {}, expected: {}",
-                    data_len,
-                    vocab_len * embed_len
-                ),
-            ),
-        })
-    }
-
-    /// Add a new embedding to the builder.
-    ///
-    /// An `Err` value is returned when the word has been inserted in the
-    /// builder before or when the embedding has a different size than
-    /// previously inserted embeddings.
-    pub fn push<W, S>(&mut self, word: W, embedding: ArrayBase<S, Ix1>) -> Result<(), Error>
-    where
-        W: Into<String>,
-        S: Data<Elem = f32>,
-    {
-        let word = word.into();
-
-        // Check that the embedding has the same length as embeddings that
-        // were inserted before.
-        if !self.embeddings.is_empty() {
-            let embed_len = self.embeddings.len() / self.words.len();
-
-            ensure!(
-                embedding.len() == embed_len,
-                BuilderError::InvalidEmbeddingLength {
-                    expected_len: embed_len,
-                    len: embedding.len(),
-                }
-            );
-        }
-
-        // Insert the word if it was not inserted before.
-        match self.indices.entry(word.to_owned()) {
-            Entry::Vacant(vacant) => vacant.insert(self.words.len()),
-            Entry::Occupied(_) => bail!(BuilderError::DuplicateWord { word: word }),
-        };
-
-        self.words.push(word.clone());
-        self.embeddings.extend(embedding.iter());
-
-        Ok(())
     }
 }
 

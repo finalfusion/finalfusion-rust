@@ -1,5 +1,5 @@
 mod embeddings;
-pub use crate::embeddings::{Builder, BuilderError, Embeddings, Iter};
+pub use crate::embeddings::{Embeddings, Iter};
 
 pub mod similarity;
 
