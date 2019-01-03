@@ -118,7 +118,7 @@ where
         vocab_len
     );
 
-    Ok(Embeddings::new(matrix, embed_len, indices, words))
+    Ok(Embeddings::new(matrix, indices, words))
 }
 
 pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>

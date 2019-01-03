@@ -52,7 +52,7 @@ where
             }
         }
 
-        Ok(Embeddings::new(matrix, embed_len, indices, words))
+        Ok(Embeddings::new(matrix, indices, words))
     }
 }
 

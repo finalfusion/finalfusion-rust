@@ -48,7 +48,6 @@ impl<'a> PartialEq for WordSimilarity<'a> {
 /// and analogy queries.
 pub struct Embeddings {
     matrix: Array2<f32>,
-    embed_len: usize,
     indices: HashMap<String, usize>,
     words: Vec<String>,
 }
@@ -56,13 +55,11 @@ pub struct Embeddings {
 impl Embeddings {
     pub(crate) fn new(
         matrix: Array2<f32>,
-        embed_len: usize,
         indices: HashMap<String, usize>,
         words: Vec<String>,
     ) -> Embeddings {
         Embeddings {
             matrix: matrix,
-            embed_len: embed_len,
             indices: indices,
             words: words,
         }
@@ -75,7 +72,7 @@ impl Embeddings {
 
     /// Return the length (in vector components) of the word embeddings.
     pub fn embed_len(&self) -> usize {
-        self.embed_len
+        self.matrix.cols()
     }
 
     /// Get the embedding of a word.
