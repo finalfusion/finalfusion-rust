@@ -1,8 +1,6 @@
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 
-use ndarray::Array1;
-
 use crate::word2vec::{ReadWord2Vec, WriteWord2Vec};
 use crate::Embeddings;
 

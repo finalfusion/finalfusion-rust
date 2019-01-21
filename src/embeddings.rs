@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::iter::Enumerate;
 use std::slice;
 
-use ndarray::{Array2, ArrayView1, ArrayView2, Axis};
+use crate::storage::{CowArray1, Normalize, Storage};
 
 /// A word similarity.
 ///
@@ -46,40 +46,43 @@ impl<'a> PartialEq for WordSimilarity<'a> {
 /// This data structure stores word embeddings (also known as *word vectors*)
 /// and provides some useful methods on the embeddings, such as similarity
 /// and analogy queries.
-pub struct Embeddings {
-    matrix: Array2<f32>,
+pub struct Embeddings<S> {
+    storage: S,
     indices: HashMap<String, usize>,
     words: Vec<String>,
 }
 
-impl Embeddings {
+impl<S> Embeddings<S>
+where
+    S: Storage,
+{
     pub(crate) fn new(
-        matrix: Array2<f32>,
+        storage: S,
         indices: HashMap<String, usize>,
         words: Vec<String>,
-    ) -> Embeddings {
+    ) -> Embeddings<S> {
         Embeddings {
-            matrix: matrix,
+            storage: storage,
             indices: indices,
             words: words,
         }
     }
 
-    /// Get (a view of) the raw embedding matrix.
-    pub fn data(&self) -> ArrayView2<f32> {
-        self.matrix.view()
+    /// Get the embedding storage.
+    pub fn data(&self) -> &S {
+        &self.storage
     }
 
     /// Return the length (in vector components) of the word embeddings.
     pub fn embed_len(&self) -> usize {
-        self.matrix.cols()
+        self.storage.dims()
     }
 
     /// Get the embedding of a word.
-    pub fn embedding(&self, word: &str) -> Option<ArrayView1<f32>> {
+    pub fn embedding(&self, word: &str) -> Option<CowArray1<f32>> {
         self.indices
             .get(word)
-            .map(|idx| self.matrix.index_axis(Axis(0), *idx))
+            .map(|idx| self.storage.embedding(*idx))
     }
 
     /// Get the mapping from words to row indices of the embedding matrix.
@@ -88,23 +91,10 @@ impl Embeddings {
     }
 
     /// Get an iterator over pairs of words and the corresponding embeddings.
-    pub fn iter(&self) -> Iter {
+    pub fn iter(&self) -> Iter<S> {
         Iter {
-            embeddings: self,
+            storage: &self.storage,
             inner: self.words.iter().enumerate(),
-        }
-    }
-
-    /// Normalize the embeddings using their L2 (euclidean) norms.
-    ///
-    /// **Note:** when you are using the output of e.g. word2vec, you should
-    /// normalize the embeddings to get good query results.
-    pub fn normalize(&mut self) {
-        for mut embedding in self.matrix.outer_iter_mut() {
-            let l2norm = embedding.dot(&embedding).sqrt();
-            if l2norm != 0f32 {
-                embedding /= l2norm;
-            }
         }
     }
 
@@ -120,9 +110,21 @@ impl Embeddings {
     }
 }
 
-impl<'a> IntoIterator for &'a Embeddings {
-    type Item = (&'a str, ArrayView1<'a, f32>);
-    type IntoIter = Iter<'a>;
+impl<S> Embeddings<S>
+where
+    S: Normalize,
+{
+    pub fn normalize(&mut self) {
+        self.storage.normalize();
+    }
+}
+
+impl<'a, S> IntoIterator for &'a Embeddings<S>
+where
+    S: Storage,
+{
+    type Item = (&'a str, CowArray1<'a, f32>);
+    type IntoIter = Iter<'a, S>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -130,20 +132,20 @@ impl<'a> IntoIterator for &'a Embeddings {
 }
 
 /// Iterator over embeddings.
-pub struct Iter<'a> {
-    embeddings: &'a Embeddings,
+pub struct Iter<'a, S> {
+    storage: &'a S,
     inner: Enumerate<slice::Iter<'a, String>>,
 }
 
-impl<'a> Iterator for Iter<'a> {
-    type Item = (&'a str, ArrayView1<'a, f32>);
+impl<'a, S> Iterator for Iter<'a, S>
+where
+    S: Storage,
+{
+    type Item = (&'a str, CowArray1<'a, f32>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(idx, word)| {
-            (
-                word.as_str(),
-                self.embeddings.matrix.index_axis(Axis(0), idx),
-            )
-        })
+        self.inner
+            .next()
+            .map(|(idx, word)| (word.as_str(), self.storage.embedding(idx)))
     }
 }
