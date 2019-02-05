@@ -1,6 +1,8 @@
 mod embeddings;
 pub use crate::embeddings::{Embeddings, Iter};
 
+pub mod io;
+
 pub mod similarity;
 
 pub mod storage;
