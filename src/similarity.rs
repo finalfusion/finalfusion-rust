@@ -7,6 +7,7 @@ use ndarray::{Array1, ArrayView1, ArrayViewMut1};
 use ordered_float::NotNan;
 
 use crate::storage::{NdArray, Storage};
+use crate::vocab::Vocab;
 use crate::Embeddings;
 
 /// A word with its similarity.
@@ -54,7 +55,10 @@ pub trait Analogy {
     ) -> Option<Vec<WordSimilarity>>;
 }
 
-impl Analogy for Embeddings<NdArray> {
+impl<V> Analogy for Embeddings<V, NdArray>
+where
+    V: Vocab,
+{
     fn analogy(
         &self,
         word1: &str,
@@ -91,8 +95,9 @@ pub trait AnalogyBy<S> {
         F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<S> AnalogyBy<S> for Embeddings<S>
+impl<V, S> AnalogyBy<S> for Embeddings<V, S>
 where
+    V: Vocab,
     S: Storage,
 {
     fn analogy_by<F>(
@@ -130,7 +135,10 @@ pub trait Similarity {
     fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>>;
 }
 
-impl Similarity for Embeddings<NdArray> {
+impl<V> Similarity for Embeddings<V, NdArray>
+where
+    V: Vocab,
+{
     fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>> {
         self.similarity_by(word, limit, |embeds, embed| embeds.0.dot(&embed))
     }
@@ -154,8 +162,9 @@ pub trait SimilarityBy<S> {
         F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<S> SimilarityBy<S> for Embeddings<S>
+impl<V, S> SimilarityBy<S> for Embeddings<V, S>
 where
+    V: Vocab,
     S: Storage,
 {
     fn similarity_by<F>(
@@ -188,8 +197,9 @@ trait SimilarityPrivate<S> {
         S: Storage;
 }
 
-impl<S> SimilarityPrivate<S> for Embeddings<S>
+impl<V, S> SimilarityPrivate<S> for Embeddings<V, S>
 where
+    V: Vocab,
     S: Storage,
 {
     fn similarity_<F>(
@@ -206,7 +216,7 @@ where
 
         let mut results = BinaryHeap::with_capacity(limit);
         for (idx, &sim) in sims.iter().enumerate() {
-            let word = &self.words()[idx];
+            let word = &self.vocab().words()[idx];
 
             // Don't add words that we are explicitly asked to skip.
             if skip.contains(word.as_str()) {

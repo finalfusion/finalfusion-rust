@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::iter::Enumerate;
 use std::slice;
 
 use crate::storage::{CowArray1, Normalize, Storage};
+use crate::vocab::Vocab;
 
 /// A word similarity.
 ///
@@ -46,28 +46,15 @@ impl<'a> PartialEq for WordSimilarity<'a> {
 /// This data structure stores word embeddings (also known as *word vectors*)
 /// and provides some useful methods on the embeddings, such as similarity
 /// and analogy queries.
-pub struct Embeddings<S> {
+pub struct Embeddings<V, S> {
     storage: S,
-    indices: HashMap<String, usize>,
-    words: Vec<String>,
+    vocab: V,
 }
 
-impl<S> Embeddings<S>
+impl<V, S> Embeddings<V, S>
 where
     S: Storage,
 {
-    pub(crate) fn new(
-        storage: S,
-        indices: HashMap<String, usize>,
-        words: Vec<String>,
-    ) -> Embeddings<S> {
-        Embeddings {
-            storage: storage,
-            indices: indices,
-            words: words,
-        }
-    }
-
     /// Get the embedding storage.
     pub fn data(&self) -> &S {
         &self.storage
@@ -77,41 +64,43 @@ where
     pub fn embed_len(&self) -> usize {
         self.storage.dims()
     }
+}
+
+impl<V, S> Embeddings<V, S>
+where
+    V: Vocab,
+{
+    pub fn vocab(&self) -> &V {
+        &self.vocab
+    }
+}
+
+impl<V, S> Embeddings<V, S>
+where
+    V: Vocab,
+    S: Storage,
+{
+    pub(crate) fn new(vocab: V, storage: S) -> Embeddings<V, S> {
+        Embeddings { vocab, storage }
+    }
 
     /// Get the embedding of a word.
     pub fn embedding(&self, word: &str) -> Option<CowArray1<f32>> {
-        self.indices
-            .get(word)
-            .map(|idx| self.storage.embedding(*idx))
-    }
-
-    /// Get the mapping from words to row indices of the embedding matrix.
-    pub fn indices(&self) -> &HashMap<String, usize> {
-        &self.indices
+        self.vocab.idx(word).map(|idx| self.storage.embedding(idx))
     }
 
     /// Get an iterator over pairs of words and the corresponding embeddings.
     pub fn iter(&self) -> Iter<S> {
         Iter {
             storage: &self.storage,
-            inner: self.words.iter().enumerate(),
+            inner: self.vocab.words().iter().enumerate(),
         }
-    }
-
-    /// Get the number of words for which embeddings are stored.
-    pub fn len(&self) -> usize {
-        self.words.len()
-    }
-
-    /// Get the words for which embeddings are stored. The words line up with
-    /// the rows in the matrix returned by `data`.
-    pub fn words(&self) -> &[String] {
-        &self.words
     }
 }
 
-impl<S> Embeddings<S>
+impl<V, S> Embeddings<V, S>
 where
+    V: Vocab,
     S: Normalize,
 {
     pub fn normalize(&mut self) {
@@ -119,8 +108,9 @@ where
     }
 }
 
-impl<'a, S> IntoIterator for &'a Embeddings<S>
+impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where
+    V: Vocab,
     S: Storage,
 {
     type Item = (&'a str, CowArray1<'a, f32>);

@@ -1,6 +1,5 @@
 //! Reader and writer for the word2vec binary format.
 
-use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::mem;
 use std::slice::from_raw_parts_mut;
@@ -10,6 +9,7 @@ use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
 use crate::storage::NdArray;
+use crate::vocab::{SimpleVocab, Vocab};
 
 use super::*;
 
@@ -26,7 +26,7 @@ where
     fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error>;
 }
 
-impl<R> ReadWord2Vec<R> for Embeddings<NdArray>
+impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
@@ -35,14 +35,12 @@ where
         let embed_len = read_number(reader, b'\n')?;
 
         let mut matrix = Array2::zeros((n_words, embed_len));
-        let mut indices = HashMap::new();
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {
             let word = read_string(reader, ' ' as u8)?;
             let word = word.trim();
             words.push(word.to_owned());
-            indices.insert(word.to_owned(), idx);
 
             let mut embedding = matrix.index_axis_mut(Axis(0), idx);
 
@@ -55,7 +53,7 @@ where
             }
         }
 
-        Ok(Embeddings::new(NdArray(matrix), indices, words))
+        Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
     }
 }
 
@@ -90,7 +88,7 @@ where
     fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>;
 }
 
-impl<W> WriteWord2Vec<W> for Embeddings<NdArray>
+impl<W> WriteWord2Vec<W> for Embeddings<SimpleVocab, NdArray>
 where
     W: Write,
 {
@@ -98,7 +96,7 @@ where
     where
         W: Write,
     {
-        write!(w, "{} {}\n", self.len(), self.embed_len())?;
+        write!(w, "{} {}\n", self.vocab().len(), self.embed_len())?;
 
         for (word, embed) in self.iter() {
             write!(w, "{} ", word)?;

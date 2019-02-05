@@ -1,6 +1,5 @@
 //! Readers and writers for text formats.
 
-use std::collections::HashMap;
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
 use failure::{ensure, err_msg, Error, ResultExt};
@@ -8,6 +7,7 @@ use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 
 use crate::storage::NdArray;
+use crate::vocab::{SimpleVocab, Vocab};
 
 use super::*;
 
@@ -27,7 +27,7 @@ where
     fn read_text(reader: &mut R) -> Result<Self, Error>;
 }
 
-impl<R> ReadText<R> for Embeddings<NdArray>
+impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead + Seek,
 {
@@ -59,7 +59,7 @@ where
     fn read_text_dims(reader: &mut R) -> Result<Self, Error>;
 }
 
-impl<R> ReadTextDims<R> for Embeddings<NdArray>
+impl<R> ReadTextDims<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead + Seek,
 {
@@ -87,12 +87,11 @@ fn read_embeds<R>(
     reader: &mut R,
     vocab_len: usize,
     embed_len: usize,
-) -> Result<Embeddings<NdArray>, Error>
+) -> Result<Embeddings<SimpleVocab, NdArray>, Error>
 where
     R: BufRead,
 {
     let mut matrix = Array2::zeros((vocab_len, embed_len));
-    let mut indices = HashMap::with_capacity(vocab_len);
     let mut words = Vec::with_capacity(vocab_len);
 
     for (idx, line) in reader.lines().enumerate() {
@@ -106,7 +105,6 @@ where
 
         let word = word.trim();
         words.push(word.to_owned());
-        indices.insert(word.to_owned(), idx);
 
         let embedding: Array1<f32> = r#try!(parts.map(str::parse).collect());
         ensure!(
@@ -126,7 +124,7 @@ where
         vocab_len
     );
 
-    Ok(Embeddings::new(NdArray(matrix), indices, words))
+    Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
 }
 
 pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
@@ -157,7 +155,7 @@ where
     fn write_text(&self, writer: &mut W) -> Result<(), Error>;
 }
 
-impl<W> WriteText<W> for Embeddings<NdArray>
+impl<W> WriteText<W> for Embeddings<SimpleVocab, NdArray>
 where
     W: Write,
 {
@@ -187,12 +185,12 @@ where
     fn write_text_dims(&self, writer: &mut W) -> Result<(), Error>;
 }
 
-impl<W> WriteTextDims<W> for Embeddings<NdArray>
+impl<W> WriteTextDims<W> for Embeddings<SimpleVocab, NdArray>
 where
     W: Write,
 {
     fn write_text_dims(&self, write: &mut W) -> Result<(), Error> {
-        writeln!(write, "{} {}", self.len(), self.embed_len())?;
+        writeln!(write, "{} {}", self.vocab().len(), self.embed_len())?;
         self.write_text(write)
     }
 }
@@ -203,12 +201,13 @@ mod tests {
     use std::io::{BufReader, Read, Seek, SeekFrom};
 
     use crate::storage::NdArray;
+    use crate::vocab::{SimpleVocab, Vocab};
     use crate::word2vec::ReadWord2Vec;
     use crate::Embeddings;
 
     use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
 
-    fn read_word2vec() -> Embeddings<NdArray> {
+    fn read_word2vec() -> Embeddings<SimpleVocab, NdArray> {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
         Embeddings::read_word2vec_binary(&mut reader).unwrap()
@@ -221,8 +220,7 @@ mod tests {
         let text_embeddings = Embeddings::read_text(&mut reader).unwrap();
 
         let embeddings = read_word2vec();
-        assert_eq!(text_embeddings.indices(), embeddings.indices());
-        assert_eq!(text_embeddings.words(), embeddings.words());
+        assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
         assert_eq!(text_embeddings.data(), embeddings.data());
     }
 
@@ -233,8 +231,7 @@ mod tests {
         let text_embeddings = Embeddings::read_text_dims(&mut reader).unwrap();
 
         let embeddings = read_word2vec();
-        assert_eq!(text_embeddings.indices(), embeddings.indices());
-        assert_eq!(text_embeddings.words(), embeddings.words());
+        assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
         assert_eq!(text_embeddings.data(), embeddings.data());
     }
 
