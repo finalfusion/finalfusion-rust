@@ -1,22 +1,6 @@
-[package]
-name = "rust2vec"
-version = "0.4.0"
-edition = "2018"
-authors = ["Daniël de Kok <me@danieldk.eu>"]
-description = "Read/writer for the word2vec binary/text files"
-documentation = "https://docs.rs/rust2vec/"
-homepage = "https://github.com/danieldk/rust2vec"
-repository = "https://github.com/danieldk/rust2vec"
-license = "Apache-2.0"
-readme = "README.md"
-exclude = [
-  ".gitignore",
-  ".travis.yml"
-]
+[workspace]
 
-[dependencies]
-byteorder = "1"
-failure = "0.1"
-itertools = "0.8"
-ndarray = "0.12"
-ordered-float = "1"
+members = [
+  "rust2vec",
+  "rust2vec-utils",
+]

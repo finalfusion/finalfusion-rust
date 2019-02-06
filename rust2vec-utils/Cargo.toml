@@ -1,0 +1,12 @@
+[package]
+name = "rust2vec-utils"
+version = "0.1.0"
+authors = ["Daniël de Kok <me@danieldk.eu>"]
+edition = "2018"
+
+[dependencies]
+clap = "2"
+getopts = "0.2"
+ndarray = "0.12"
+rust2vec = { path = "../rust2vec", version = "0.4" }
+stdinout = "0.4"
