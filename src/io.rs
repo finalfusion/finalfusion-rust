@@ -50,6 +50,18 @@ pub struct Header {
     chunk_identifiers: Vec<ChunkIdentifier>,
 }
 
+impl Header {
+    pub fn new(chunk_identifiers: impl Into<Vec<ChunkIdentifier>>) -> Self {
+        Header {
+            chunk_identifiers: chunk_identifiers.into(),
+        }
+    }
+
+    pub fn chunk_identifiers(&self) -> &[ChunkIdentifier] {
+        &self.chunk_identifiers
+    }
+}
+
 impl WriteChunk for Header {
     fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error> {
         write.write_all(&[b'R', b'2', b'V'])?;
@@ -96,6 +108,13 @@ impl ReadChunk for Header {
 
         Ok(Header { chunk_identifiers })
     }
+}
+
+pub trait ReadModelBinary
+where
+    Self: Sized,
+{
+    fn read_model_binary(read: &mut impl Read) -> Result<Self, Error>;
 }
 
 pub trait WriteModelBinary {

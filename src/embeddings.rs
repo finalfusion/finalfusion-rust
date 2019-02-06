@@ -1,9 +1,15 @@
 use std::cmp::Ordering;
+use std::io::{Read, Write};
 use std::iter::Enumerate;
 use std::slice;
 
-use crate::storage::{CowArray1, Normalize, Storage};
-use crate::vocab::Vocab;
+use failure::{ensure, Error};
+
+use crate::io::{
+    ChunkIdentifier, Header, ReadChunk, ReadModelBinary, WriteChunk, WriteModelBinary,
+};
+use crate::storage::{CowArray1, NdArray, Normalize, Storage};
+use crate::vocab::{SimpleVocab, Vocab};
 
 /// A word similarity.
 ///
@@ -46,6 +52,7 @@ impl<'a> PartialEq for WordSimilarity<'a> {
 /// This data structure stores word embeddings (also known as *word vectors*)
 /// and provides some useful methods on the embeddings, such as similarity
 /// and analogy queries.
+#[derive(Debug, PartialEq)]
 pub struct Embeddings<V, S> {
     storage: S,
     vocab: V,
@@ -121,6 +128,28 @@ where
     }
 }
 
+impl ReadModelBinary for Embeddings<SimpleVocab, NdArray> {
+    fn read_model_binary(read: &mut impl Read) -> Result<Self, Error> {
+        let header = Header::read_chunk(read)?;
+        ensure!(
+            header.chunk_identifiers() == [ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray],
+            "Data does not contain correct chunks."
+        );
+        let vocab = SimpleVocab::read_chunk(read)?;
+        let storage = NdArray::read_chunk(read)?;
+        Ok(Embeddings { vocab, storage })
+    }
+}
+
+impl WriteModelBinary for Embeddings<SimpleVocab, NdArray> {
+    fn write_model_binary(&self, write: &mut impl Write) -> Result<(), Error> {
+        let header = Header::new(vec![ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray]);
+        header.write_chunk(write)?;
+        self.vocab().write_chunk(write)?;
+        self.data().write_chunk(write)
+    }
+}
+
 /// Iterator over embeddings.
 pub struct Iter<'a, S> {
     storage: &'a S,
@@ -137,5 +166,32 @@ where
         self.inner
             .next()
             .map(|(idx, word)| (word.as_str(), self.storage.embedding(idx)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::{BufReader, Cursor};
+
+    use super::Embeddings;
+    use crate::io::{ReadModelBinary, WriteModelBinary};
+    use crate::storage::NdArray;
+    use crate::vocab::SimpleVocab;
+    use crate::word2vec::ReadWord2Vec;
+
+    fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
+        let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
+        Embeddings::read_word2vec_binary(&mut reader).unwrap()
+    }
+
+    #[test]
+    fn write_read_simple_roundtrip() {
+        let check_embeds = test_embeddings();
+        let mut serialized = Vec::new();
+        check_embeds.write_model_binary(&mut serialized).unwrap();
+        let mut cursor = Cursor::new(serialized);
+        let embeds = Embeddings::read_model_binary(&mut cursor).unwrap();
+        assert_eq!(embeds, check_embeds);
     }
 }
