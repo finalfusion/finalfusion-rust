@@ -7,7 +7,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, Error};
 use ndarray::{Array, Array2, ArrayView, Axis, Dimension, Ix1};
 
-use crate::io::{ReadChunk, TypeId, WriteChunk};
+use crate::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 
 pub enum CowArray<'a, A, D> {
     Borrowed(ArrayView<'a, A, D>),
@@ -71,7 +71,7 @@ impl Storage for NdArray {
 impl ReadChunk for NdArray {
     fn read_chunk(read: &mut impl Read) -> Result<Self, Error> {
         ensure!(
-            read.read_u32::<LittleEndian>()? == 1,
+            read.read_u32::<LittleEndian>()? == ChunkIdentifier::NdArray as u32,
             "invalid chunk identifier for NdArray"
         );
 
@@ -98,7 +98,7 @@ impl WriteChunk for NdArray {
         // n_rows: 8 bytes, n_cols: 4 bytes, type_id: 4, matrix
         let chunk_len = 16 + (self.0.rows() * self.0.cols() * mem::size_of::<f32>());
 
-        write.write_u32::<LittleEndian>(1)?;
+        write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
         write.write_u64::<LittleEndian>(self.0.rows() as u64)?;
         write.write_u32::<LittleEndian>(self.0.cols() as u32)?;

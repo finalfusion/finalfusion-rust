@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, Error};
 
-use crate::io::{ReadChunk, WriteChunk};
+use crate::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 
 pub trait Vocab {
     /// Get the index of a token.
@@ -53,7 +53,7 @@ impl Vocab for SimpleVocab {
 impl ReadChunk for SimpleVocab {
     fn read_chunk(read: &mut impl Read) -> Result<Self, Error> {
         ensure!(
-            read.read_u32::<LittleEndian>()? == 0,
+            read.read_u32::<LittleEndian>()? == ChunkIdentifier::SimpleVocab as u32,
             "invalid chunk identifier for NdArray"
         );
 
@@ -78,7 +78,7 @@ impl WriteChunk for SimpleVocab {
     fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error> {
         let chunk_len = self.words().iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 8;
 
-        write.write_u32::<LittleEndian>(0)?;
+        write.write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)?;
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
         write.write_u64::<LittleEndian>(self.words().len() as u64)?;
 
