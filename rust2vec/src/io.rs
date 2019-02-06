@@ -10,6 +10,7 @@ const MODEL_VERSION: u32 = 0;
 pub enum ChunkIdentifier {
     SimpleVocab = 1,
     NdArray = 2,
+    SubwordVocab = 3,
 }
 
 impl ChunkIdentifier {

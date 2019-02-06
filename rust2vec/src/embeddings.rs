@@ -4,12 +4,14 @@ use std::iter::Enumerate;
 use std::slice;
 
 use failure::{ensure, Error};
+use ndarray::Array1;
 
 use crate::io::{
     ChunkIdentifier, Header, ReadChunk, ReadModelBinary, WriteChunk, WriteModelBinary,
 };
-use crate::storage::{CowArray1, NdArray, Normalize, Storage};
-use crate::vocab::{SimpleVocab, Vocab};
+use crate::storage::{CowArray, CowArray1, NdArray, Normalize, Storage};
+use crate::util::l2_normalize;
+use crate::vocab::{SimpleVocab, SubwordVocab, Vocab};
 
 /// A word similarity.
 ///
@@ -93,7 +95,23 @@ where
 
     /// Get the embedding of a word.
     pub fn embedding(&self, word: &str) -> Option<CowArray1<f32>> {
-        self.vocab.idx(word).map(|idx| self.storage.embedding(idx))
+        // For known words, we can just return the embedding.
+        if let Some(idx) = self.vocab.idx(word) {
+            return Some(self.storage.embedding(idx));
+        }
+
+        // For unknown words, return the l2-normalized sum of subword
+        // embeddings (when available).
+        self.vocab.subword_indices(word).map(|indices| {
+            let mut embed = Array1::zeros((self.storage.dims(),));
+            for idx in indices {
+                embed += &self.storage.embedding(idx).as_view();
+            }
+
+            l2_normalize(embed.view_mut());
+
+            CowArray::Owned(embed)
+        })
     }
 
     /// Get an iterator over pairs of words and the corresponding embeddings.
@@ -128,27 +146,61 @@ where
     }
 }
 
-impl ReadModelBinary for Embeddings<SimpleVocab, NdArray> {
-    fn read_model_binary(read: &mut impl Read) -> Result<Self, Error> {
-        let header = Header::read_chunk(read)?;
-        ensure!(
-            header.chunk_identifiers() == [ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray],
-            "Data does not contain correct chunks."
-        );
-        let vocab = SimpleVocab::read_chunk(read)?;
-        let storage = NdArray::read_chunk(read)?;
-        Ok(Embeddings { vocab, storage })
-    }
+macro_rules! read_impl {
+    ($vocab:tt, $storage:tt, $vocab_id:expr, $storage_id:expr) => {
+        impl ReadModelBinary for Embeddings<$vocab, $storage> {
+            fn read_model_binary(read: &mut impl Read) -> Result<Self, Error> {
+                let header = Header::read_chunk(read)?;
+                ensure!(
+                    header.chunk_identifiers() == [$vocab_id, $storage_id],
+                    "Data does not contain correct chunks."
+                );
+                let vocab = $vocab::read_chunk(read)?;
+                let storage = $storage::read_chunk(read)?;
+                Ok(Embeddings { vocab, storage })
+            }
+        }
+    };
 }
 
-impl WriteModelBinary for Embeddings<SimpleVocab, NdArray> {
-    fn write_model_binary(&self, write: &mut impl Write) -> Result<(), Error> {
-        let header = Header::new(vec![ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray]);
-        header.write_chunk(write)?;
-        self.vocab().write_chunk(write)?;
-        self.data().write_chunk(write)
-    }
+read_impl!(
+    SimpleVocab,
+    NdArray,
+    ChunkIdentifier::SimpleVocab,
+    ChunkIdentifier::NdArray
+);
+read_impl!(
+    SubwordVocab,
+    NdArray,
+    ChunkIdentifier::SubwordVocab,
+    ChunkIdentifier::NdArray
+);
+
+macro_rules! write_impl {
+    ($vocab:tt, $storage:tt, $vocab_id:expr, $storage_id:expr) => {
+        impl WriteModelBinary for Embeddings<$vocab, $storage> {
+            fn write_model_binary(&self, write: &mut impl Write) -> Result<(), Error> {
+                let header = Header::new(vec![$vocab_id, $storage_id]);
+                header.write_chunk(write)?;
+                self.vocab().write_chunk(write)?;
+                self.data().write_chunk(write)
+            }
+        }
+    };
 }
+
+write_impl!(
+    SimpleVocab,
+    NdArray,
+    ChunkIdentifier::SimpleVocab,
+    ChunkIdentifier::NdArray
+);
+write_impl!(
+    SubwordVocab,
+    NdArray,
+    ChunkIdentifier::SubwordVocab,
+    ChunkIdentifier::NdArray
+);
 
 /// Iterator over embeddings.
 pub struct Iter<'a, S> {

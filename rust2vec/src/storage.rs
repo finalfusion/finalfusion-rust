@@ -8,6 +8,7 @@ use failure::{ensure, Error};
 use ndarray::{Array, Array2, ArrayView, Axis, Dimension, Ix1};
 
 use crate::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
+use crate::util::l2_normalize;
 
 pub enum CowArray<'a, A, D> {
     Borrowed(ArrayView<'a, A, D>),
@@ -123,10 +124,7 @@ pub trait Normalize {
 impl Normalize for NdArray {
     fn normalize(&mut self) {
         for mut embedding in self.0.outer_iter_mut() {
-            let l2norm = embedding.dot(&embedding).sqrt();
-            if l2norm != 0f32 {
-                embedding /= l2norm;
-            }
+            l2_normalize(embedding.view_mut());
         }
     }
 }

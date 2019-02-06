@@ -3,10 +3,11 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 
-use ndarray::{Array1, ArrayView1, ArrayViewMut1};
+use ndarray::{Array1, ArrayView1};
 use ordered_float::NotNan;
 
 use crate::storage::{NdArray, Storage};
+use crate::util::l2_normalize;
 use crate::vocab::Vocab;
 use crate::Embeddings;
 
@@ -240,11 +241,6 @@ where
 
         results.into_sorted_vec()
     }
-}
-
-fn l2_normalize(mut embed: ArrayViewMut1<f32>) {
-    let norm = embed.dot(&embed).sqrt();
-    embed /= norm;
 }
 
 #[cfg(test)]

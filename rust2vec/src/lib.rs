@@ -7,7 +7,11 @@ pub mod similarity;
 
 pub mod storage;
 
+pub(crate) mod subword;
+
 pub mod text;
+
+pub(crate) mod util;
 
 pub mod vocab;
 
