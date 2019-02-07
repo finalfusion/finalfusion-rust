@@ -55,7 +55,6 @@ fn main() {
 fn read_embeddings(filename: &str) -> Embeddings {
     let f = or_exit(File::open(filename));
     let mut reader = BufReader::new(f);
-    let mut embeds = or_exit(Embeddings::read_word2vec_binary(&mut reader));
-    embeds.normalize();
+    let embeds = or_exit(Embeddings::read_word2vec_binary(&mut reader, true));
     embeds
 }

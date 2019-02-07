@@ -34,7 +34,7 @@ fn main() {
         File::open(&matches.free[0])
             .or_exit(format!("Cannot read embedding file {}", matches.free[0]), 1),
     );
-    let embeddings = Embeddings::read_text(&mut reader).or_exit("Cannot read embeddings", 1);
+    let embeddings = Embeddings::read_text(&mut reader, false).or_exit("Cannot read embeddings", 1);
 
     let mut writer = BufWriter::new(File::create(&matches.free[1]).or_exit(
         format!("Cannot write embedding file {}", matches.free[1]),

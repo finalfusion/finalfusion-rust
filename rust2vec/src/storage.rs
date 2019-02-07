@@ -8,7 +8,6 @@ use failure::{ensure, Error};
 use ndarray::{Array, Array2, ArrayView, ArrayView2, Axis, Dimension, Ix1};
 
 use crate::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
-use crate::util::l2_normalize;
 
 pub enum CowArray<'a, A, D> {
     Borrowed(ArrayView<'a, A, D>),
@@ -129,24 +128,6 @@ impl WriteChunk for Storage {
         }
 
         Ok(())
-    }
-}
-
-/// Normalization of embeddings by their L2 norms.
-pub trait Normalize {
-    /// Normalize embeddings by their L2 norms.
-    fn normalize(&mut self);
-}
-
-impl Normalize for Storage {
-    fn normalize(&mut self) {
-        match self {
-            Storage::NdArray(data) => {
-                for mut embedding in data.outer_iter_mut() {
-                    l2_normalize(embedding.view_mut());
-                }
-            }
-        }
     }
 }
 

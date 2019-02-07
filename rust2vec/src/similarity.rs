@@ -338,8 +338,7 @@ mod tests {
     fn test_similarity() {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
-        embeddings.normalize();
+        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader, true).unwrap();
 
         let result = embeddings.similarity("Berlin", 40);
         assert!(result.is_some());
@@ -366,8 +365,7 @@ mod tests {
     fn test_similarity_limit() {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
-        embeddings.normalize();
+        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader, true).unwrap();
 
         let result = embeddings.similarity("Stuttgart", 10);
         assert!(result.is_some());
@@ -385,8 +383,7 @@ mod tests {
     fn test_analogy() {
         let f = File::open("testdata/analogy.bin").unwrap();
         let mut reader = BufReader::new(f);
-        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
-        embeddings.normalize();
+        let mut embeddings = Embeddings::read_word2vec_binary(&mut reader, true).unwrap();
 
         let result = embeddings.analogy("Paris", "Frankreich", "Berlin", 40);
         assert!(result.is_some());

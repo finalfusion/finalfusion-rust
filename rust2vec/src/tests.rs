@@ -8,8 +8,7 @@ use crate::Embeddings;
 fn test_read_word2vec_binary() {
     let f = File::open("testdata/similarity.bin").unwrap();
     let mut reader = BufReader::new(f);
-    let mut embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
-    embeddings.normalize();
+    let embeddings = Embeddings::read_word2vec_binary(&mut reader, false).unwrap();
     assert_eq!(41, embeddings.vocab().len());
     assert_eq!(100, embeddings.embed_len());
 }
@@ -22,7 +21,7 @@ fn test_word2vec_binary_roundtrip() {
 
     // Read embeddings.
     reader.seek(SeekFrom::Start(0)).unwrap();
-    let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
+    let embeddings = Embeddings::read_word2vec_binary(&mut reader, false).unwrap();
 
     // Write embeddings to a byte vector.
     let mut output = Vec::new();

@@ -9,6 +9,7 @@ use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
 use crate::storage::Storage;
+use crate::util::l2_normalize;
 use crate::vocab::Vocab;
 
 use super::*;
@@ -23,14 +24,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error>;
+    fn read_word2vec_binary(reader: &mut R, normalize: bool) -> Result<Self, Error>;
 }
 
 impl<R> ReadWord2Vec<R> for Embeddings
 where
     R: BufRead,
 {
-    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error> {
+    fn read_word2vec_binary(reader: &mut R, normalize: bool) -> Result<Self, Error> {
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
@@ -50,6 +51,12 @@ where
                     None => return Err(err_msg("Matrix not contiguous")),
                 };
                 reader.read_exact(&mut embedding_raw)?;
+            }
+        }
+
+        if normalize {
+            for mut embedding in matrix.outer_iter_mut() {
+                l2_normalize(embedding.view_mut());
             }
         }
 

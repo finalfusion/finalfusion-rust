@@ -7,7 +7,7 @@ use failure::Error;
 use ndarray::Array1;
 
 use crate::io::{Header, ReadChunk, ReadEmbeddings, WriteChunk, WriteEmbeddings};
-use crate::storage::{CowArray, CowArray1, Normalize, Storage};
+use crate::storage::{CowArray, CowArray1, Storage};
 use crate::util::l2_normalize;
 use crate::vocab::Vocab;
 
@@ -102,10 +102,6 @@ impl Embeddings {
         }
     }
 
-    pub fn normalize(&mut self) {
-        self.storage.normalize();
-    }
-
     pub fn vocab(&self) -> &Vocab {
         &self.vocab
     }
@@ -170,7 +166,7 @@ mod tests {
 
     fn test_embeddings() -> Embeddings {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
-        Embeddings::read_word2vec_binary(&mut reader).unwrap()
+        Embeddings::read_word2vec_binary(&mut reader, false).unwrap()
     }
 
     #[test]

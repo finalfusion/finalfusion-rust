@@ -7,6 +7,7 @@ use itertools::Itertools;
 use ndarray::{Array1, Array2, Axis};
 
 use crate::storage::Storage;
+use crate::util::l2_normalize;
 use crate::vocab::Vocab;
 
 use super::*;
@@ -24,17 +25,17 @@ where
     R: BufRead + Seek,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text(reader: &mut R) -> Result<Self, Error>;
+    fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error>;
 }
 
 impl<R> ReadText<R> for Embeddings
 where
     R: BufRead + Seek,
 {
-    fn read_text(reader: &mut R) -> Result<Self, Error> {
+    fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error> {
         let (vocab_len, embed_len) = text_vectors_dims(reader)?;
         reader.seek(SeekFrom::Start(0))?;
-        read_embeds(reader, vocab_len, embed_len)
+        read_embeds(reader, vocab_len, embed_len, normalize)
     }
 }
 
@@ -56,14 +57,14 @@ where
     R: BufRead + Seek,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text_dims(reader: &mut R) -> Result<Self, Error>;
+    fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error>;
 }
 
 impl<R> ReadTextDims<R> for Embeddings
 where
     R: BufRead + Seek,
 {
-    fn read_text_dims(reader: &mut R) -> Result<Self, Error> {
+    fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error> {
         let mut dims = String::new();
         reader.read_line(&mut dims)?;
 
@@ -79,11 +80,16 @@ where
             .parse::<usize>()
             .context("Cannot parse vocabulary size")?;
 
-        read_embeds(reader, vocab_len, embed_len)
+        read_embeds(reader, vocab_len, embed_len, normalize)
     }
 }
 
-fn read_embeds<R>(reader: &mut R, vocab_len: usize, embed_len: usize) -> Result<Embeddings, Error>
+fn read_embeds<R>(
+    reader: &mut R,
+    vocab_len: usize,
+    embed_len: usize,
+    normalize: bool,
+) -> Result<Embeddings, Error>
 where
     R: BufRead,
 {
@@ -119,6 +125,12 @@ where
         words.len(),
         vocab_len
     );
+
+    if normalize {
+        for mut embedding in matrix.outer_iter_mut() {
+            l2_normalize(embedding.view_mut());
+        }
+    }
 
     Ok(Embeddings::new(
         Vocab::new_simple_vocab(words),
@@ -207,14 +219,14 @@ mod tests {
     fn read_word2vec() -> Embeddings {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        Embeddings::read_word2vec_binary(&mut reader).unwrap()
+        Embeddings::read_word2vec_binary(&mut reader, false).unwrap()
     }
 
     #[test]
     fn read_text() {
         let f = File::open("testdata/similarity.nodims").unwrap();
         let mut reader = BufReader::new(f);
-        let text_embeddings = Embeddings::read_text(&mut reader).unwrap();
+        let text_embeddings = Embeddings::read_text(&mut reader, false).unwrap();
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
@@ -225,7 +237,7 @@ mod tests {
     fn read_text_dims() {
         let f = File::open("testdata/similarity.txt").unwrap();
         let mut reader = BufReader::new(f);
-        let text_embeddings = Embeddings::read_text_dims(&mut reader).unwrap();
+        let text_embeddings = Embeddings::read_text_dims(&mut reader, false).unwrap();
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
@@ -240,7 +252,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_text(&mut reader).unwrap();
+        let embeddings = Embeddings::read_text(&mut reader, false).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
@@ -257,7 +269,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_text_dims(&mut reader).unwrap();
+        let embeddings = Embeddings::read_text_dims(&mut reader, false).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
