@@ -5,7 +5,7 @@ use std::mem;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, Error};
-use ndarray::{Array, Array2, ArrayView, Axis, Dimension, Ix1};
+use ndarray::{Array, Array1, Array2, ArrayBase, ArrayView, Axis, Data, Dimension, Ix1};
 
 use crate::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::util::l2_normalize;
@@ -48,28 +48,41 @@ pub type CowArray1<'a, A> = CowArray<'a, A, Ix1>;
 /// To allow for embeddings to be stored in different manners (e.g.
 /// regular *n x d* matrix or as quantized vectors), this trait
 /// abstracts over concrete storage types.
-pub trait Storage {
-    /// Get the embedding directionality.
-    fn dims(&self) -> usize;
-
-    /// Get the embedding `idx`.
-    fn embedding(&self, idx: usize) -> CowArray1<f32>;
-}
-
 #[derive(Debug, PartialEq)]
-pub struct NdArray(pub Array2<f32>);
+pub enum Storage {
+    NdArray(Array2<f32>),
+}
 
-impl Storage for NdArray {
-    fn dims(&self) -> usize {
-        self.0.cols()
+impl Storage {
+    pub fn dot<S>(&self, v: ArrayBase<S, Ix1>) -> Array1<f32>
+    where
+        S: Data<Elem = f32>,
+    {
+        match self {
+            Storage::NdArray(ref data) => data.dot(&v),
+        }
     }
 
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        CowArray::Borrowed(self.0.index_axis(Axis(0), idx))
+    pub(crate) fn chunk_identifier(&self) -> ChunkIdentifier {
+        match self {
+            Storage::NdArray(_) => ChunkIdentifier::NdArray,
+        }
+    }
+
+    pub fn dims(&self) -> usize {
+        match self {
+            Storage::NdArray(ref data) => data.cols(),
+        }
+    }
+
+    pub fn embedding(&self, idx: usize) -> CowArray1<f32> {
+        match self {
+            Storage::NdArray(ref data) => CowArray::Borrowed(data.index_axis(Axis(0), idx)),
+        }
     }
 }
 
-impl ReadChunk for NdArray {
+impl ReadChunk for Storage {
     fn read_chunk(read: &mut impl Read) -> Result<Self, Error> {
         ensure!(
             read.read_u32::<LittleEndian>()? == ChunkIdentifier::NdArray as u32,
@@ -90,24 +103,31 @@ impl ReadChunk for NdArray {
         let mut data = vec![0f32; rows * cols];
         read.read_f32_into::<LittleEndian>(&mut data)?;
 
-        Ok(NdArray(Array2::from_shape_vec((rows, cols), data)?))
+        Ok(Storage::NdArray(Array2::from_shape_vec(
+            (rows, cols),
+            data,
+        )?))
     }
 }
 
-impl WriteChunk for NdArray {
+impl WriteChunk for Storage {
     fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error> {
-        // n_rows: 8 bytes, n_cols: 4 bytes, type_id: 4, matrix
-        let chunk_len = 16 + (self.0.rows() * self.0.cols() * mem::size_of::<f32>());
+        match self {
+            Storage::NdArray(ref data) => {
+                // n_rows: 8 bytes, n_cols: 4 bytes, type_id: 4, matrix
+                let chunk_len = 16 + (data.rows() * data.cols() * mem::size_of::<f32>());
 
-        write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
-        write.write_u64::<LittleEndian>(chunk_len as u64)?;
-        write.write_u64::<LittleEndian>(self.0.rows() as u64)?;
-        write.write_u32::<LittleEndian>(self.0.cols() as u32)?;
-        write.write_u32::<LittleEndian>(f32::type_id())?;
+                write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
+                write.write_u64::<LittleEndian>(chunk_len as u64)?;
+                write.write_u64::<LittleEndian>(data.rows() as u64)?;
+                write.write_u32::<LittleEndian>(data.cols() as u32)?;
+                write.write_u32::<LittleEndian>(f32::type_id())?;
 
-        for row in self.0.outer_iter() {
-            for col in row.iter() {
-                write.write_f32::<LittleEndian>(*col)?;
+                for row in data.outer_iter() {
+                    for col in row.iter() {
+                        write.write_f32::<LittleEndian>(*col)?;
+                    }
+                }
             }
         }
 
@@ -121,10 +141,14 @@ pub trait Normalize {
     fn normalize(&mut self);
 }
 
-impl Normalize for NdArray {
+impl Normalize for Storage {
     fn normalize(&mut self) {
-        for mut embedding in self.0.outer_iter_mut() {
-            l2_normalize(embedding.view_mut());
+        match self {
+            Storage::NdArray(data) => {
+                for mut embedding in data.outer_iter_mut() {
+                    l2_normalize(embedding.view_mut());
+                }
+            }
         }
     }
 }
@@ -135,8 +159,8 @@ mod tests {
 
     use ndarray::Array2;
 
-    use super::NdArray;
     use crate::io::{ReadChunk, WriteChunk};
+    use crate::storage::Storage;
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -146,11 +170,11 @@ mod tests {
         let test_data = Array2::from_shape_fn((N_ROWS, N_COLS), |(r, c)| {
             r as f32 * N_COLS as f32 + c as f32
         });
-        let check_arr = NdArray(test_data);
+        let check_arr = Storage::NdArray(test_data);
         let mut serialized = Vec::new();
         check_arr.write_chunk(&mut serialized).unwrap();
         let mut cursor = Cursor::new(serialized);
-        let arr = NdArray::read_chunk(&mut cursor).unwrap();
+        let arr = Storage::read_chunk(&mut cursor).unwrap();
         assert_eq!(arr, check_arr);
     }
 }

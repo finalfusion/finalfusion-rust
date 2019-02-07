@@ -5,10 +5,7 @@ use std::io::{stdin, BufRead, BufReader};
 use std::process;
 
 use getopts::Options;
-use rust2vec::{
-    similarity::Similarity, storage::NdArray, vocab::SimpleVocab, word2vec::ReadWord2Vec,
-    Embeddings,
-};
+use rust2vec::{similarity::Similarity, word2vec::ReadWord2Vec, Embeddings};
 
 pub fn or_exit<T, E: fmt::Display>(r: Result<T, E>) -> T {
     r.unwrap_or_else(|e: E| -> T {
@@ -55,7 +52,7 @@ fn main() {
     }
 }
 
-fn read_embeddings(filename: &str) -> Embeddings<SimpleVocab, NdArray> {
+fn read_embeddings(filename: &str) -> Embeddings {
     let f = or_exit(File::open(filename));
     let mut reader = BufReader::new(f);
     let mut embeds = or_exit(Embeddings::read_word2vec_binary(&mut reader));

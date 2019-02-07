@@ -8,8 +8,8 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
-use crate::storage::NdArray;
-use crate::vocab::{SimpleVocab, Vocab};
+use crate::storage::Storage;
+use crate::vocab::Vocab;
 
 use super::*;
 
@@ -26,7 +26,7 @@ where
     fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error>;
 }
 
-impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
+impl<R> ReadWord2Vec<R> for Embeddings
 where
     R: BufRead,
 {
@@ -53,7 +53,10 @@ where
             }
         }
 
-        Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
+        Ok(Embeddings::new(
+            Vocab::new_simple_vocab(words),
+            Storage::NdArray(matrix),
+        ))
     }
 }
 
@@ -88,7 +91,7 @@ where
     fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>;
 }
 
-impl<W> WriteWord2Vec<W> for Embeddings<SimpleVocab, NdArray>
+impl<W> WriteWord2Vec<W> for Embeddings
 where
     W: Write,
 {

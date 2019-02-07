@@ -14,12 +14,13 @@ pub enum ChunkIdentifier {
 }
 
 impl ChunkIdentifier {
-    fn try_from(identifier: u32) -> Option<Self> {
+    pub fn try_from(identifier: u32) -> Option<Self> {
         use ChunkIdentifier::*;
 
         match identifier {
             1 => Some(SimpleVocab),
             2 => Some(NdArray),
+            3 => Some(SubwordVocab),
             _ => None,
         }
     }
@@ -111,15 +112,15 @@ impl ReadChunk for Header {
     }
 }
 
-pub trait ReadModelBinary
+pub trait ReadEmbeddings
 where
     Self: Sized,
 {
-    fn read_model_binary(read: &mut impl Read) -> Result<Self, Error>;
+    fn read_embeddings(read: &mut impl Read) -> Result<Self, Error>;
 }
 
-pub trait WriteModelBinary {
-    fn write_model_binary(&self, write: &mut impl Write) -> Result<(), Error>;
+pub trait WriteEmbeddings {
+    fn write_embeddings(&self, write: &mut impl Write) -> Result<(), Error>;
 }
 
 #[cfg(test)]

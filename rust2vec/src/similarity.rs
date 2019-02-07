@@ -6,9 +6,8 @@ use std::collections::{BinaryHeap, HashSet};
 use ndarray::{Array1, ArrayView1};
 use ordered_float::NotNan;
 
-use crate::storage::{NdArray, Storage};
+use crate::storage::Storage;
 use crate::util::l2_normalize;
-use crate::vocab::Vocab;
 use crate::Embeddings;
 
 /// A word with its similarity.
@@ -56,10 +55,7 @@ pub trait Analogy {
     ) -> Option<Vec<WordSimilarity>>;
 }
 
-impl<V> Analogy for Embeddings<V, NdArray>
-where
-    V: Vocab,
-{
+impl Analogy for Embeddings {
     fn analogy(
         &self,
         word1: &str,
@@ -68,13 +64,13 @@ where
         limit: usize,
     ) -> Option<Vec<WordSimilarity>> {
         self.analogy_by(word1, word2, word3, limit, |embeds, embed| {
-            embeds.0.dot(&embed)
+            embeds.dot(embed)
         })
     }
 }
 
 /// Trait for analogy queries with a custom similarity function.
-pub trait AnalogyBy<S> {
+pub trait AnalogyBy {
     /// Perform an analogy query using the given similarity function.
     ///
     /// This method returns words that are close in vector space the analogy
@@ -93,14 +89,10 @@ pub trait AnalogyBy<S> {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>;
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<V, S> AnalogyBy<S> for Embeddings<V, S>
-where
-    V: Vocab,
-    S: Storage,
-{
+impl AnalogyBy for Embeddings {
     fn analogy_by<F>(
         &self,
         word1: &str,
@@ -110,7 +102,7 @@ where
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
     {
         let embedding1 = self.embedding(word1)?;
         let embedding2 = self.embedding(word2)?;
@@ -136,17 +128,14 @@ pub trait Similarity {
     fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>>;
 }
 
-impl<V> Similarity for Embeddings<V, NdArray>
-where
-    V: Vocab,
-{
+impl Similarity for Embeddings {
     fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>> {
-        self.similarity_by(word, limit, |embeds, embed| embeds.0.dot(&embed))
+        self.similarity_by(word, limit, |embeds, embed| embeds.dot(embed))
     }
 }
 
 /// Trait for similarity queries with a custom similarity function.
-pub trait SimilarityBy<S> {
+pub trait SimilarityBy {
     /// Find words that are similar to the query word using the given similarity
     /// function.
     ///
@@ -160,14 +149,10 @@ pub trait SimilarityBy<S> {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>;
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<V, S> SimilarityBy<S> for Embeddings<V, S>
-where
-    V: Vocab,
-    S: Storage,
-{
+impl SimilarityBy for Embeddings {
     fn similarity_by<F>(
         &self,
         word: &str,
@@ -175,7 +160,7 @@ where
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
     {
         let embed = self.embedding(word)?;
         let mut skip = HashSet::new();
@@ -185,7 +170,7 @@ where
     }
 }
 
-trait SimilarityPrivate<S> {
+trait SimilarityPrivate {
     fn similarity_<F>(
         &self,
         embed: ArrayView1<f32>,
@@ -194,15 +179,10 @@ trait SimilarityPrivate<S> {
         similarity: F,
     ) -> Vec<WordSimilarity>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>,
-        S: Storage;
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<V, S> SimilarityPrivate<S> for Embeddings<V, S>
-where
-    V: Vocab,
-    S: Storage,
-{
+impl SimilarityPrivate for Embeddings {
     fn similarity_<F>(
         &self,
         embed: ArrayView1<f32>,
@@ -211,7 +191,7 @@ where
         mut similarity: F,
     ) -> Vec<WordSimilarity>
     where
-        F: FnMut(&S, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
     {
         let sims = similarity(self.data(), embed.view());
 
