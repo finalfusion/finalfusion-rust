@@ -89,7 +89,7 @@ where
     V: Vocab,
     S: Storage,
 {
-    pub(crate) fn new(vocab: V, storage: S) -> Embeddings<V, S> {
+    pub fn new(vocab: V, storage: S) -> Embeddings<V, S> {
         Embeddings { vocab, storage }
     }
 
