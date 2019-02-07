@@ -3,10 +3,9 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 
-use ndarray::{Array1, ArrayView1};
+use ndarray::{s, Array1, ArrayView1, ArrayView2};
 use ordered_float::NotNan;
 
-use crate::storage::Storage;
 use crate::util::l2_normalize;
 use crate::Embeddings;
 
@@ -64,7 +63,7 @@ impl Analogy for Embeddings {
         limit: usize,
     ) -> Option<Vec<WordSimilarity>> {
         self.analogy_by(word1, word2, word3, limit, |embeds, embed| {
-            embeds.dot(embed)
+            embeds.dot(&embed)
         })
     }
 }
@@ -89,7 +88,7 @@ pub trait AnalogyBy {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
 impl AnalogyBy for Embeddings {
@@ -102,7 +101,7 @@ impl AnalogyBy for Embeddings {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
         let embedding1 = self.embedding(word1)?;
         let embedding2 = self.embedding(word2)?;
@@ -130,7 +129,7 @@ pub trait Similarity {
 
 impl Similarity for Embeddings {
     fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>> {
-        self.similarity_by(word, limit, |embeds, embed| embeds.dot(embed))
+        self.similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
     }
 }
 
@@ -149,7 +148,7 @@ pub trait SimilarityBy {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
 impl SimilarityBy for Embeddings {
@@ -160,7 +159,7 @@ impl SimilarityBy for Embeddings {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
         let embed = self.embedding(word)?;
         let mut skip = HashSet::new();
@@ -179,7 +178,7 @@ trait SimilarityPrivate {
         similarity: F,
     ) -> Vec<WordSimilarity>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>;
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
 impl SimilarityPrivate for Embeddings {
@@ -191,9 +190,12 @@ impl SimilarityPrivate for Embeddings {
         mut similarity: F,
     ) -> Vec<WordSimilarity>
     where
-        F: FnMut(&Storage, ArrayView1<f32>) -> Array1<f32>,
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let sims = similarity(self.data(), embed.view());
+        let sims = similarity(
+            self.data().view().slice(s![0..self.vocab().len(), ..]),
+            embed.view(),
+        );
 
         let mut results = BinaryHeap::with_capacity(limit);
         for (idx, &sim) in sims.iter().enumerate() {

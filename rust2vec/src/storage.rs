@@ -5,7 +5,7 @@ use std::mem;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, Error};
-use ndarray::{Array, Array1, Array2, ArrayBase, ArrayView, Axis, Data, Dimension, Ix1};
+use ndarray::{Array, Array2, ArrayView, ArrayView2, Axis, Dimension, Ix1};
 
 use crate::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::util::l2_normalize;
@@ -54,15 +54,6 @@ pub enum Storage {
 }
 
 impl Storage {
-    pub fn dot<S>(&self, v: ArrayBase<S, Ix1>) -> Array1<f32>
-    where
-        S: Data<Elem = f32>,
-    {
-        match self {
-            Storage::NdArray(ref data) => data.dot(&v),
-        }
-    }
-
     pub(crate) fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             Storage::NdArray(_) => ChunkIdentifier::NdArray,
@@ -78,6 +69,12 @@ impl Storage {
     pub fn embedding(&self, idx: usize) -> CowArray1<f32> {
         match self {
             Storage::NdArray(ref data) => CowArray::Borrowed(data.index_axis(Axis(0), idx)),
+        }
+    }
+
+    pub fn view(&self) -> ArrayView2<f32> {
+        match self {
+            Storage::NdArray(ref data) => data.view(),
         }
     }
 }
