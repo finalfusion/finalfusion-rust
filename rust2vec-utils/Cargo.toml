@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2"
+failure = "0.1"
 getopts = "0.2"
 ndarray = "0.12"
 rust2vec = { path = "../rust2vec", version = "0.4" }
