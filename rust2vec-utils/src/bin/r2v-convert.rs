@@ -2,8 +2,9 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
+use failure::err_msg;
 use rust2vec::{
-    io::{ReadEmbeddings, WriteEmbeddings},
+    io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings},
     text::{ReadText, ReadTextDims, WriteText, WriteTextDims},
     word2vec::{ReadWord2Vec, WriteWord2Vec},
     Embeddings,
@@ -95,6 +96,7 @@ fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddi
     use EmbeddingFormat::*;
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
+        Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
         Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true),
         Text => ReadText::read_text(&mut reader, true),
         TextDims => ReadTextDims::read_text_dims(&mut reader, true),
@@ -110,6 +112,7 @@ fn write_embeddings(embeddings: Embeddings, filename: &str, embedding_format: Em
     match embedding_format {
         Rust2Vec => embeddings.write_embeddings(&mut writer),
         Word2Vec => embeddings.write_word2vec_binary(&mut writer),
+        Rust2VecMmap => Err(err_msg("Writing to this format is not supported")),
         Text => embeddings.write_text(&mut writer),
         TextDims => embeddings.write_text_dims(&mut writer),
     }

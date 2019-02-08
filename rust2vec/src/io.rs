@@ -1,4 +1,5 @@
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::{BufReader, Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, format_err, Error, ResultExt};
@@ -30,11 +31,26 @@ pub trait ReadChunk
 where
     Self: Sized,
 {
-    fn read_chunk(read: &mut impl Read) -> Result<Self, Error>;
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek;
+}
+
+/// Memory-mappable chunks.
+pub trait MmapChunk
+where
+    Self: Sized,
+{
+    /// Memory map a chunk.
+    ///
+    /// The given `File` object should be positioned at the start of the chunk.
+    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error>;
 }
 
 pub trait WriteChunk {
-    fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error>;
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek;
 }
 
 pub trait TypeId {
@@ -65,7 +81,10 @@ impl Header {
 }
 
 impl WriteChunk for Header {
-    fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error> {
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
         write.write_all(&[b'R', b'2', b'V'])?;
         write.write_u32::<LittleEndian>(MODEL_VERSION)?;
         write.write_u32::<LittleEndian>(self.chunk_identifiers.len() as u32)?;
@@ -79,7 +98,10 @@ impl WriteChunk for Header {
 }
 
 impl ReadChunk for Header {
-    fn read_chunk(read: &mut impl Read) -> Result<Self, Error> {
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
         // Magic and version ceremony.
         let mut magic = [0u8; 3];
         read.read_exact(&mut magic)?;
@@ -116,16 +138,27 @@ pub trait ReadEmbeddings
 where
     Self: Sized,
 {
-    fn read_embeddings(read: &mut impl Read) -> Result<Self, Error>;
+    fn read_embeddings<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek;
+}
+
+pub trait MmapEmbeddings
+where
+    Self: Sized,
+{
+    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self, Error>;
 }
 
 pub trait WriteEmbeddings {
-    fn write_embeddings(&self, write: &mut impl Write) -> Result<(), Error>;
+    fn write_embeddings<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek;
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Seek, SeekFrom};
 
     use super::{ChunkIdentifier, Header};
     use crate::io::{ReadChunk, WriteChunk};
@@ -135,9 +168,9 @@ mod tests {
         let check_header = Header {
             chunk_identifiers: vec![ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray],
         };
-        let mut serialized = Vec::new();
-        check_header.write_chunk(&mut serialized).unwrap();
-        let mut cursor = Cursor::new(serialized);
+        let mut cursor = Cursor::new(Vec::new());
+        check_header.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
         let header = Header::read_chunk(&mut cursor).unwrap();
         assert_eq!(header, check_header);
     }

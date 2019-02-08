@@ -230,7 +230,7 @@ mod tests {
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
-        assert_eq!(text_embeddings.data(), embeddings.data());
+        assert_eq!(text_embeddings.data().view(), embeddings.data().view());
     }
 
     #[test]
@@ -241,7 +241,7 @@ mod tests {
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
-        assert_eq!(text_embeddings.data(), embeddings.data());
+        assert_eq!(text_embeddings.data().view(), embeddings.data().view());
     }
 
     #[test]

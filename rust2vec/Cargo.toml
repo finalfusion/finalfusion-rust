@@ -19,6 +19,7 @@ byteorder = "1"
 failure = "0.1"
 fnv = "1"
 itertools = "0.8"
+memmap = "0.7"
 ndarray = "0.12"
 ordered-float = "1"
 

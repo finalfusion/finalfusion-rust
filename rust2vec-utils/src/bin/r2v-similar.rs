@@ -3,8 +3,12 @@ use std::io::{BufRead, BufReader};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 use rust2vec::{
-    io::ReadEmbeddings, similarity::Similarity, text::ReadText, text::ReadTextDims,
-    word2vec::ReadWord2Vec, Embeddings,
+    io::{MmapEmbeddings, ReadEmbeddings},
+    similarity::Similarity,
+    text::ReadText,
+    text::ReadTextDims,
+    word2vec::ReadWord2Vec,
+    Embeddings,
 };
 use rust2vec_utils::EmbeddingFormat;
 use stdinout::{Input, OrExit};
@@ -21,7 +25,7 @@ fn parse_args() -> ArgMatches<'static> {
             Arg::with_name("format")
                 .short("f")
                 .value_name("FORMAT")
-                .help("Embedding format: rust2vec, word2vec, text, or textdims (default: rust2vec)")
+                .help("Embedding format: rust2vec, rust2vec_mmap, word2vec, text, or textdims (default: rust2vec)")
                 .takes_value(true),
         )
         .arg(
@@ -74,6 +78,7 @@ fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddi
     use EmbeddingFormat::*;
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
+        Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
         Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true),
         Text => ReadText::read_text(&mut reader, true),
         TextDims => ReadTextDims::read_text_dims(&mut reader, true),

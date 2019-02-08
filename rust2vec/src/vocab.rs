@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{err_msg, format_err, Error};
@@ -132,7 +132,10 @@ impl Vocab {
 }
 
 impl ReadChunk for Vocab {
-    fn read_chunk(read: &mut impl Read) -> Result<Self, Error> {
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
         let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
             .ok_or(err_msg("Unknown chunk identifier"))?;
         match chunk_id {
@@ -178,7 +181,10 @@ impl ReadChunk for Vocab {
 }
 
 impl WriteChunk for Vocab {
-    fn write_chunk(&self, write: &mut impl Write) -> Result<(), Error> {
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
         match self {
             Vocab::SimpleVocab { words, .. } => {
                 let chunk_len = words.iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 8;
@@ -223,7 +229,7 @@ impl WriteChunk for Vocab {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Seek, SeekFrom};
 
     use super::Vocab;
     use crate::io::{ReadChunk, WriteChunk};
@@ -237,9 +243,9 @@ mod tests {
             "test".to_owned(),
         ];
         let check_vocab = Vocab::new_simple_vocab(words);
-        let mut serialized = Vec::new();
-        check_vocab.write_chunk(&mut serialized).unwrap();
-        let mut cursor = Cursor::new(serialized);
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = Vocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
     }
@@ -253,9 +259,9 @@ mod tests {
             "test".to_owned(),
         ];
         let check_vocab = Vocab::new_subword_vocab(words, 3, 6, 20);
-        let mut serialized = Vec::new();
-        check_vocab.write_chunk(&mut serialized).unwrap();
-        let mut cursor = Cursor::new(serialized);
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = Vocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
     }
