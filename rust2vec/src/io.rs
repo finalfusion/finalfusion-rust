@@ -12,6 +12,7 @@ pub enum ChunkIdentifier {
     SimpleVocab = 1,
     NdArray = 2,
     SubwordVocab = 3,
+    QuantizedArray = 4,
 }
 
 impl ChunkIdentifier {
@@ -22,6 +23,7 @@ impl ChunkIdentifier {
             1 => Some(SimpleVocab),
             2 => Some(NdArray),
             3 => Some(SubwordVocab),
+            4 => Some(QuantizedArray),
             _ => None,
         }
     }
@@ -57,11 +59,18 @@ pub trait TypeId {
     fn type_id() -> u32;
 }
 
-impl TypeId for f32 {
-    fn type_id() -> u32 {
-        10
-    }
+macro_rules! typeid_impl {
+    ($type:ty, $id:expr) => {
+        impl TypeId for $type {
+            fn type_id() -> u32 {
+                $id
+            }
+        }
+    };
 }
+
+typeid_impl!(f32, 10);
+typeid_impl!(u8, 1);
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Header {
