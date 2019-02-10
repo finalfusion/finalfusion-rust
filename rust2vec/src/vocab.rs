@@ -229,20 +229,45 @@ impl WriteChunk for Vocab {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Seek, SeekFrom};
+    use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    use byteorder::{LittleEndian, ReadBytesExt};
 
     use super::Vocab;
     use crate::io::{ReadChunk, WriteChunk};
 
-    #[test]
-    fn simple_vocab_write_read_roundtrip() {
+    fn test_simple_vocab() -> Vocab {
         let words = vec![
             "this".to_owned(),
             "is".to_owned(),
             "a".to_owned(),
             "test".to_owned(),
         ];
-        let check_vocab = Vocab::new_simple_vocab(words);
+
+        Vocab::new_simple_vocab(words)
+    }
+
+    fn test_subword_vocab() -> Vocab {
+        let words = vec![
+            "this".to_owned(),
+            "is".to_owned(),
+            "a".to_owned(),
+            "test".to_owned(),
+        ];
+        Vocab::new_subword_vocab(words, 3, 6, 20)
+    }
+
+    fn read_chunk_size(read: &mut impl Read) -> u64 {
+        // Skip identifier.
+        read.read_u32::<LittleEndian>().unwrap();
+
+        // Return chunk length.
+        read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    #[test]
+    fn simple_vocab_write_read_roundtrip() {
+        let check_vocab = test_simple_vocab();
         let mut cursor = Cursor::new(Vec::new());
         check_vocab.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
@@ -251,18 +276,40 @@ mod tests {
     }
 
     #[test]
+    fn simple_vocab_correct_chunk_size() {
+        let check_vocab = test_simple_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        let chunk_size = read_chunk_size(&mut cursor);
+        assert_eq!(
+            cursor.read_to_end(&mut Vec::new()).unwrap(),
+            chunk_size as usize
+        );
+    }
+
+    #[test]
     fn subword_vocab_write_read_roundtrip() {
-        let words = vec![
-            "this".to_owned(),
-            "is".to_owned(),
-            "a".to_owned(),
-            "test".to_owned(),
-        ];
-        let check_vocab = Vocab::new_subword_vocab(words, 3, 6, 20);
+        let check_vocab = test_subword_vocab();
         let mut cursor = Cursor::new(Vec::new());
         check_vocab.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = Vocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn subword_vocab_correct_chunk_size() {
+        let check_vocab = test_subword_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        let chunk_size = read_chunk_size(&mut cursor);
+        assert_eq!(
+            cursor.read_to_end(&mut Vec::new()).unwrap(),
+            chunk_size as usize
+        );
     }
 }

@@ -91,10 +91,12 @@ impl Storage {
         S: Data<Elem = f32>,
         W: Write + Seek,
     {
-        // n_rows: 8 bytes, n_cols: 4 bytes, type_id: 4, matrix
-        let chunk_len = 16 + (data.rows() * data.cols() * mem::size_of::<f32>());
-
         write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
+        // Chunk size: rows (8 bytes), columns (4 bytes), type id (4 bytes),
+        //             padding ([0,4) bytes), matrix.
+        let chunk_len =
+            16 + n_padding as usize + (data.rows() * data.cols() * mem::size_of::<f32>());
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
         write.write_u64::<LittleEndian>(data.rows() as u64)?;
         write.write_u32::<LittleEndian>(data.cols() as u32)?;
@@ -111,7 +113,6 @@ impl Storage {
         // by 4, the offset of the matrix with regards to the page
         // boundary is also a multiple of 4.
 
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
         let padding = vec![0; n_padding as usize];
         write.write(&padding)?;
 
@@ -218,8 +219,9 @@ fn padding<T>(pos: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Seek, SeekFrom};
+    use std::io::{Cursor, Read, Seek, SeekFrom};
 
+    use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
 
     use crate::io::{ReadChunk, WriteChunk};
@@ -228,12 +230,39 @@ mod tests {
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
 
-    #[test]
-    fn ndarray_write_read_roundtrip() {
+    fn test_ndarray() -> Storage {
         let test_data = Array2::from_shape_fn((N_ROWS, N_COLS), |(r, c)| {
             r as f32 * N_COLS as f32 + c as f32
         });
-        let check_arr = Storage::NdArray(test_data);
+
+        Storage::NdArray(test_data)
+    }
+
+    fn read_chunk_size(read: &mut impl Read) -> u64 {
+        // Skip identifier.
+        read.read_u32::<LittleEndian>().unwrap();
+
+        // Return chunk length.
+        read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    #[test]
+    fn ndarray_correct_chunk_size() {
+        let check_arr = test_ndarray();
+        let mut cursor = Cursor::new(Vec::new());
+        check_arr.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        let chunk_size = read_chunk_size(&mut cursor);
+        assert_eq!(
+            cursor.read_to_end(&mut Vec::new()).unwrap(),
+            chunk_size as usize
+        );
+    }
+
+    #[test]
+    fn ndarray_write_read_roundtrip() {
+        let check_arr = test_ndarray();
         let mut cursor = Cursor::new(Vec::new());
         check_arr.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
