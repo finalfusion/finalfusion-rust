@@ -1,4 +1,26 @@
 //! Reader and writer for the word2vec binary format.
+//!
+//! Embeddings in the word2vec binary format are these formats are
+//! read as follows:
+//!
+//! ```
+//! use std::fs::File;
+//! use std::io::BufReader;
+//!
+//! use rust2vec::Embeddings;
+//! use rust2vec::word2vec::ReadWord2Vec;
+//!
+//! let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
+//!
+//! // Read the embeddings. The second arguments specifies whether
+//! // the embeddings should be normalized to unit vectors.
+//! let embeddings = Embeddings::read_word2vec_binary(&mut reader, true)
+//!     .unwrap();
+//!
+//! // Look up an embedding.
+//! let embedding = embeddings.embedding("Berlin");
+//! ```
+
 
 use std::io::{BufRead, Write};
 use std::mem;

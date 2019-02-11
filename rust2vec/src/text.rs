@@ -1,4 +1,35 @@
 //! Readers and writers for text formats.
+//!
+//! This module provides two readers/writers:
+//!
+//! 1. `ReadText`/`WriteText`: word embeddings in text format. In this
+//!    format, each line contains a word followed by its
+//!    embedding. The word and the embedding vector components are
+//!    separated by a space. This format is used by GloVe.
+//! 2. `ReadTextDims`/`WriteTextDims`: this format is the same as (1),
+//!    but the data is preceded by a line with the shape of the
+//!    embedding matrix. This format is used by word2vec's text
+//!    output.
+//!
+//! For example:
+//!
+//! ```
+//! use std::fs::File;
+//! use std::io::BufReader;
+//!
+//! use rust2vec::Embeddings;
+//! use rust2vec::text::ReadTextDims;
+//!
+//! let mut reader = BufReader::new(File::open("testdata/similarity.txt").unwrap());
+//!
+//! // Read the embeddings. The second arguments specifies whether
+//! // the embeddings should be normalized to unit vectors.
+//! let embeddings = Embeddings::read_text_dims(&mut reader, true)
+//!     .unwrap();
+//!
+//! // Look up an embedding.
+//! let embedding = embeddings.embedding("Berlin");
+//! ```
 
 use std::io::{BufRead, Seek, SeekFrom, Write};
 
