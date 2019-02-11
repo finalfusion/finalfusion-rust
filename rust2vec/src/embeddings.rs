@@ -12,7 +12,7 @@ use crate::io::{
 };
 use crate::storage::{CowArray, CowArray1, Storage};
 use crate::util::l2_normalize;
-use crate::vocab::Vocab;
+use crate::vocab::{Vocab, WordIndex};
 
 /// A word similarity.
 ///
@@ -78,23 +78,19 @@ impl Embeddings {
 
     /// Get the embedding of a word.
     pub fn embedding(&self, word: &str) -> Option<CowArray1<f32>> {
-        // For known words, we can just return the embedding.
-        if let Some(idx) = self.vocab.idx(word) {
-            return Some(self.storage.embedding(idx));
-        }
+        match self.vocab.idx(word)? {
+            WordIndex::Word(idx) => Some(self.storage.embedding(idx)),
+            WordIndex::Subword(indices) => {
+                let mut embed = Array1::zeros((self.storage.dims(),));
+                for idx in indices {
+                    embed += &self.storage.embedding(idx).as_view();
+                }
 
-        // For unknown words, return the l2-normalized sum of subword
-        // embeddings (when available).
-        self.vocab.subword_indices(word).map(|indices| {
-            let mut embed = Array1::zeros((self.storage.dims(),));
-            for idx in indices {
-                embed += &self.storage.embedding(idx).as_view();
+                l2_normalize(embed.view_mut());
+
+                Some(CowArray::Owned(embed))
             }
-
-            l2_normalize(embed.view_mut());
-
-            CowArray::Owned(embed)
-        })
+        }
     }
 
     /// Get an iterator over pairs of words and the corresponding embeddings.

@@ -7,6 +7,16 @@ use failure::{err_msg, format_err, Error};
 use crate::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::subword::SubwordIndices;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Index of a vocabulary word.
+pub enum WordIndex {
+    /// The index of an in-vocabulary word.
+    Word(usize),
+
+    /// The subword indices of out-of-vocabulary words.
+    Subword(Vec<usize>),
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Vocab {
     /// Vocabulary that only consists of words.
@@ -78,8 +88,15 @@ impl Vocab {
     }
 
     /// Get the index of a token.
-    pub fn idx(&self, word: &str) -> Option<usize> {
-        self.indices().get(word).cloned()
+    pub fn idx(&self, word: &str) -> Option<WordIndex> {
+        // If the word is known, return its index.
+        if let Some(idx) = self.indices().get(word).cloned() {
+            return Some(WordIndex::Word(idx));
+        }
+
+        // Otherwise, return the subword indices.
+        self.subword_indices(word)
+            .map(|indices| WordIndex::Subword(indices))
     }
 
     fn indices(&self) -> &HashMap<String, usize> {
@@ -98,7 +115,7 @@ impl Vocab {
     ///
     /// Returns `None` when the model does not support subwords or
     /// when no subwords could be extracted.
-    pub fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
+    fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
         match self {
             Vocab::SimpleVocab { .. } => None,
             Vocab::SubwordVocab {
