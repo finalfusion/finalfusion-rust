@@ -6,8 +6,16 @@ edition = "2018"
 
 [dependencies]
 clap = "2"
+env_logger = "0.6"
 failure = "0.1"
 getopts = "0.2"
 ndarray = "0.12"
+num_cpus = "1"
+rayon = "1"
+reductive = "0.2"
 rust2vec = { path = "../rust2vec", version = "0.4" }
 stdinout = "0.4"
+
+[features]
+default = []
+opq = ["reductive/opq-train"]

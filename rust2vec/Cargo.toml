@@ -24,7 +24,7 @@ ndarray = "0.12"
 ordered-float = "1"
 rand = "0.6"
 rand_xorshift = "0.1"
-reductive = { git = "https://git.sr.ht/~danieldk/reductive" }
+reductive = "0.2"
 
 [dev-dependencies]
 maplit = "1"

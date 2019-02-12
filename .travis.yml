@@ -3,6 +3,17 @@ rust:
   - stable
   - beta
   - nightly
+script:
+  - cargo build --verbose
+  - cargo test --verbose
+  - ( cd rust2vec-utils ; cargo build --verbose --features "opq reductive/openblas" )
 matrix:
   allow_failures:
     - rust: nightly
+sudo: required
+dist: trusty
+addons:
+  apt:
+    packages:
+      - libopenblas-dev
+      - gfortran
