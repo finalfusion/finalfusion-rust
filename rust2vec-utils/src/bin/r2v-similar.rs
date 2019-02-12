@@ -5,8 +5,10 @@ use clap::{App, AppSettings, Arg, ArgMatches};
 use rust2vec::{
     io::{MmapEmbeddings, ReadEmbeddings},
     similarity::Similarity,
+    storage::StorageViewWrap,
     text::ReadText,
     text::ReadTextDims,
+    vocab::VocabWrap,
     word2vec::ReadWord2Vec,
     Embeddings,
 };
@@ -71,7 +73,10 @@ fn config_from_matches<'a>(matches: &ArgMatches<'a>) -> Config {
     }
 }
 
-fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddings {
+fn read_embeddings(
+    filename: &str,
+    embedding_format: EmbeddingFormat,
+) -> Embeddings<VocabWrap, StorageViewWrap> {
     let f = File::open(filename).or_exit("Cannot open embeddings file", 1);
     let mut reader = BufReader::new(f);
 
@@ -79,9 +84,13 @@ fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddi
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
         Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true),
-        Text => ReadText::read_text(&mut reader, true),
-        TextDims => ReadTextDims::read_text_dims(&mut reader, true),
+        Word2Vec => {
+            ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into_storage_view)
+        }
+        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into_storage_view),
+        TextDims => {
+            ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into_storage_view)
+        }
     }
     .or_exit("Cannot read embeddings", 1)
 }

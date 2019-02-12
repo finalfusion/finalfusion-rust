@@ -30,9 +30,9 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
-use crate::storage::Storage;
+use crate::storage::{NdArray, Storage};
 use crate::util::l2_normalize;
-use crate::vocab::Vocab;
+use crate::vocab::{SimpleVocab, Vocab};
 
 use super::*;
 
@@ -49,7 +49,7 @@ where
     fn read_word2vec_binary(reader: &mut R, normalize: bool) -> Result<Self, Error>;
 }
 
-impl<R> ReadWord2Vec<R> for Embeddings
+impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
@@ -82,10 +82,7 @@ where
             }
         }
 
-        Ok(Embeddings::new(
-            Vocab::new_simple_vocab(words),
-            Storage::NdArray(matrix),
-        ))
+        Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
     }
 }
 
@@ -120,15 +117,17 @@ where
     fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>;
 }
 
-impl<W> WriteWord2Vec<W> for Embeddings
+impl<W, V, S> WriteWord2Vec<W> for Embeddings<V, S>
 where
     W: Write,
+    V: Vocab,
+    S: Storage,
 {
     fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>
     where
         W: Write,
     {
-        write!(w, "{} {}\n", self.vocab().len(), self.embed_len())?;
+        write!(w, "{} {}\n", self.vocab().len(), self.dims())?;
 
         for (word, embed) in self.iter() {
             write!(w, "{} ", word)?;

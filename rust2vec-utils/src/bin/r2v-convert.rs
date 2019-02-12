@@ -5,7 +5,9 @@ use clap::{App, AppSettings, Arg, ArgMatches};
 use failure::err_msg;
 use rust2vec::{
     io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings},
+    storage::StorageWrap,
     text::{ReadText, ReadTextDims, WriteText, WriteTextDims},
+    vocab::VocabWrap,
     word2vec::{ReadWord2Vec, WriteWord2Vec},
     Embeddings,
 };
@@ -89,7 +91,10 @@ fn main() {
     write_embeddings(embeddings, &config.output_filename, config.output_format);
 }
 
-fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddings {
+fn read_embeddings(
+    filename: &str,
+    embedding_format: EmbeddingFormat,
+) -> Embeddings<VocabWrap, StorageWrap> {
     let f = File::open(filename).or_exit("Cannot open embeddings file", 1);
     let mut reader = BufReader::new(f);
 
@@ -97,22 +102,28 @@ fn read_embeddings(filename: &str, embedding_format: EmbeddingFormat) -> Embeddi
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
         Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true),
-        Text => ReadText::read_text(&mut reader, true),
-        TextDims => ReadTextDims::read_text_dims(&mut reader, true),
+        Word2Vec => {
+            ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into_storage)
+        }
+        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into_storage),
+        TextDims => ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into_storage),
     }
     .or_exit("Cannot read embeddings", 1)
 }
 
-fn write_embeddings(embeddings: Embeddings, filename: &str, embedding_format: EmbeddingFormat) {
+fn write_embeddings(
+    embeddings: Embeddings<VocabWrap, StorageWrap>,
+    filename: &str,
+    embedding_format: EmbeddingFormat,
+) {
     let f = File::create(filename).or_exit("Cannot create embeddings file", 1);
     let mut writer = BufWriter::new(f);
 
     use EmbeddingFormat::*;
     match embedding_format {
         Rust2Vec => embeddings.write_embeddings(&mut writer),
-        Word2Vec => embeddings.write_word2vec_binary(&mut writer),
         Rust2VecMmap => Err(err_msg("Writing to this format is not supported")),
+        Word2Vec => embeddings.write_word2vec_binary(&mut writer),
         Text => embeddings.write_text(&mut writer),
         TextDims => embeddings.write_text_dims(&mut writer),
     }

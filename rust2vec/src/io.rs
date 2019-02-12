@@ -9,6 +9,7 @@ const MODEL_VERSION: u32 = 0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ChunkIdentifier {
+    Header = 0,
     SimpleVocab = 1,
     NdArray = 2,
     SubwordVocab = 3,
@@ -50,6 +51,9 @@ where
 }
 
 pub trait WriteChunk {
+    /// Get the identifier of a chunk.
+    fn chunk_identifier(&self) -> ChunkIdentifier;
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
     where
         W: Write + Seek;
@@ -90,6 +94,10 @@ impl Header {
 }
 
 impl WriteChunk for Header {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::Header
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
     where
         W: Write + Seek,

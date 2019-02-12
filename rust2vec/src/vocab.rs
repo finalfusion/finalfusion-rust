@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure::{err_msg, format_err, Error};
+use failure::{ensure, err_msg, format_err, Error};
 
 use crate::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::subword::SubwordIndices;
@@ -17,42 +17,96 @@ pub enum WordIndex {
     Subword(Vec<usize>),
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum Vocab {
-    /// Vocabulary that only consists of words.
-    SimpleVocab {
-        indices: HashMap<String, usize>,
-        words: Vec<String>,
-    },
-    SubwordVocab {
-        indices: HashMap<String, usize>,
-        words: Vec<String>,
-        min_n: u32,
-        max_n: u32,
-        buckets_exp: u32,
-    },
+/// Vocabulary without subword units.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SimpleVocab {
+    indices: HashMap<String, usize>,
+    words: Vec<String>,
 }
 
-impl Vocab {
+impl SimpleVocab {
+    pub fn new(words: impl Into<Vec<String>>) -> Self {
+        let words = words.into();
+        let indices = create_indices(&words);
+        SimpleVocab { words, indices }
+    }
+}
+
+impl ReadChunk for SimpleVocab {
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
+        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
+            .ok_or(err_msg("Unknown chunk identifier"))?;
+        ensure!(
+            chunk_id == ChunkIdentifier::SimpleVocab,
+            "Cannot read chunk {:?} as SimpleVocab",
+            chunk_id
+        );
+
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>()?;
+
+        let vocab_len = read.read_u64::<LittleEndian>()? as usize;
+        let mut words = Vec::with_capacity(vocab_len);
+        for _ in 0..vocab_len {
+            let word_len = read.read_u32::<LittleEndian>()? as usize;
+            let mut bytes = vec![0; word_len];
+            read.read_exact(&mut bytes)?;
+            let word = String::from_utf8(bytes)?;
+            words.push(word);
+        }
+
+        Ok(SimpleVocab::new(words))
+    }
+}
+
+impl WriteChunk for SimpleVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::SimpleVocab
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
+        // Chunk size: vocabulary size (8 bytes), for each word:
+        // word length in bytes (4 bytes), word bytes (variable-length).
+        let chunk_len = self.words.iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 8;
+
+        write.write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)?;
+        write.write_u64::<LittleEndian>(chunk_len as u64)?;
+        write.write_u64::<LittleEndian>(self.words.len() as u64)?;
+
+        for word in &self.words {
+            write.write_u32::<LittleEndian>(word.len() as u32)?;
+            write.write_all(word.as_bytes())?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Vocabulary with subword units.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubwordVocab {
+    indices: HashMap<String, usize>,
+    words: Vec<String>,
+    min_n: u32,
+    max_n: u32,
+    buckets_exp: u32,
+}
+
+impl SubwordVocab {
     const BOW: char = '<';
     const EOW: char = '>';
 
-    pub fn new_simple_vocab(words: impl Into<Vec<String>>) -> Self {
+    pub fn new(words: impl Into<Vec<String>>, min_n: u32, max_n: u32, buckets_exp: u32) -> Self {
         let words = words.into();
-        let indices = Self::create_indices(&words);
-        Vocab::SimpleVocab { words, indices }
-    }
+        let indices = create_indices(&words);
 
-    pub fn new_subword_vocab(
-        words: impl Into<Vec<String>>,
-        min_n: u32,
-        max_n: u32,
-        buckets_exp: u32,
-    ) -> Self {
-        let words = words.into();
-        let indices = Self::create_indices(&words);
-
-        Vocab::SubwordVocab {
+        SubwordVocab {
             indices,
             words,
             min_n,
@@ -70,27 +124,197 @@ impl Vocab {
         bracketed
     }
 
-    fn create_indices(words: &[String]) -> HashMap<String, usize> {
-        let mut indices = HashMap::new();
+    /// Get the subword indices of a token.
+    ///
+    /// Returns `None` when the model does not support subwords or
+    /// when no subwords could be extracted.
+    fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
+        let indices = Self::bracket(word)
+            .as_str()
+            .subword_indices(
+                self.min_n as usize,
+                self.max_n as usize,
+                self.buckets_exp as usize,
+            )
+            .into_iter()
+            .map(|idx| idx as usize + self.len())
+            .collect::<Vec<_>>();
+        if indices.len() == 0 {
+            None
+        } else {
+            Some(indices)
+        }
+    }
+}
 
-        for (idx, word) in words.iter().enumerate() {
-            indices.insert(word.to_owned(), idx);
+impl ReadChunk for SubwordVocab {
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
+        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
+            .ok_or(err_msg("Unknown chunk identifier"))?;
+        ensure!(
+            chunk_id == ChunkIdentifier::SubwordVocab,
+            "Cannot read chunk {:?} as SubwordVocab",
+            chunk_id
+        );
+
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>()?;
+
+        let vocab_len = read.read_u64::<LittleEndian>()? as usize;
+        let min_n = read.read_u32::<LittleEndian>()?;
+        let max_n = read.read_u32::<LittleEndian>()?;
+        let buckets_exp = read.read_u32::<LittleEndian>()?;
+
+        let mut words = Vec::with_capacity(vocab_len);
+        for _ in 0..vocab_len {
+            let word_len = read.read_u32::<LittleEndian>()? as usize;
+            let mut bytes = vec![0; word_len];
+            read.read_exact(&mut bytes)?;
+            let word = String::from_utf8(bytes)?;
+            words.push(word);
         }
 
-        indices
+        Ok(SubwordVocab::new(words, min_n, max_n, buckets_exp))
+    }
+}
+
+impl WriteChunk for SubwordVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::SubwordVocab
     }
 
-    pub(crate) fn chunk_identifier(&self) -> ChunkIdentifier {
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
+        // Chunk size: vocab size (8 bytes), minimum n-gram length (4 bytes),
+        // maximum n-gram length (4 bytes), bucket exponent (4 bytes), for
+        // each word: word length in bytes (4 bytes), word bytes
+        // (variable-length).
+        let chunk_len = self.words().iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 20;
+
+        write.write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)?;
+        write.write_u64::<LittleEndian>(chunk_len as u64)?;
+        write.write_u64::<LittleEndian>(self.words.len() as u64)?;
+        write.write_u32::<LittleEndian>(self.min_n)?;
+        write.write_u32::<LittleEndian>(self.max_n)?;
+        write.write_u32::<LittleEndian>(self.buckets_exp)?;
+
+        for word in self.words() {
+            write.write_u32::<LittleEndian>(word.len() as u32)?;
+            write.write_all(word.as_bytes())?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Vocabulary types wrapper.
+///
+/// This crate makes it possible to create fine-grained embedding
+/// types, such as `Embeddings<SimpleVocab, NdArray>` or
+/// `Embeddings<SubwordVocab, QuantizedArray>`. However, in some cases
+/// it is more pleasant to have a single type that covers all
+/// vocabulary and storage types. `VocabWrap` and `StorageWrap` wrap
+/// all the vocabularies and storage types known to this crate such
+/// that the type `Embeddings<VocabWrap, StorageWrap>` covers all
+/// variations.
+#[derive(Clone, Debug)]
+pub enum VocabWrap {
+    SimpleVocab(SimpleVocab),
+    SubwordVocab(SubwordVocab),
+}
+
+impl From<SimpleVocab> for VocabWrap {
+    fn from(v: SimpleVocab) -> Self {
+        VocabWrap::SimpleVocab(v)
+    }
+}
+
+impl From<SubwordVocab> for VocabWrap {
+    fn from(v: SubwordVocab) -> Self {
+        VocabWrap::SubwordVocab(v)
+    }
+}
+
+impl ReadChunk for VocabWrap {
+    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
+        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
+        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
+            .ok_or(err_msg("Unknown chunk identifier"))?;
+
+        read.seek(SeekFrom::Start(chunk_start_pos))?;
+
+        match chunk_id {
+            ChunkIdentifier::SimpleVocab => {
+                SimpleVocab::read_chunk(read).map(VocabWrap::SimpleVocab)
+            }
+            ChunkIdentifier::SubwordVocab => {
+                SubwordVocab::read_chunk(read).map(VocabWrap::SubwordVocab)
+            }
+            _ => Err(format_err!(
+                "Chunk type {:?} cannot be read as a vocabulary",
+                chunk_id
+            )),
+        }
+    }
+}
+
+impl WriteChunk for VocabWrap {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
-            Vocab::SimpleVocab { .. } => ChunkIdentifier::SimpleVocab,
-            Vocab::SubwordVocab { .. } => ChunkIdentifier::SubwordVocab,
+            VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
+            VocabWrap::SubwordVocab(inner) => inner.chunk_identifier(),
         }
     }
 
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
+        match self {
+            VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
+            VocabWrap::SubwordVocab(inner) => inner.write_chunk(write),
+        }
+    }
+}
+
+/// Embedding vocabularies.
+pub trait Vocab: Clone {
     /// Get the index of a token.
-    pub fn idx(&self, word: &str) -> Option<WordIndex> {
+    fn idx(&self, word: &str) -> Option<WordIndex>;
+
+    /// Get the vocabulary size.
+    fn len(&self) -> usize;
+
+    /// Get the words in the vocabulary.
+    fn words(&self) -> &[String];
+}
+
+impl Vocab for SimpleVocab {
+    fn idx(&self, word: &str) -> Option<WordIndex> {
+        self.indices.get(word).cloned().map(WordIndex::Word)
+    }
+
+    fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    fn words(&self) -> &[String] {
+        &self.words
+    }
+}
+
+impl Vocab for SubwordVocab {
+    fn idx(&self, word: &str) -> Option<WordIndex> {
         // If the word is known, return its index.
-        if let Some(idx) = self.indices().get(word).cloned() {
+        if let Some(idx) = self.indices.get(word).cloned() {
             return Some(WordIndex::Word(idx));
         }
 
@@ -99,149 +323,48 @@ impl Vocab {
             .map(|indices| WordIndex::Subword(indices))
     }
 
-    fn indices(&self) -> &HashMap<String, usize> {
+    fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    fn words(&self) -> &[String] {
+        &self.words
+    }
+}
+
+impl Vocab for VocabWrap {
+    fn idx(&self, word: &str) -> Option<WordIndex> {
         match self {
-            Vocab::SimpleVocab { ref indices, .. } => indices,
-            Vocab::SubwordVocab { ref indices, .. } => indices,
+            VocabWrap::SimpleVocab(inner) => inner.idx(word),
+            VocabWrap::SubwordVocab(inner) => inner.idx(word),
         }
     }
 
     /// Get the vocabulary size.
-    pub fn len(&self) -> usize {
-        self.indices().len()
-    }
-
-    /// Get the subword indices of a token.
-    ///
-    /// Returns `None` when the model does not support subwords or
-    /// when no subwords could be extracted.
-    fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
+    fn len(&self) -> usize {
         match self {
-            Vocab::SimpleVocab { .. } => None,
-            Vocab::SubwordVocab {
-                min_n,
-                max_n,
-                buckets_exp,
-                ..
-            } => {
-                let indices = Self::bracket(word)
-                    .as_str()
-                    .subword_indices(*min_n as usize, *max_n as usize, *buckets_exp as usize)
-                    .into_iter()
-                    .map(|idx| idx as usize + self.len())
-                    .collect::<Vec<_>>();
-                if indices.len() == 0 {
-                    None
-                } else {
-                    Some(indices)
-                }
-            }
+            VocabWrap::SimpleVocab(inner) => inner.len(),
+            VocabWrap::SubwordVocab(inner) => inner.len(),
         }
     }
 
     /// Get the words in the vocabulary.
-    pub fn words(&self) -> &[String] {
+    fn words(&self) -> &[String] {
         match self {
-            Vocab::SimpleVocab { words, .. } => words,
-            Vocab::SubwordVocab { words, .. } => words,
+            VocabWrap::SimpleVocab(inner) => inner.words(),
+            VocabWrap::SubwordVocab(inner) => inner.words(),
         }
     }
 }
 
-impl ReadChunk for Vocab {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
-    where
-        R: Read + Seek,
-    {
-        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or(err_msg("Unknown chunk identifier"))?;
-        match chunk_id {
-            ChunkIdentifier::SimpleVocab => {
-                // Read and discard chunk length.
-                read.read_u64::<LittleEndian>()?;
+fn create_indices(words: &[String]) -> HashMap<String, usize> {
+    let mut indices = HashMap::new();
 
-                let vocab_len = read.read_u64::<LittleEndian>()? as usize;
-                let mut words = Vec::with_capacity(vocab_len);
-                for _ in 0..vocab_len {
-                    let word_len = read.read_u32::<LittleEndian>()? as usize;
-                    let mut bytes = vec![0; word_len];
-                    read.read_exact(&mut bytes)?;
-                    let word = String::from_utf8(bytes)?;
-                    words.push(word);
-                }
-
-                Ok(Vocab::new_simple_vocab(words))
-            }
-            ChunkIdentifier::SubwordVocab => {
-                // Read and discard chunk length.
-                read.read_u64::<LittleEndian>()?;
-
-                let vocab_len = read.read_u64::<LittleEndian>()? as usize;
-                let min_n = read.read_u32::<LittleEndian>()?;
-                let max_n = read.read_u32::<LittleEndian>()?;
-                let buckets_exp = read.read_u32::<LittleEndian>()?;
-
-                let mut words = Vec::with_capacity(vocab_len);
-                for _ in 0..vocab_len {
-                    let word_len = read.read_u32::<LittleEndian>()? as usize;
-                    let mut bytes = vec![0; word_len];
-                    read.read_exact(&mut bytes)?;
-                    let word = String::from_utf8(bytes)?;
-                    words.push(word);
-                }
-
-                Ok(Vocab::new_subword_vocab(words, min_n, max_n, buckets_exp))
-            }
-            unknown => Err(format_err!("Not a vocabulary chunk: {:?}", unknown)),
-        }
+    for (idx, word) in words.iter().enumerate() {
+        indices.insert(word.to_owned(), idx);
     }
-}
 
-impl WriteChunk for Vocab {
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
-    where
-        W: Write + Seek,
-    {
-        match self {
-            Vocab::SimpleVocab { words, .. } => {
-                let chunk_len = words.iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 8;
-
-                write.write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)?;
-                write.write_u64::<LittleEndian>(chunk_len as u64)?;
-                write.write_u64::<LittleEndian>(words.len() as u64)?;
-
-                for word in self.words() {
-                    write.write_u32::<LittleEndian>(word.len() as u32)?;
-                    write.write_all(word.as_bytes())?;
-                }
-
-                Ok(())
-            }
-            Vocab::SubwordVocab {
-                min_n,
-                max_n,
-                buckets_exp,
-                words,
-                ..
-            } => {
-                let chunk_len = self.words().iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 20;
-
-                write.write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)?;
-                write.write_u64::<LittleEndian>(chunk_len as u64)?;
-                write.write_u64::<LittleEndian>(words.len() as u64)?;
-                write.write_u32::<LittleEndian>(*min_n)?;
-                write.write_u32::<LittleEndian>(*max_n)?;
-                write.write_u32::<LittleEndian>(*buckets_exp)?;
-
-                for word in self.words() {
-                    write.write_u32::<LittleEndian>(word.len() as u32)?;
-                    write.write_all(word.as_bytes())?;
-                }
-
-                Ok(())
-            }
-        }
-    }
+    indices
 }
 
 #[cfg(test)]
@@ -250,10 +373,10 @@ mod tests {
 
     use byteorder::{LittleEndian, ReadBytesExt};
 
-    use super::Vocab;
+    use super::{SimpleVocab, SubwordVocab};
     use crate::io::{ReadChunk, WriteChunk};
 
-    fn test_simple_vocab() -> Vocab {
+    fn test_simple_vocab() -> SimpleVocab {
         let words = vec![
             "this".to_owned(),
             "is".to_owned(),
@@ -261,17 +384,17 @@ mod tests {
             "test".to_owned(),
         ];
 
-        Vocab::new_simple_vocab(words)
+        SimpleVocab::new(words)
     }
 
-    fn test_subword_vocab() -> Vocab {
+    fn test_subword_vocab() -> SubwordVocab {
         let words = vec![
             "this".to_owned(),
             "is".to_owned(),
             "a".to_owned(),
             "test".to_owned(),
         ];
-        Vocab::new_subword_vocab(words, 3, 6, 20)
+        SubwordVocab::new(words, 3, 6, 20)
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
@@ -288,7 +411,7 @@ mod tests {
         let mut cursor = Cursor::new(Vec::new());
         check_vocab.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
-        let vocab = Vocab::read_chunk(&mut cursor).unwrap();
+        let vocab = SimpleVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
     }
 
@@ -312,7 +435,7 @@ mod tests {
         let mut cursor = Cursor::new(Vec::new());
         check_vocab.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
-        let vocab = Vocab::read_chunk(&mut cursor).unwrap();
+        let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
     }
 

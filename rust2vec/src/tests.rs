@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 
+use crate::vocab::Vocab;
 use crate::word2vec::{ReadWord2Vec, WriteWord2Vec};
 use crate::Embeddings;
 
@@ -10,7 +11,7 @@ fn test_read_word2vec_binary() {
     let mut reader = BufReader::new(f);
     let embeddings = Embeddings::read_word2vec_binary(&mut reader, false).unwrap();
     assert_eq!(41, embeddings.vocab().len());
-    assert_eq!(100, embeddings.embed_len());
+    assert_eq!(100, embeddings.dims());
 }
 
 #[test]
