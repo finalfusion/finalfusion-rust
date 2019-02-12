@@ -12,7 +12,7 @@ supports similarity and analogy queries. Please consult the
 
 ## Installation
 
-This package can be used with Cargo:
+This crate can be used with Cargo:
 
     [dependencies]
-    rust2vec = 0.3
+    rust2vec = 0.4
