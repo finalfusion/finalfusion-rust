@@ -215,6 +215,7 @@ fn quantize_storage(config: &Config, storage: &impl StorageView) -> QuantizedArr
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
+            true,
         ),
         quantizer => {
             eprintln!("Unknown quantizer: {}", quantizer);
@@ -233,18 +234,21 @@ fn quantize_storage(config: &Config, storage: &impl StorageView) -> QuantizedArr
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
+            true,
         ),
         "opq" => storage.quantize::<OPQ>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
+            true,
         ),
         "gaussian_opq" => storage.quantize::<GaussianOPQ>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
+            true,
         ),
         quantizer => {
             eprintln!("Unknown quantizer: {}", quantizer);
