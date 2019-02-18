@@ -31,11 +31,11 @@
 //! let embedding = embeddings.embedding("Berlin");
 //! ```
 
-use std::io::{BufRead, Seek, SeekFrom, Write};
+use std::io::{BufRead, Write};
 
 use failure::{ensure, err_msg, Error, ResultExt};
 use itertools::Itertools;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::Array2;
 
 use crate::storage::{NdArray, Storage};
 use crate::util::l2_normalize;
@@ -53,7 +53,7 @@ use super::*;
 pub trait ReadText<R>
 where
     Self: Sized,
-    R: BufRead + Seek,
+    R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
     fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error>;
@@ -61,12 +61,10 @@ where
 
 impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
 where
-    R: BufRead + Seek,
+    R: BufRead,
 {
     fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error> {
-        let (vocab_len, embed_len) = text_vectors_dims(reader)?;
-        reader.seek(SeekFrom::Start(0))?;
-        read_embeds(reader, vocab_len, embed_len, normalize)
+        read_embeds(reader, None, normalize)
     }
 }
 
@@ -85,7 +83,7 @@ where
 pub trait ReadTextDims<R>
 where
     Self: Sized,
-    R: BufRead + Seek,
+    R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
     fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error>;
@@ -93,7 +91,7 @@ where
 
 impl<R> ReadTextDims<R> for Embeddings<SimpleVocab, NdArray>
 where
-    R: BufRead + Seek,
+    R: BufRead,
 {
     fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error> {
         let mut dims = String::new();
@@ -111,51 +109,64 @@ where
             .parse::<usize>()
             .context("Cannot parse vocabulary size")?;
 
-        read_embeds(reader, vocab_len, embed_len, normalize)
+        read_embeds(reader, Some((vocab_len, embed_len)), normalize)
     }
 }
 
 fn read_embeds<R>(
     reader: &mut R,
-    vocab_len: usize,
-    embed_len: usize,
+    shape: Option<(usize, usize)>,
     normalize: bool,
 ) -> Result<Embeddings<SimpleVocab, NdArray>, Error>
 where
     R: BufRead,
 {
-    let mut matrix = Array2::zeros((vocab_len, embed_len));
-    let mut words = Vec::with_capacity(vocab_len);
+    let (mut words, mut data) = if let Some((n_words, dims)) = shape {
+        (
+            Vec::with_capacity(n_words),
+            Vec::with_capacity(n_words * dims),
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
 
-    for (idx, line) in reader.lines().enumerate() {
+    for line in reader.lines() {
         let line = line?;
         let mut parts = line.split_whitespace();
 
-        let word = match parts.next() {
-            Some(word) => word,
-            None => return Err(err_msg("Empty line")),
-        };
-
-        let word = word.trim();
+        let word = parts.next().ok_or(err_msg("Empty line"))?.trim();
         words.push(word.to_owned());
 
-        let embedding: Array1<f32> = r#try!(parts.map(str::parse).collect());
-        ensure!(
-            embedding.shape()[0] == embed_len,
-            "Expected embedding size: {}, got: {}",
-            embed_len,
-            embedding.shape()[0]
-        );
-
-        matrix.index_axis_mut(Axis(0), idx).assign(&embedding);
+        for part in parts {
+            data.push(part.parse()?);
+        }
     }
 
+    let shape = if let Some((n_words, dims)) = shape {
+        ensure!(
+            words.len() == n_words,
+            "Expected {} words, got: {}",
+            n_words,
+            words.len()
+        );
+        ensure!(
+            data.len() / n_words == dims,
+            "Expected {} dimensions, got: {}",
+            dims,
+            data.len() / n_words
+        );
+        (n_words, dims)
+    } else {
+        let dims = data.len() / words.len();
+        (words.len(), dims)
+    };
+
     ensure!(
-        words.len() == vocab_len,
-        "Vocabulary size: {}, expected: {}",
-        words.len(),
-        vocab_len
+        data.len() % shape.1 == 0,
+        "Number of dimensions per vector is not constant"
     );
+
+    let mut matrix = Array2::from_shape_vec(shape, data)?;
 
     if normalize {
         for mut embedding in matrix.outer_iter_mut() {
@@ -164,19 +175,6 @@ where
     }
 
     Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
-}
-
-pub fn text_vectors_dims<R>(reader: &mut R) -> Result<(usize, usize), Error>
-where
-    R: BufRead + Seek,
-{
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
-    let embed_size = line.split_whitespace().count() - 1;
-
-    let n_words = 1 + reader.lines().count();
-
-    Ok((n_words, embed_size))
 }
 
 /// Method to write `Embeddings` to a text file.
