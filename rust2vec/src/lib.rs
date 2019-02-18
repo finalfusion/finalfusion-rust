@@ -4,10 +4,11 @@
 //! embeddings.  rust2vec also provides its own data format that has
 //! various benefits over existing formats.
 
-mod embeddings;
-pub use crate::embeddings::{Embeddings, Iter};
+pub mod embeddings;
 
 pub mod io;
+
+pub mod prelude;
 
 pub mod similarity;
 

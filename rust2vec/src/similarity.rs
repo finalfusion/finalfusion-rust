@@ -6,10 +6,10 @@ use std::collections::{BinaryHeap, HashSet};
 use ndarray::{s, Array1, ArrayView1, ArrayView2};
 use ordered_float::NotNan;
 
+use crate::embeddings::Embeddings;
 use crate::storage::StorageView;
 use crate::util::l2_normalize;
 use crate::vocab::Vocab;
-use crate::Embeddings;
 
 /// A word with its similarity.
 ///
@@ -253,9 +253,9 @@ mod tests {
     use std::fs::File;
     use std::io::BufReader;
 
+    use crate::embeddings::Embeddings;
     use crate::similarity::{Analogy, Similarity};
     use crate::word2vec::ReadWord2Vec;
-    use crate::Embeddings;
 
     static SIMILARITY_ORDER_STUTTGART_10: &'static [&'static str] = &[
         "Karlsruhe",

@@ -17,8 +17,7 @@
 //! use std::fs::File;
 //! use std::io::BufReader;
 //!
-//! use rust2vec::Embeddings;
-//! use rust2vec::text::ReadTextDims;
+//! use rust2vec::prelude::*;
 //!
 //! let mut reader = BufReader::new(File::open("testdata/similarity.txt").unwrap());
 //!
@@ -37,11 +36,10 @@ use failure::{ensure, err_msg, Error, ResultExt};
 use itertools::Itertools;
 use ndarray::Array2;
 
+use crate::embeddings::Embeddings;
 use crate::storage::{NdArray, Storage};
 use crate::util::l2_normalize;
 use crate::vocab::{SimpleVocab, Vocab};
-
-use super::*;
 
 /// Method to construct `Embeddings` from a text file.
 ///
@@ -241,10 +239,10 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Read, Seek, SeekFrom};
 
+    use crate::embeddings::Embeddings;
     use crate::storage::{NdArray, StorageView};
     use crate::vocab::{SimpleVocab, Vocab};
     use crate::word2vec::ReadWord2Vec;
-    use crate::Embeddings;
 
     use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
 

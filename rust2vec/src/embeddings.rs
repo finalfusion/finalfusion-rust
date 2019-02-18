@@ -1,4 +1,5 @@
-use std::cmp::Ordering;
+//! Word embeddings.
+
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};
 use std::iter::Enumerate;
@@ -8,47 +9,14 @@ use failure::Error;
 use ndarray::Array1;
 
 use crate::io::{
-    Header, MmapChunk, MmapEmbeddings, ReadChunk, ReadEmbeddings, WriteChunk, WriteEmbeddings,
+    private::{Header, MmapChunk, ReadChunk, WriteChunk},
+    MmapEmbeddings, ReadEmbeddings, WriteEmbeddings,
 };
-use crate::storage::{CowArray, CowArray1, Storage, StorageViewWrap, StorageWrap};
+use crate::storage::{
+    CowArray, CowArray1, MmapArray, NdArray, QuantizedArray, Storage, StorageViewWrap, StorageWrap,
+};
 use crate::util::l2_normalize;
-use crate::vocab::{Vocab, VocabWrap, WordIndex};
-
-/// A word similarity.
-///
-/// This data structure is used to store a pair consisting of a word and
-/// its similarity to a query word.
-#[derive(Debug)]
-pub struct WordSimilarity<'a> {
-    pub word: &'a str,
-    pub similarity: f32,
-}
-
-impl<'a> Ord for WordSimilarity<'a> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.similarity > other.similarity {
-            Ordering::Less
-        } else if self.similarity < other.similarity {
-            Ordering::Greater
-        } else {
-            self.word.cmp(other.word)
-        }
-    }
-}
-
-impl<'a> PartialOrd for WordSimilarity<'a> {
-    fn partial_cmp(&self, other: &WordSimilarity) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Eq for WordSimilarity<'a> {}
-
-impl<'a> PartialEq for WordSimilarity<'a> {
-    fn eq(&self, other: &WordSimilarity) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
+use crate::vocab::{SimpleVocab, SubwordVocab, Vocab, VocabWrap, WordIndex};
 
 /// Word embeddings.
 ///
@@ -62,10 +30,12 @@ pub struct Embeddings<V, S> {
 }
 
 impl<V, S> Embeddings<V, S> {
+    /// Construct an embeddings from a vocabulary and storage.
     pub fn new(vocab: V, storage: S) -> Self {
         Embeddings { vocab, storage }
     }
 
+    /// Decompose embeddings in its vocabulary and storage.
     pub fn into_parts(self) -> (V, S) {
         (self.vocab, self.storage)
     }
@@ -115,33 +85,38 @@ where
             inner: self.vocab.words().iter().enumerate(),
         }
     }
-}
 
-impl<V, S> Embeddings<V, S>
-where
-    V: Into<VocabWrap>,
-    S: Into<StorageWrap>,
-{
-    pub fn into_storage(self) -> Embeddings<VocabWrap, StorageWrap> {
-        // Note: we cannot implement the From/Into trait, because this would be
-        // a specialization of the generic T -> T conversion in core.
-        let (vocab, storage) = self.into_parts();
-        Embeddings::new(vocab.into(), storage.into())
+    /// Get the vocabulary size.
+    ///
+    /// The vocabulary size excludes subword units.
+    pub fn len(&self) -> usize {
+        self.vocab.len()
     }
 }
 
-impl<V, S> Embeddings<V, S>
-where
-    V: Into<VocabWrap>,
-    S: Into<StorageViewWrap>,
-{
-    pub fn into_storage_view(self) -> Embeddings<VocabWrap, StorageViewWrap> {
-        // Note: we cannot implement the From/Into trait, because this would be
-        // a specialization of the generic T -> T conversion in core.
-        let (vocab, storage) = self.into_parts();
-        Embeddings::new(vocab.into(), storage.into())
+macro_rules! impl_embeddings_from(
+    ($vocab:ty, $storage:ty, $storage_wrap:ty) => {
+        impl From<Embeddings<$vocab, $storage>> for Embeddings<VocabWrap, $storage_wrap> {
+            fn from(from: Embeddings<$vocab, $storage>) -> Self {
+                let (vocab, storage) = from.into_parts();
+                Embeddings::new(vocab.into(), storage.into())
+            }
+        }
     }
-}
+);
+
+// Hmpf. We with the blanket From<T> for T implementation, we need
+// specialization to generalize this.
+impl_embeddings_from!(SimpleVocab, NdArray, StorageWrap);
+impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(SubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(SubwordVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(SubwordVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(SubwordVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(SubwordVocab, QuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where

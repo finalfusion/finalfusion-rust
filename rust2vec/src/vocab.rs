@@ -1,3 +1,5 @@
+//! Embedding vocabularies
+
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
@@ -5,7 +7,7 @@ use std::mem::size_of;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, err_msg, format_err, Error};
 
-use crate::io::{ChunkIdentifier, ReadChunk, WriteChunk};
+use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::subword::SubwordIndices;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -388,7 +390,7 @@ mod tests {
     use byteorder::{LittleEndian, ReadBytesExt};
 
     use super::{SimpleVocab, SubwordVocab};
-    use crate::io::{ReadChunk, WriteChunk};
+    use crate::io::private::{ReadChunk, WriteChunk};
 
     fn test_simple_vocab() -> SimpleVocab {
         let words = vec![

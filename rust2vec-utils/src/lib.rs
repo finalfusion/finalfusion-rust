@@ -3,15 +3,7 @@ use std::io::BufReader;
 
 use failure::{format_err, Error, ResultExt};
 
-use rust2vec::{
-    io::{MmapEmbeddings, ReadEmbeddings},
-    storage::StorageViewWrap,
-    text::ReadText,
-    text::ReadTextDims,
-    vocab::VocabWrap,
-    word2vec::ReadWord2Vec,
-    Embeddings,
-};
+use rust2vec::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingFormat {
@@ -48,13 +40,9 @@ pub fn read_embeddings_view(
     let embeddings = match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
         Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => {
-            ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into_storage_view)
-        }
-        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into_storage_view),
-        TextDims => {
-            ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into_storage_view)
-        }
+        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into),
+        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into),
+        TextDims => ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into),
     }
     .context("Cannot read embeddings")?;
 

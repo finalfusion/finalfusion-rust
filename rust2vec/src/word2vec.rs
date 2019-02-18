@@ -7,8 +7,7 @@
 //! use std::fs::File;
 //! use std::io::BufReader;
 //!
-//! use rust2vec::Embeddings;
-//! use rust2vec::word2vec::ReadWord2Vec;
+//! use rust2vec::prelude::*;
 //!
 //! let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
 //!
@@ -29,11 +28,10 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
+use crate::embeddings::Embeddings;
 use crate::storage::{NdArray, Storage};
 use crate::util::l2_normalize;
 use crate::vocab::{SimpleVocab, Vocab};
-
-use super::*;
 
 /// Method to construct `Embeddings` from a word2vec binary file.
 ///

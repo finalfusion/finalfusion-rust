@@ -12,8 +12,14 @@ use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
-use crate::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+use crate::io::private::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 
+/// Copy-on-write wrapper for `Array`/`ArrayView`.
+///
+/// The `CowArray` type stores an owned array or an array view. In
+/// both cases a view (`as_view`) or an owned array (`into_owned`) can
+/// be obtained. If the wrapped array is a view, retrieving an owned
+/// array will copy the underlying data.
 pub enum CowArray<'a, A, D> {
     Borrowed(ArrayView<'a, A, D>),
     Owned(Array<A, D>),
@@ -201,7 +207,7 @@ impl WriteChunk for NdArray {
     }
 }
 
-/// Quantized matrix.
+/// Quantized embedding matrix.
 pub struct QuantizedArray {
     quantizer: PQ<f32>,
     quantized: Array2<u8>,
@@ -654,7 +660,7 @@ impl StorageView for StorageViewWrap {
     }
 }
 
-/// Quantizable storage.
+/// Quantizable embedding matrix.
 pub trait Quantize {
     /// Quantize the embedding matrix.
     ///
@@ -684,6 +690,10 @@ pub trait Quantize {
         )
     }
 
+    /// Quantize the embedding matrix using the provided RNG.
+    ///
+    /// This method trains a quantizer for the embedding matrix and
+    /// then quantizes the matrix using this quantizer.
     fn quantize_using<T, R>(
         &self,
         n_subquantizers: usize,
@@ -762,7 +772,7 @@ mod tests {
     use ndarray::Array2;
     use reductive::pq::PQ;
 
-    use crate::io::{ReadChunk, WriteChunk};
+    use crate::io::private::{ReadChunk, WriteChunk};
     use crate::storage::{NdArray, Quantize, QuantizedArray, StorageView};
 
     const N_ROWS: usize = 100;

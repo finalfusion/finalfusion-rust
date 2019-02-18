@@ -1,9 +1,9 @@
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 
+use crate::embeddings::Embeddings;
 use crate::vocab::Vocab;
 use crate::word2vec::{ReadWord2Vec, WriteWord2Vec};
-use crate::Embeddings;
 
 #[test]
 fn test_read_word2vec_binary() {

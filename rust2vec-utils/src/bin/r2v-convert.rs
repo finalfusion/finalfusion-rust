@@ -3,14 +3,7 @@ use std::io::{BufReader, BufWriter};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 use failure::err_msg;
-use rust2vec::{
-    io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings},
-    storage::StorageWrap,
-    text::{ReadText, ReadTextDims, WriteText, WriteTextDims},
-    vocab::VocabWrap,
-    word2vec::{ReadWord2Vec, WriteWord2Vec},
-    Embeddings,
-};
+use rust2vec::prelude::*;
 use rust2vec_utils::EmbeddingFormat;
 use stdinout::OrExit;
 
@@ -102,11 +95,9 @@ fn read_embeddings(
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
         Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => {
-            ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into_storage)
-        }
-        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into_storage),
-        TextDims => ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into_storage),
+        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into),
+        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into),
+        TextDims => ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into),
     }
     .or_exit("Cannot read embeddings", 1)
 }

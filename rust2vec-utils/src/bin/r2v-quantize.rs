@@ -8,12 +8,7 @@ use rayon::ThreadPoolBuilder;
 use reductive::pq::PQ;
 #[cfg(feature = "opq")]
 use reductive::pq::{GaussianOPQ, OPQ};
-use rust2vec::{
-    io::WriteEmbeddings,
-    storage::{Quantize, QuantizedArray, Storage, StorageView},
-    vocab::VocabWrap,
-    Embeddings,
-};
+use rust2vec::prelude::*;
 use rust2vec_utils::{read_embeddings_view, EmbeddingFormat};
 use stdinout::OrExit;
 
