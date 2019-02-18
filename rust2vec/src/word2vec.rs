@@ -21,7 +21,6 @@
 //! let embedding = embeddings.embedding("Berlin");
 //! ```
 
-
 use std::io::{BufRead, Write};
 use std::mem;
 use std::slice::from_raw_parts_mut;

@@ -2,7 +2,7 @@
 
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
-use std::mem;
+use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, format_err, Error};
@@ -76,7 +76,7 @@ impl MmapChunk for MmapArray {
         read.seek(SeekFrom::Current(n_padding as i64))?;
 
         // Set up memory mapping.
-        let matrix_len = shape.size() * mem::size_of::<f32>();
+        let matrix_len = shape.size() * size_of::<f32>();
         let offset = read.seek(SeekFrom::Current(0))?;
         let mut mmap_opts = MmapOptions::new();
         let map = unsafe {
@@ -117,10 +117,13 @@ impl NdArray {
     {
         write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
         let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
-        // Chunk size: rows (8 bytes), columns (4 bytes), type id (4 bytes),
+        // Chunk size: rows (u64), columns (u32), type id (u32),
         //             padding ([0,4) bytes), matrix.
-        let chunk_len =
-            16 + n_padding as usize + (data.rows() * data.cols() * mem::size_of::<f32>());
+        let chunk_len = size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + n_padding as usize
+            + (data.rows() * data.cols() * size_of::<f32>());
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
         write.write_u64::<LittleEndian>(data.rows() as u64)?;
         write.write_u32::<LittleEndian>(data.cols() as u32)?;
@@ -286,20 +289,25 @@ impl WriteChunk for QuantizedArray {
     {
         write.write_u32::<LittleEndian>(ChunkIdentifier::QuantizedArray as u32)?;
 
-        // projection (4 bytes), quantized_len (4 bytes), reconstuced_len (4 bytes),
-        // n_centroids (4 bytes), rows (8 bytes), types (2 x 4 bytes), padding,
+        // projection (u32), quantized_len (u32), reconstructed_len (u32),
+        // n_centroids (u32), rows (u64), types (2 x u32), padding,
         // projection matrix, centroids, quantized data.
         let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
-        let chunk_size = 32
+        let chunk_size = size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u64>()
+            + 2 * size_of::<u32>()
             + n_padding as usize
             + self.quantizer.projection().is_some() as usize
                 * self.quantizer.reconstructed_len()
                 * self.quantizer.reconstructed_len()
-                * mem::size_of::<f32>()
+                * size_of::<f32>()
             + self.quantizer.quantized_len()
                 * self.quantizer.n_quantizer_centroids()
                 * (self.quantizer.reconstructed_len() / self.quantizer.quantized_len())
-                * mem::size_of::<f32>()
+                * size_of::<f32>()
             + self.quantized.rows() * self.quantizer.quantized_len();
         write.write_u64::<LittleEndian>(chunk_size as u64)?;
 
@@ -696,7 +704,7 @@ where
 }
 
 fn padding<T>(pos: u64) -> u64 {
-    let size = std::mem::size_of::<T>() as u64;
+    let size = size_of::<T>() as u64;
     size - (pos % size)
 }
 

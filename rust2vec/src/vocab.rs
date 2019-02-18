@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, err_msg, format_err, Error};
@@ -71,9 +72,14 @@ impl WriteChunk for SimpleVocab {
     where
         W: Write + Seek,
     {
-        // Chunk size: vocabulary size (8 bytes), for each word:
+        // Chunk size: vocabulary size (u64), for each word:
         // word length in bytes (4 bytes), word bytes (variable-length).
-        let chunk_len = self.words.iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 8;
+        let chunk_len = size_of::<u64>()
+            + self
+                .words
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>();
 
         write.write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)?;
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
@@ -190,11 +196,19 @@ impl WriteChunk for SubwordVocab {
     where
         W: Write + Seek,
     {
-        // Chunk size: vocab size (8 bytes), minimum n-gram length (4 bytes),
-        // maximum n-gram length (4 bytes), bucket exponent (4 bytes), for
-        // each word: word length in bytes (4 bytes), word bytes
+        // Chunk size: vocab size (u64), minimum n-gram length (u32),
+        // maximum n-gram length (u32), bucket exponent (u32), for
+        // each word: word length in bytes (u32), word bytes
         // (variable-length).
-        let chunk_len = self.words().iter().map(|w| w.len() as u64 + 4).sum::<u64>() + 20;
+        let chunk_len = size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self
+                .words()
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>();
 
         write.write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)?;
         write.write_u64::<LittleEndian>(chunk_len as u64)?;
