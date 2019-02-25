@@ -147,7 +147,7 @@ impl NdArray {
         // boundary is also a multiple of 4.
 
         let padding = vec![0; n_padding as usize];
-        write.write(&padding)?;
+        write.write_all(&padding)?;
 
         for row in data.outer_iter() {
             for col in row.iter() {
@@ -166,7 +166,7 @@ impl ReadChunk for NdArray {
     {
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
         ensure!(
             chunk_id == ChunkIdentifier::NdArray,
             "Cannot read chunk {:?} as NdArray",
@@ -221,7 +221,7 @@ impl ReadChunk for QuantizedArray {
     {
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
         ensure!(
             chunk_id == ChunkIdentifier::QuantizedArray,
             "Cannot read chunk {:?} as QuantizedArray",
@@ -344,7 +344,7 @@ impl WriteChunk for QuantizedArray {
         write.write_u32::<LittleEndian>(u8::type_id())?;
 
         let padding = vec![0u8; n_padding as usize];
-        write.write(&padding)?;
+        write.write_all(&padding)?;
 
         // Write projection matrix.
         if let Some(projection) = self.quantizer.projection() {
@@ -427,7 +427,7 @@ impl ReadChunk for StorageWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -450,7 +450,7 @@ impl MmapChunk for StorageWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -515,7 +515,7 @@ impl ReadChunk for StorageViewWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -535,7 +535,7 @@ impl MmapChunk for StorageViewWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or(format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -563,6 +563,9 @@ pub trait Storage {
 impl Storage for MmapArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
         CowArray::Owned(
+            // Alignment is ok, padding guarantees that the pointer is at
+            // a multiple of 4.
+            #[allow(clippy::cast_ptr_alignment)]
             unsafe { ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32) }
                 .row(idx)
                 .to_owned(),
@@ -647,7 +650,12 @@ impl StorageView for NdArray {
 
 impl StorageView for MmapArray {
     fn view(&self) -> ArrayView2<f32> {
-        unsafe { ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32) }
+        // Alignment is ok, padding guarantees that the pointer is at
+        // a multiple of 4.
+        #[allow(clippy::cast_ptr_alignment)]
+        unsafe {
+            ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32)
+        }
     }
 }
 

@@ -51,6 +51,7 @@ impl<V, S> Embeddings<V, S> {
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<V, S> Embeddings<V, S>
 where
     V: Vocab,

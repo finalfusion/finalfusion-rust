@@ -214,6 +214,8 @@ where
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
+        // ndarray#474
+        #[allow(clippy::deref_addrof)]
         let sims = similarity(
             self.storage().view().slice(s![0..self.vocab().len(), ..]),
             embed.view(),
@@ -229,7 +231,7 @@ where
             }
 
             let word_similarity = WordSimilarity {
-                word: word,
+                word,
                 similarity: NotNan::new(sim).expect("Encountered NaN"),
             };
 

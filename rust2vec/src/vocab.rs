@@ -41,7 +41,7 @@ impl ReadChunk for SimpleVocab {
         R: Read + Seek,
     {
         let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or(err_msg("Unknown chunk identifier"))?;
+            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
         ensure!(
             chunk_id == ChunkIdentifier::SimpleVocab,
             "Cannot read chunk {:?} as SimpleVocab",
@@ -147,7 +147,7 @@ impl SubwordVocab {
             .into_iter()
             .map(|idx| idx as usize + self.len())
             .collect::<Vec<_>>();
-        if indices.len() == 0 {
+        if indices.is_empty() {
             None
         } else {
             Some(indices)
@@ -161,7 +161,7 @@ impl ReadChunk for SubwordVocab {
         R: Read + Seek,
     {
         let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or(err_msg("Unknown chunk identifier"))?;
+            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
         ensure!(
             chunk_id == ChunkIdentifier::SubwordVocab,
             "Cannot read chunk {:?} as SubwordVocab",
@@ -263,7 +263,7 @@ impl ReadChunk for VocabWrap {
     {
         let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
         let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or(err_msg("Unknown chunk identifier"))?;
+            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -302,6 +302,7 @@ impl WriteChunk for VocabWrap {
 }
 
 /// Embedding vocabularies.
+#[allow(clippy::len_without_is_empty)]
 pub trait Vocab: Clone {
     /// Get the index of a token.
     fn idx(&self, word: &str) -> Option<WordIndex>;
@@ -335,8 +336,7 @@ impl Vocab for SubwordVocab {
         }
 
         // Otherwise, return the subword indices.
-        self.subword_indices(word)
-            .map(|indices| WordIndex::Subword(indices))
+        self.subword_indices(word).map(WordIndex::Subword)
     }
 
     fn len(&self) -> usize {

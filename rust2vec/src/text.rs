@@ -98,12 +98,12 @@ where
         let mut dims_iter = dims.split_whitespace();
         let vocab_len = dims_iter
             .next()
-            .ok_or(failure::err_msg("Missing vocabulary size"))?
+            .ok_or_else(|| failure::err_msg("Missing vocabulary size"))?
             .parse::<usize>()
             .context("Cannot parse vocabulary size")?;
         let embed_len = dims_iter
             .next()
-            .ok_or(failure::err_msg("Missing vocabulary size"))?
+            .ok_or_else(|| failure::err_msg("Missing vocabulary size"))?
             .parse::<usize>()
             .context("Cannot parse vocabulary size")?;
 
@@ -132,7 +132,7 @@ where
         let line = line?;
         let mut parts = line.split_whitespace();
 
-        let word = parts.next().ok_or(err_msg("Empty line"))?.trim();
+        let word = parts.next().ok_or_else(|| err_msg("Empty line"))?.trim();
         words.push(word.to_owned());
 
         for part in parts {

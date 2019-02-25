@@ -4,9 +4,11 @@ rust:
   - beta
   - nightly
 script:
+  - rustup component add clippy
   - cargo build --verbose
   - cargo test --verbose
   - ( cd rust2vec-utils ; cargo build --verbose --features "opq reductive/openblas" )
+  - cargo clippy
 matrix:
   allow_failures:
     - rust: nightly

@@ -202,7 +202,7 @@ pub(crate) mod private {
                     .read_u32::<LittleEndian>()
                     .with_context(|e| format!("Cannot read chunk identifier: {}", e))?;
                 let chunk_identifier = ChunkIdentifier::try_from(identifier)
-                    .ok_or(format_err!("Unknown chunk identifier: {}", identifier))?;
+                    .ok_or_else(|| format_err!("Unknown chunk identifier: {}", identifier))?;
                 chunk_identifiers.push(chunk_identifier);
             }
 

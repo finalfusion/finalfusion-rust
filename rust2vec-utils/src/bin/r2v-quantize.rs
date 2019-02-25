@@ -70,7 +70,7 @@ fn config_from_matches(matches: &ArgMatches) -> Config {
     let quantizer = matches
         .value_of(QUANTIZER)
         .map(ToOwned::to_owned)
-        .unwrap_or("pq".to_owned());
+        .unwrap_or_else(|| "pq".to_owned());
     let quantizer_bits = matches
         .value_of(QUANTIZER_BITS)
         .map(|a| {

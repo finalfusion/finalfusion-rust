@@ -58,7 +58,7 @@ where
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {
-            let word = read_string(reader, ' ' as u8)?;
+            let word = read_string(reader, b' ')?;
             let word = word.trim();
             words.push(word.to_owned());
 
@@ -124,7 +124,7 @@ where
     where
         W: Write,
     {
-        write!(w, "{} {}\n", self.vocab().len(), self.dims())?;
+        writeln!(w, "{} {}", self.vocab().len(), self.dims())?;
 
         for (word, embed) in self.iter() {
             write!(w, "{} ", word)?;
@@ -134,7 +134,7 @@ where
                 w.write_f32::<LittleEndian>(*v)?;
             }
 
-            w.write(&[0x0a])?;
+            w.write_all(&[0x0a])?;
         }
 
         Ok(())
