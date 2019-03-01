@@ -9,6 +9,8 @@ pub mod embeddings;
 
 pub mod io;
 
+pub mod metadata;
+
 pub mod prelude;
 
 pub mod similarity;

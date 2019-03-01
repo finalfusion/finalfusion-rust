@@ -276,7 +276,11 @@ fn main() {
 
     // Quantize
     let quantized_storage = quantize_storage(&config, embeddings.storage());
-    let quantized_embeddings = Embeddings::new(embeddings.vocab().clone(), quantized_storage);
+    let quantized_embeddings = Embeddings::new(
+        embeddings.metadata().cloned(),
+        embeddings.vocab().clone(),
+        quantized_storage,
+    );
 
     write_embeddings(&quantized_embeddings, &config.output_filename);
 

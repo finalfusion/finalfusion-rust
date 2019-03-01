@@ -79,6 +79,7 @@ pub(crate) mod private {
         NdArray = 2,
         SubwordVocab = 3,
         QuantizedArray = 4,
+        Metadata = 5,
     }
 
     impl ChunkIdentifier {
@@ -90,6 +91,7 @@ pub(crate) mod private {
                 2 => Some(NdArray),
                 3 => Some(SubwordVocab),
                 4 => Some(QuantizedArray),
+                5 => Some(Metadata),
                 _ => None,
             }
         }
@@ -151,6 +153,10 @@ pub(crate) mod private {
             Header {
                 chunk_identifiers: chunk_identifiers.into(),
             }
+        }
+
+        pub fn chunk_identifiers(&self) -> &[ChunkIdentifier] {
+            &self.chunk_identifiers
         }
     }
 

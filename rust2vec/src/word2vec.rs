@@ -79,7 +79,11 @@ where
             }
         }
 
-        Ok(Embeddings::new(SimpleVocab::new(words), NdArray(matrix)))
+        Ok(Embeddings::new(
+            None,
+            SimpleVocab::new(words),
+            NdArray(matrix),
+        ))
     }
 }
 
