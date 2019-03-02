@@ -9,18 +9,18 @@ use std::io::{BufReader, Read, Seek, Write};
 
 use failure::Error;
 
-/// Read rust2vec embeddings.
+/// Read finalfusion embeddings.
 ///
-/// This trait is used to read embeddings in the rust2vec format.
-/// Implementations are provided for the vocabulary and storage
-/// types in this crate.
+/// This trait is used to read embeddings in the finalfusion format.
+/// Implementations are provided for the vocabulary and storage types
+/// in this crate.
 ///
 /// ```
 /// use std::fs::File;
 ///
 /// use rust2vec::prelude::*;
 ///
-/// let mut f = File::open("testdata/similarity.r2v").unwrap();
+/// let mut f = File::open("testdata/similarity.fifu").unwrap();
 /// let embeddings: Embeddings<SimpleVocab, NdArray> =
 ///     Embeddings::read_embeddings(&mut f).unwrap();
 /// ```
@@ -33,9 +33,9 @@ where
         R: Read + Seek;
 }
 
-/// Memory-map rust2vec embeddings.
+/// Memory-map finalfusion embeddings.
 ///
-/// This trait is used to read rust2vec embeddings while [memory
+/// This trait is used to read finalfusion embeddings while [memory
 /// mapping](https://en.wikipedia.org/wiki/Mmap) the embedding matrix.
 /// This leads to considerable memory savings, since the operating
 /// system will load the relevant pages from disk on demand.
@@ -49,11 +49,11 @@ where
     fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self, Error>;
 }
 
-/// Write embeddings in rust2vec format.
+/// Write embeddings in finalfusion format.
 ///
-/// This trait is used to write embeddings in rust2vec format. Writing
-/// in rust2vec format is supported regardless of the original format
-/// of the embeddings.
+/// This trait is used to write embeddings in finalfusion
+/// format. Writing in finalfusion format is supported regardless of
+/// the original format of the embeddings.
 pub trait WriteEmbeddings {
     fn write_embeddings<W>(&self, write: &mut W) -> Result<(), Error>
     where
@@ -68,6 +68,8 @@ pub(crate) mod private {
     use failure::{ensure, format_err, Error, ResultExt};
 
     const MODEL_VERSION: u32 = 0;
+
+    const MAGIC: [u8; 4] = [b'F', b'i', b'F', b'u'];
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     #[repr(u32)]
@@ -161,7 +163,7 @@ pub(crate) mod private {
         where
             W: Write + Seek,
         {
-            write.write_all(&[b'R', b'2', b'V'])?;
+            write.write_all(&MAGIC)?;
             write.write_u32::<LittleEndian>(MODEL_VERSION)?;
             write.write_u32::<LittleEndian>(self.chunk_identifiers.len() as u32)?;
 
@@ -179,11 +181,12 @@ pub(crate) mod private {
             R: Read + Seek,
         {
             // Magic and version ceremony.
-            let mut magic = [0u8; 3];
+            let mut magic = [0u8; 4];
             read.read_exact(&mut magic)?;
             ensure!(
-                magic == [b'R', b'2', b'V'],
-                "File does not have rust2vec magic, expected: R2V, was: {}",
+                magic == MAGIC,
+                "File does not have finalfusion magic, expected: {}, was: {}",
+                String::from_utf8_lossy(&MAGIC),
                 String::from_utf8_lossy(&magic)
             );
             let version = read.read_u32::<LittleEndian>()?;

@@ -141,7 +141,7 @@ fn parse_args() -> ArgMatches<'static> {
                 .short("f")
                 .long("from")
                 .value_name("FORMAT")
-                .help("Input format: rust2vec, text, textdims, word2vec (default: word2vec)")
+                .help("Input format: finalfusion, text, textdims, word2vec (default: word2vec)")
                 .takes_value(true),
         )
         .arg(

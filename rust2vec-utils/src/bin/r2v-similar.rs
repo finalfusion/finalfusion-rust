@@ -17,7 +17,7 @@ fn parse_args() -> ArgMatches<'static> {
             Arg::with_name("format")
                 .short("f")
                 .value_name("FORMAT")
-                .help("Embedding format: rust2vec, rust2vec_mmap, word2vec, text, or textdims (default: rust2vec)")
+                .help("Embedding format: finalfusion, finalfusion_mmap, word2vec, text, or textdims (default: finalfusion)")
                 .takes_value(true),
         )
         .arg(
@@ -49,7 +49,7 @@ fn config_from_matches<'a>(matches: &ArgMatches<'a>) -> Config {
     let embedding_format = matches
         .value_of("format")
         .map(|f| EmbeddingFormat::try_from(f).or_exit("Cannot parse embedding format", 1))
-        .unwrap_or(EmbeddingFormat::Rust2Vec);
+        .unwrap_or(EmbeddingFormat::FinalFusion);
 
     let k = matches
         .value_of("neighbors")

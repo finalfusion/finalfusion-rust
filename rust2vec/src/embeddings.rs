@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn mmap() {
         let check_embeds = test_embeddings();
-        let mut reader = BufReader::new(File::open("testdata/similarity.r2v").unwrap());
+        let mut reader = BufReader::new(File::open("testdata/similarity.fifu").unwrap());
         let embeds: Embeddings<SimpleVocab, MmapArray> =
             Embeddings::mmap_embeddings(&mut reader).unwrap();
         assert_eq!(embeds.vocab(), check_embeds.vocab());

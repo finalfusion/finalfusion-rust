@@ -44,7 +44,7 @@ fn parse_args() -> ArgMatches<'static> {
                 .short("f")
                 .long("from")
                 .value_name("FORMAT")
-                .help("Input format: rust2vec, text, textdims, word2vec (default: word2vec)")
+                .help("Input format: finalfusion, text, textdims, word2vec (default: word2vec)")
                 .takes_value(true),
         )
         .arg(
@@ -58,7 +58,7 @@ fn parse_args() -> ArgMatches<'static> {
                 .short("t")
                 .long("to")
                 .value_name("FORMAT")
-                .help("Output format: rust2vec, text, textdims, word2vec (default: rust2vec)")
+                .help("Output format: finalfusion, text, textdims, word2vec (default: finalfusion)")
                 .takes_value(true),
         )
         .get_matches()
@@ -74,7 +74,7 @@ fn config_from_matches(matches: &ArgMatches) -> Config {
     let output_format = matches
         .value_of(OUTPUT_FORMAT)
         .map(|v| EmbeddingFormat::try_from(v).or_exit("Cannot parse output format", 1))
-        .unwrap_or(EmbeddingFormat::Rust2Vec);
+        .unwrap_or(EmbeddingFormat::FinalFusion);
 
     let normalization = !matches.is_present(NO_NORMALIZATION);
 
@@ -109,8 +109,8 @@ fn read_embeddings(
 
     use EmbeddingFormat::*;
     match embedding_format {
-        Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
-        Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
+        FinalFusion => ReadEmbeddings::read_embeddings(&mut reader),
+        FinalFusionMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
         Word2Vec => {
             ReadWord2Vec::read_word2vec_binary(&mut reader, normalization).map(Embeddings::into)
         }
@@ -130,8 +130,8 @@ fn write_embeddings(
 
     use EmbeddingFormat::*;
     match embedding_format {
-        Rust2Vec => embeddings.write_embeddings(&mut writer),
-        Rust2VecMmap => Err(err_msg("Writing to this format is not supported")),
+        FinalFusion => embeddings.write_embeddings(&mut writer),
+        FinalFusionMmap => Err(err_msg("Writing to this format is not supported")),
         Word2Vec => embeddings.write_word2vec_binary(&mut writer),
         Text => embeddings.write_text(&mut writer),
         TextDims => embeddings.write_text_dims(&mut writer),
