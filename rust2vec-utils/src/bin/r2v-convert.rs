@@ -17,10 +17,12 @@ struct Config {
     output_filename: String,
     input_format: EmbeddingFormat,
     output_format: EmbeddingFormat,
+    normalization: bool,
 }
 
 // Option constants
 static INPUT_FORMAT: &str = "input_format";
+static NO_NORMALIZATION: &str = "no_normalization";
 static OUTPUT_FORMAT: &str = "output_format";
 
 // Argument constants
@@ -46,6 +48,12 @@ fn parse_args() -> ArgMatches<'static> {
                 .takes_value(true),
         )
         .arg(
+            Arg::with_name(NO_NORMALIZATION)
+                .short("n")
+                .long("no-normalization")
+                .help("Do not normalize embeddings during conversion."),
+        )
+        .arg(
             Arg::with_name(OUTPUT_FORMAT)
                 .short("t")
                 .long("to")
@@ -68,11 +76,14 @@ fn config_from_matches(matches: &ArgMatches) -> Config {
         .map(|v| EmbeddingFormat::try_from(v).or_exit("Cannot parse output format", 1))
         .unwrap_or(EmbeddingFormat::Rust2Vec);
 
+    let normalization = !matches.is_present(NO_NORMALIZATION);
+
     Config {
         input_filename,
         output_filename,
         input_format,
         output_format,
+        normalization,
     }
 }
 
@@ -80,13 +91,18 @@ fn main() {
     let matches = parse_args();
     let config = config_from_matches(&matches);
 
-    let embeddings = read_embeddings(&config.input_filename, config.input_format);
+    let embeddings = read_embeddings(
+        &config.input_filename,
+        config.input_format,
+        config.normalization,
+    );
     write_embeddings(embeddings, &config.output_filename, config.output_format);
 }
 
 fn read_embeddings(
     filename: &str,
     embedding_format: EmbeddingFormat,
+    normalization: bool,
 ) -> Embeddings<VocabWrap, StorageWrap> {
     let f = File::open(filename).or_exit("Cannot open embeddings file", 1);
     let mut reader = BufReader::new(f);
@@ -95,9 +111,11 @@ fn read_embeddings(
     match embedding_format {
         Rust2Vec => ReadEmbeddings::read_embeddings(&mut reader),
         Rust2VecMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader, true).map(Embeddings::into),
-        Text => ReadText::read_text(&mut reader, true).map(Embeddings::into),
-        TextDims => ReadTextDims::read_text_dims(&mut reader, true).map(Embeddings::into),
+        Word2Vec => {
+            ReadWord2Vec::read_word2vec_binary(&mut reader, normalization).map(Embeddings::into)
+        }
+        Text => ReadText::read_text(&mut reader, normalization).map(Embeddings::into),
+        TextDims => ReadTextDims::read_text_dims(&mut reader, normalization).map(Embeddings::into),
     }
     .or_exit("Cannot read embeddings", 1)
 }
