@@ -15,6 +15,7 @@ rayon = "1"
 reductive = "0.2"
 rust2vec = { path = "../rust2vec", version = "0.4" }
 stdinout = "0.4"
+toml = "0.4"
 
 [features]
 default = []

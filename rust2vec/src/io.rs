@@ -28,7 +28,33 @@ pub trait ReadEmbeddings
 where
     Self: Sized,
 {
+    /// Read the embeddings.
     fn read_embeddings<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek;
+}
+
+/// Read finalfusion embeddings metadata.
+///
+/// This trait is used to read the metadata of embeddings in the
+/// finalfusion format. This is typically faster than
+/// `ReadEmbeddings::read_embeddings`.
+///
+/// ```
+/// use std::fs::File;
+///
+/// use rust2vec::prelude::*;
+///
+/// let mut f = File::open("testdata/similarity.fifu").unwrap();
+/// let metadata: Option<Metadata> =
+///     ReadMetadata::read_metadata(&mut f).unwrap();
+/// ```
+pub trait ReadMetadata
+where
+    Self: Sized,
+{
+    /// Read the metadata.
+    fn read_metadata<R>(read: &mut R) -> Result<Self, Error>
     where
         R: Read + Seek;
 }

@@ -2,7 +2,9 @@
 
 pub use crate::embeddings::Embeddings;
 
-pub use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};
+pub use crate::io::{MmapEmbeddings, ReadEmbeddings, ReadMetadata, WriteEmbeddings};
+
+pub use crate::metadata::Metadata;
 
 pub use crate::storage::{
     MmapArray, NdArray, Quantize, QuantizedArray, Storage, StorageView, StorageViewWrap,

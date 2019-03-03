@@ -4,7 +4,10 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, err_msg, Error};
 use toml::Value;
 
-use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
+use crate::io::{
+    private::{ChunkIdentifier, Header, ReadChunk, WriteChunk},
+    ReadMetadata,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Metadata(pub Value);
@@ -50,6 +53,23 @@ impl WriteChunk for Metadata {
         write.write_all(metadata_str.as_bytes())?;
 
         Ok(())
+    }
+}
+
+impl ReadMetadata for Option<Metadata> {
+    fn read_metadata<R>(read: &mut R) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
+        let header = Header::read_chunk(read)?;
+        let chunks = header.chunk_identifiers();
+        ensure!(!chunks.is_empty(), "Embedding file without chunks.");
+
+        if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
+            Ok(Some(Metadata::read_chunk(read)?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
