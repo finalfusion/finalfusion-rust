@@ -9,10 +9,3 @@ supports similarity and analogy queries. Please consult the
 [API documentation](http://docs.rs/rust2vec/) for usage information.
 
 **Note:** This package is still new, its API will change.
-
-## Installation
-
-This crate can be used with Cargo:
-
-    [dependencies]
-    rust2vec = 0.4
