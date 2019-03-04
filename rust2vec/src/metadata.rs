@@ -1,3 +1,5 @@
+//! Metadata
+
 use std::io::{Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -9,6 +11,9 @@ use crate::io::{
     ReadMetadata,
 };
 
+/// Embeddings metadata.
+///
+/// finalfusion metadata in TOML format.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Metadata(pub Value);
 
