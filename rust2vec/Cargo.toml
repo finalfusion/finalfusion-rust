@@ -1,14 +1,15 @@
 [package]
 name = "rust2vec"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2018"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
-description = "Read/writer for the word2vec binary/text files"
+description = "Reader and writer for common word embedding formats"
 documentation = "https://docs.rs/rust2vec/"
+keywords = ["embeddings", "word2vec", "glove", "finalfusion", "subword"]
 homepage = "https://github.com/danieldk/rust2vec"
 repository = "https://github.com/danieldk/rust2vec"
 license = "Apache-2.0"
-readme = "README.md"
+readme = "../README.md"
 exclude = [
   ".gitignore",
   ".travis.yml"

@@ -1,8 +1,14 @@
 [package]
 name = "rust2vec-utils"
-version = "0.1.0"
+version = "0.5.0"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 edition = "2018"
+description = "rust2vec utilities"
+documentation = "https://docs.rs/rust2vec/"
+homepage = "https://github.com/danieldk/rust2vec"
+repository = "https://github.com/danieldk/rust2vec"
+license = "Apache-2.0"
+readme = "../README.md"
 
 [dependencies]
 clap = "2"
@@ -13,7 +19,7 @@ ndarray = "0.12"
 num_cpus = "1"
 rayon = "1"
 reductive = "0.2"
-rust2vec = { path = "../rust2vec", version = "0.4" }
+rust2vec = { path = "../rust2vec", version = "0.5" }
 stdinout = "0.4"
 toml = "0.4"
 
