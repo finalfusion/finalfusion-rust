@@ -239,13 +239,13 @@ impl ReadChunk for QuantizedArray {
         let n_embeddings = read.read_u64::<LittleEndian>()? as usize;
 
         ensure!(
-            read.read_u32::<LittleEndian>()? == f32::type_id(),
-            "Expected single precision floating point matrix quantizer matrices."
+            read.read_u32::<LittleEndian>()? == u8::type_id(),
+            "Expected unsigned byte quantized embedding matrices."
         );
 
         ensure!(
-            read.read_u32::<LittleEndian>()? == u8::type_id(),
-            "Expected unsigned byte quantized embedding matrices."
+            read.read_u32::<LittleEndian>()? == f32::type_id(),
+            "Expected single precision floating point matrix quantizer matrices."
         );
 
         let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
@@ -339,9 +339,9 @@ impl WriteChunk for QuantizedArray {
         write.write_u32::<LittleEndian>(self.quantizer.n_quantizer_centroids() as u32)?;
         write.write_u64::<LittleEndian>(self.quantized.rows() as u64)?;
 
-        // Reconstruction and quantized types.
-        write.write_u32::<LittleEndian>(f32::type_id())?;
+        // Quantized and reconstruction types.
         write.write_u32::<LittleEndian>(u8::type_id())?;
+        write.write_u32::<LittleEndian>(f32::type_id())?;
 
         let padding = vec![0u8; n_padding as usize];
         write.write_all(&padding)?;
