@@ -529,6 +529,25 @@ impl ReadChunk for StorageViewWrap {
     }
 }
 
+impl WriteChunk for StorageViewWrap {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        match self {
+            StorageViewWrap::MmapArray(inner) => inner.chunk_identifier(),
+            StorageViewWrap::NdArray(inner) => inner.chunk_identifier(),
+        }
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
+        match self {
+            StorageViewWrap::MmapArray(inner) => inner.write_chunk(write),
+            StorageViewWrap::NdArray(inner) => inner.write_chunk(write),
+        }
+    }
+}
+
 impl MmapChunk for StorageViewWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error> {
         let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
