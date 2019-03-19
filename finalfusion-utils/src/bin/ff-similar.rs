@@ -1,8 +1,8 @@
 use std::io::BufRead;
 
 use clap::{App, AppSettings, Arg, ArgMatches};
-use rust2vec::similarity::Similarity;
-use rust2vec_utils::{read_embeddings_view, EmbeddingFormat};
+use finalfusion::similarity::Similarity;
+use finalfusion_utils::{read_embeddings_view, EmbeddingFormat};
 use stdinout::{Input, OrExit};
 
 static DEFAULT_CLAP_SETTINGS: &[AppSettings] = &[
@@ -11,7 +11,7 @@ static DEFAULT_CLAP_SETTINGS: &[AppSettings] = &[
 ];
 
 fn parse_args() -> ArgMatches<'static> {
-    App::new("r2v-similar")
+    App::new("ff-similar")
         .settings(DEFAULT_CLAP_SETTINGS)
         .arg(
             Arg::with_name("format")

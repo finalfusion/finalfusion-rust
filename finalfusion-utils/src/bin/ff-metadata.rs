@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
-use rust2vec::prelude::*;
+use finalfusion::prelude::*;
 use stdinout::{OrExit, Output};
 use toml::ser::to_string_pretty;
 
@@ -21,7 +21,7 @@ static INPUT: &str = "INPUT";
 static OUTPUT: &str = "OUTPUT";
 
 fn parse_args() -> ArgMatches<'static> {
-    App::new("r2v-metadata")
+    App::new("ff-metadata")
         .settings(DEFAULT_CLAP_SETTINGS)
         .arg(
             Arg::with_name(INPUT)

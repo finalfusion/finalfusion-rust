@@ -7,7 +7,7 @@ script:
   - rustup component add clippy
   - cargo build --verbose
   - cargo test --verbose
-  - ( cd rust2vec-utils ; cargo build --verbose --features "opq reductive/openblas" )
+  - ( cd finalfusion-utils ; cargo build --verbose --features "opq reductive/openblas" )
   - cargo clippy
 matrix:
   allow_failures:

@@ -3,11 +3,11 @@ use std::io::BufRead;
 use std::sync::{Arc, Mutex};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
+use finalfusion::prelude::*;
+use finalfusion::similarity::Analogy;
+use finalfusion_utils::{read_embeddings_view, EmbeddingFormat};
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
-use rust2vec::prelude::*;
-use rust2vec::similarity::Analogy;
-use rust2vec_utils::{read_embeddings_view, EmbeddingFormat};
 use stdinout::{Input, OrExit};
 
 static DEFAULT_CLAP_SETTINGS: &[AppSettings] = &[
@@ -43,7 +43,7 @@ static ANALOGIES: &str = "ANALOGIES";
 static THREADS: &str = "threads";
 
 fn parse_args() -> ArgMatches<'static> {
-    App::new("r2v-compute-accuracy")
+    App::new("ff-compute-accuracy")
         .settings(DEFAULT_CLAP_SETTINGS)
         .arg(
             Arg::with_name(THREADS)

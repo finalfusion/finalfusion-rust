@@ -18,7 +18,7 @@ use failure::Error;
 /// ```
 /// use std::fs::File;
 ///
-/// use rust2vec::prelude::*;
+/// use finalfusion::prelude::*;
 ///
 /// let mut f = File::open("testdata/similarity.fifu").unwrap();
 /// let embeddings: Embeddings<SimpleVocab, NdArray> =
@@ -43,7 +43,7 @@ where
 /// ```
 /// use std::fs::File;
 ///
-/// use rust2vec::prelude::*;
+/// use finalfusion::prelude::*;
 ///
 /// let mut f = File::open("testdata/similarity.fifu").unwrap();
 /// let metadata: Option<Metadata> =

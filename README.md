@@ -1,11 +1,12 @@
 ## Introduction
 
-[![crates.io](https://img.shields.io/crates/v/rust2vec.svg)](https://crates.io/crates/rust2vec)
-[![docs.rs](https://docs.rs/rust2vec/badge.svg)](https://docs.rs/rust2vec/)
-[![Travis CI](https://img.shields.io/travis/danieldk/rust2vec.svg)](https://travis-ci.org/danieldk/rust2vec)
+[![crates.io](https://img.shields.io/crates/v/finalfusion.svg)](https://crates.io/crates/finalfusion)
+[![docs.rs](https://docs.rs/finalfusion/badge.svg)](https://docs.rs/finalfusion/)
+[![Travis CI](https://img.shields.io/travis/finalfusion/finalfusion-rust.svg)](https://travis-ci.org/finalfusion/finalfusion-rust)
 
-This is a package for reading and writing word2vec files in Rust. It also
-supports similarity and analogy queries. Please consult the
-[API documentation](http://docs.rs/rust2vec/) for usage information.
+This is a crate for reading, writing, and using finalfusion embeddings in
+Rust. Additionally, the word2vec and GloVe file formats are also supported.
+Please consult the [API documentation](http://docs.rs/finalfusion/) for
+usage information.
 
 **Note:** This package is still new, its API will change.

@@ -1,7 +1,7 @@
 //! A library for reading, writing, and using word embeddings.
 //!
-//! rust2vec allows you to read, write, and use word2vec and GloVe
-//! embeddings. rust2vec uses *finalfusion* as its native data
+//! finalfusion allows you to read, write, and use word2vec and GloVe
+//! embeddings. finalfusion uses *finalfusion* as its native data
 //! format, which has several benefits over the word2vec and GloVe
 //! formats.
 

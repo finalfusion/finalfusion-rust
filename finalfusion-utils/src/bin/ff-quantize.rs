@@ -3,13 +3,13 @@ use std::io::BufWriter;
 use std::process;
 
 use clap::{App, AppSettings, Arg, ArgMatches};
+use finalfusion::prelude::*;
+use finalfusion_utils::{read_embeddings_view, EmbeddingFormat};
 use ndarray::ArrayView1;
 use rayon::ThreadPoolBuilder;
 use reductive::pq::PQ;
 #[cfg(feature = "opq")]
 use reductive::pq::{GaussianOPQ, OPQ};
-use rust2vec::prelude::*;
-use rust2vec_utils::{read_embeddings_view, EmbeddingFormat};
 use stdinout::OrExit;
 
 static DEFAULT_CLAP_SETTINGS: &[AppSettings] = &[
@@ -111,7 +111,7 @@ fn euclidean_distance(u: ArrayView1<f32>, v: ArrayView1<f32>) -> f32 {
 }
 
 fn parse_args() -> ArgMatches<'static> {
-    App::new("r2v-convert")
+    App::new("ff-convert")
         .settings(DEFAULT_CLAP_SETTINGS)
         .arg(
             Arg::with_name(INPUT)

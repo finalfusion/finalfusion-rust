@@ -3,8 +3,8 @@ use std::io::{BufReader, BufWriter, Read};
 
 use clap::{App, AppSettings, Arg, ArgMatches};
 use failure::err_msg;
-use rust2vec::prelude::*;
-use rust2vec_utils::EmbeddingFormat;
+use finalfusion::prelude::*;
+use finalfusion_utils::EmbeddingFormat;
 use stdinout::OrExit;
 use toml::Value;
 
@@ -33,7 +33,7 @@ static INPUT: &str = "INPUT";
 static OUTPUT: &str = "OUTPUT";
 
 fn parse_args() -> ArgMatches<'static> {
-    App::new("r2v-convert")
+    App::new("ff-convert")
         .settings(DEFAULT_CLAP_SETTINGS)
         .arg(
             Arg::with_name(INPUT)

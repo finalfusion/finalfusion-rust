@@ -17,7 +17,7 @@
 //! use std::fs::File;
 //! use std::io::BufReader;
 //!
-//! use rust2vec::prelude::*;
+//! use finalfusion::prelude::*;
 //!
 //! let mut reader = BufReader::new(File::open("testdata/similarity.txt").unwrap());
 //!

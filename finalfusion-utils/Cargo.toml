@@ -1,12 +1,12 @@
 [package]
-name = "rust2vec-utils"
+name = "finalfusion-utils"
 version = "0.5.0"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 edition = "2018"
-description = "rust2vec utilities"
-documentation = "https://docs.rs/rust2vec/"
-homepage = "https://github.com/danieldk/rust2vec"
-repository = "https://github.com/danieldk/rust2vec"
+description = "finalfusion utilities"
+documentation = "https://docs.rs/finalfusion/"
+homepage = "https://github.com/finalfusion/finalfusion-rust"
+repository = "https://github.com/finalfusion/finalfusion-rust"
 license = "Apache-2.0"
 readme = "../README.md"
 
@@ -19,7 +19,7 @@ ndarray = "0.12"
 num_cpus = "1"
 rayon = "1"
 reductive = "0.2"
-rust2vec = { path = "../rust2vec", version = "0.5" }
+finalfusion = { path = "../finalfusion", version = "0.5" }
 stdinout = "0.4"
 toml = "0.4"
 

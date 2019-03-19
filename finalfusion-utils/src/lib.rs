@@ -3,7 +3,7 @@ use std::io::BufReader;
 
 use failure::{format_err, Error, ResultExt};
 
-use rust2vec::prelude::*;
+use finalfusion::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingFormat {
