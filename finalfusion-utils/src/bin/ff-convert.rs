@@ -118,7 +118,7 @@ fn main() {
         embeddings.set_metadata(metadata);
     }
 
-    write_embeddings(embeddings, &config.output_filename, config.output_format);
+    write_embeddings(&embeddings, &config.output_filename, config.output_format);
 }
 
 fn read_metadata(filename: impl AsRef<str>) -> Value {
@@ -140,7 +140,7 @@ fn read_embeddings(
     let f = File::open(filename).or_exit("Cannot open embeddings file", 1);
     let mut reader = BufReader::new(f);
 
-    use EmbeddingFormat::*;
+    use self::EmbeddingFormat::*;
     match embedding_format {
         FinalFusion => ReadEmbeddings::read_embeddings(&mut reader),
         FinalFusionMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
@@ -154,14 +154,14 @@ fn read_embeddings(
 }
 
 fn write_embeddings(
-    embeddings: Embeddings<VocabWrap, StorageWrap>,
+    embeddings: &Embeddings<VocabWrap, StorageWrap>,
     filename: &str,
     embedding_format: EmbeddingFormat,
 ) {
     let f = File::create(filename).or_exit("Cannot create embeddings file", 1);
     let mut writer = BufWriter::new(f);
 
-    use EmbeddingFormat::*;
+    use self::EmbeddingFormat::*;
     match embedding_format {
         FinalFusion => embeddings.write_embeddings(&mut writer),
         FinalFusionMmap => Err(err_msg("Writing to this format is not supported")),

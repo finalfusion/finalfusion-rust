@@ -110,7 +110,7 @@ pub(crate) mod private {
 
     impl ChunkIdentifier {
         pub fn try_from(identifier: u32) -> Option<Self> {
-            use ChunkIdentifier::*;
+            use self::ChunkIdentifier::*;
 
             match identifier {
                 1 => Some(SimpleVocab),

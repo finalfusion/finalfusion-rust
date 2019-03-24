@@ -16,7 +16,7 @@ pub enum EmbeddingFormat {
 
 impl EmbeddingFormat {
     pub fn try_from(format: impl AsRef<str>) -> Result<Self, Error> {
-        use EmbeddingFormat::*;
+        use self::EmbeddingFormat::*;
 
         match format.as_ref() {
             "finalfusion" => Ok(FinalFusion),
@@ -36,7 +36,7 @@ pub fn read_embeddings_view(
     let f = File::open(filename).context("Cannot open embeddings file")?;
     let mut reader = BufReader::new(f);
 
-    use EmbeddingFormat::*;
+    use self::EmbeddingFormat::*;
     let embeddings = match embedding_format {
         FinalFusion => ReadEmbeddings::read_embeddings(&mut reader),
         FinalFusionMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
