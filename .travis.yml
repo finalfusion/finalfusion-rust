@@ -9,7 +9,7 @@ script:
   - cargo build --verbose
   - cargo test --verbose
   - ( cd finalfusion-utils ; cargo build --verbose --features "opq reductive/openblas" )
-  - cargo clippy
+  - cargo clippy -- -D warnings
 matrix:
   allow_failures:
     - rust: nightly
