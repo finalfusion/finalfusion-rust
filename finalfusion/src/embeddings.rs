@@ -8,14 +8,19 @@ use std::slice;
 
 use failure::{ensure, Error};
 use ndarray::Array1;
+use rand::{FromEntropy, Rng};
+use rand_xorshift::XorShiftRng;
+use reductive::pq::TrainPQ;
 
 use crate::io::{
     private::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk},
     MmapEmbeddings, ReadEmbeddings, WriteEmbeddings,
 };
 use crate::metadata::Metadata;
+use crate::norms::{NdNorms, Norms};
 use crate::storage::{
-    CowArray, CowArray1, MmapArray, NdArray, QuantizedArray, Storage, StorageViewWrap, StorageWrap,
+    CowArray, CowArray1, MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
+    StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::util::l2_normalize;
 use crate::vocab::{SimpleVocab, SubwordVocab, Vocab, VocabWrap, WordIndex};
@@ -30,21 +35,48 @@ pub struct Embeddings<V, S> {
     metadata: Option<Metadata>,
     storage: S,
     vocab: V,
+    norms: Option<NdNorms>,
 }
 
-impl<V, S> Embeddings<V, S> {
-    /// Construct an embeddings from a vocabulary and storage.
-    pub fn new(metadata: Option<Metadata>, vocab: V, storage: S) -> Self {
+impl<V, S> Embeddings<V, S>
+where
+    V: Vocab,
+{
+    /// Construct an embeddings from a vocabulary, storage, and norms.
+    ///
+    /// The embeddings for known words **must** be
+    /// normalized. However, this is not verified due to the high
+    /// computational cost.
+    pub fn new(metadata: Option<Metadata>, vocab: V, storage: S, norms: NdNorms) -> Self {
+        assert_eq!(
+            vocab.len(),
+            norms.0.len(),
+            "Vocab and norms do not have the same length"
+        );
+
         Embeddings {
             metadata,
             vocab,
             storage,
+            norms: Some(norms),
+        }
+    }
+}
+
+impl<V, S> Embeddings<V, S> {
+    pub(crate) fn new_without_norms(metadata: Option<Metadata>, vocab: V, storage: S) -> Self {
+        Embeddings {
+            metadata,
+            vocab,
+            storage,
+            norms: None,
         }
     }
 
-    /// Decompose embeddings in its vocabulary and storage.
-    pub fn into_parts(self) -> (Option<Metadata>, V, S) {
-        (self.metadata, self.vocab, self.storage)
+    /// Decompose embeddings in its vocabulary, storage, and
+    /// optionally norms.
+    pub fn into_parts(self) -> (Option<Metadata>, V, S, Option<NdNorms>) {
+        (self.metadata, self.vocab, self.storage, self.norms)
     }
 
     /// Get metadata.
@@ -55,6 +87,11 @@ impl<V, S> Embeddings<V, S> {
     /// Get metadata mutably.
     pub fn metadata_mut(&mut self) -> Option<&mut Metadata> {
         self.metadata.as_mut()
+    }
+
+    /// Get embedding norms.
+    pub fn norms(&self) -> Option<&NdNorms> {
+        self.norms.as_ref()
     }
 
     /// Set metadata.
@@ -104,10 +141,65 @@ where
         }
     }
 
+    /// Get the embedding and original norm of a word.
+    ///
+    /// Returns for a word:
+    ///
+    /// * The word embedding.
+    /// * The norm of the embedding before normalization to a unit vector.
+    ///
+    /// The original embedding can be reconstructed by multiplying all
+    /// embedding components by the original norm.
+    ///
+    /// If the model does not have associated norms, *1* will be
+    /// returned as the norm for vocabulary words.
+    pub fn embedding_with_norm(&self, word: &str) -> Option<EmbeddingWithNorm> {
+        match self.vocab.idx(word)? {
+            WordIndex::Word(idx) => Some(EmbeddingWithNorm {
+                embedding: self.storage.embedding(idx),
+                norm: self.norms().map(|n| n.norm(idx)).unwrap_or(1.),
+            }),
+            WordIndex::Subword(indices) => {
+                let mut embed = Array1::zeros((self.storage.shape().1,));
+                for idx in indices {
+                    embed += &self.storage.embedding(idx).as_view();
+                }
+
+                let norm = l2_normalize(embed.view_mut());
+
+                Some(EmbeddingWithNorm {
+                    embedding: CowArray::Owned(embed),
+                    norm,
+                })
+            }
+        }
+    }
+
     /// Get an iterator over pairs of words and the corresponding embeddings.
     pub fn iter(&self) -> Iter {
         Iter {
             storage: &self.storage,
+            inner: self.vocab.words().iter().enumerate(),
+        }
+    }
+
+    /// Get an iterator over triples of words, embeddings, and norms.
+    ///
+    /// Returns an iterator that returns triples of:
+    ///
+    /// * A word.
+    /// * Its word embedding.
+    /// * The original norm of the embedding before normalization to a unit vector.
+    ///
+    /// The original embedding can be reconstructed by multiplying all
+    /// embedding components by the original norm.
+    ///
+    /// If the model does not have associated norms, the norm is
+    /// always *1*.
+    pub fn iter_with_norms(&self) -> IterWithNorms {
+        IterWithNorms {
+            storage: &self.storage,
+            norms: self.norms(),
             inner: self.vocab.words().iter().enumerate(),
         }
     }
@@ -124,8 +216,13 @@ macro_rules! impl_embeddings_from(
     ($vocab:ty, $storage:ty, $storage_wrap:ty) => {
         impl From<Embeddings<$vocab, $storage>> for Embeddings<VocabWrap, $storage_wrap> {
             fn from(from: Embeddings<$vocab, $storage>) -> Self {
-                let (metadata, vocab, storage) = from.into_parts();
-                Embeddings::new(metadata, vocab.into(), storage.into())
+                let (metadata, vocab, storage, norms) = from.into_parts();
+                Embeddings {
+                    metadata,
+                    vocab: vocab.into(),
+                    storage: storage.into(),
+                    norms,
+                }
             }
         }
     }
@@ -176,11 +273,13 @@ where
 
         let vocab = V::read_chunk(read)?;
         let storage = S::mmap_chunk(read)?;
+        let norms = NdNorms::read_chunk(read).ok();
 
         Ok(Embeddings {
             metadata,
             vocab,
             storage,
+            norms,
         })
     }
 }
@@ -206,11 +305,13 @@ where
 
         let vocab = V::read_chunk(read)?;
         let storage = S::read_chunk(read)?;
+        let norms = NdNorms::read_chunk(read).ok();
 
         Ok(Embeddings {
             metadata,
             vocab,
             storage,
+            norms,
         })
     }
 }
@@ -245,6 +346,96 @@ where
     }
 }
 
+/// Quantizable embedding matrix.
+pub trait Quantize<V> {
+    /// Quantize the embedding matrix.
+    ///
+    /// This method trains a quantizer for the embedding matrix and
+    /// then quantizes the matrix using this quantizer.
+    ///
+    /// The xorshift PRNG is used for picking the initial quantizer
+    /// centroids.
+    fn quantize<T>(
+        &self,
+        n_subquantizers: usize,
+        n_subquantizer_bits: u32,
+        n_iterations: usize,
+        n_attempts: usize,
+        normalize: bool,
+    ) -> Embeddings<V, QuantizedArray>
+    where
+        T: TrainPQ<f32>,
+    {
+        self.quantize_using::<T, _>(
+            n_subquantizers,
+            n_subquantizer_bits,
+            n_iterations,
+            n_attempts,
+            normalize,
+            &mut XorShiftRng::from_entropy(),
+        )
+    }
+
+    /// Quantize the embedding matrix using the provided RNG.
+    ///
+    /// This method trains a quantizer for the embedding matrix and
+    /// then quantizes the matrix using this quantizer.
+    fn quantize_using<T, R>(
+        &self,
+        n_subquantizers: usize,
+        n_subquantizer_bits: u32,
+        n_iterations: usize,
+        n_attempts: usize,
+        normalize: bool,
+        rng: &mut R,
+    ) -> Embeddings<V, QuantizedArray>
+    where
+        T: TrainPQ<f32>,
+        R: Rng;
+}
+
+impl<V, S> Quantize<V> for Embeddings<V, S>
+where
+    V: Vocab,
+    S: StorageView,
+{
+    fn quantize_using<T, R>(
+        &self,
+        n_subquantizers: usize,
+        n_subquantizer_bits: u32,
+        n_iterations: usize,
+        n_attempts: usize,
+        normalize: bool,
+        rng: &mut R,
+    ) -> Embeddings<V, QuantizedArray>
+    where
+        T: TrainPQ<f32>,
+        R: Rng,
+    {
+        let quantized_storage = self.storage().quantize_using::<T, R>(
+            n_subquantizers,
+            n_subquantizer_bits,
+            n_iterations,
+            n_attempts,
+            normalize,
+            rng,
+        );
+
+        Embeddings {
+            metadata: self.metadata().cloned(),
+            vocab: self.vocab.clone(),
+            storage: quantized_storage,
+            norms: self.norms().cloned(),
+        }
+    }
+}
+
+/// An embedding with its (pre-normalization) l2 norm.
+pub struct EmbeddingWithNorm<'a> {
+    pub embedding: CowArray1<'a, f32>,
+    pub norm: f32,
+}
+
 /// Iterator over embeddings.
 pub struct Iter<'a> {
     storage: &'a Storage,
@@ -261,6 +452,29 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
+/// Iterator over embeddings.
+pub struct IterWithNorms<'a> {
+    storage: &'a Storage,
+    norms: Option<&'a NdNorms>,
+    inner: Enumerate<slice::Iter<'a, String>>,
+}
+
+impl<'a> Iterator for IterWithNorms<'a> {
+    type Item = (&'a str, EmbeddingWithNorm<'a>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(idx, word)| {
+            (
+                word.as_str(),
+                EmbeddingWithNorm {
+                    embedding: self.storage.embedding(idx),
+                    norm: self.norms.map(|n| n.0[idx]).unwrap_or(1.),
+                },
+            )
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -273,11 +487,11 @@ mod tests {
     use crate::metadata::Metadata;
     use crate::storage::{MmapArray, NdArray, StorageView};
     use crate::vocab::SimpleVocab;
-    use crate::word2vec::ReadWord2Vec;
+    use crate::word2vec::ReadWord2VecRaw;
 
     fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
-        Embeddings::read_word2vec_binary(&mut reader, false).unwrap()
+        Embeddings::read_word2vec_binary_raw(&mut reader).unwrap()
     }
 
     fn test_metadata() -> Metadata {

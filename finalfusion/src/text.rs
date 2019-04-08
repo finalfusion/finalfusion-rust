@@ -23,7 +23,7 @@
 //!
 //! // Read the embeddings. The second arguments specifies whether
 //! // the embeddings should be normalized to unit vectors.
-//! let embeddings = Embeddings::read_text_dims(&mut reader, true)
+//! let embeddings = Embeddings::read_text_dims(&mut reader)
 //!     .unwrap();
 //!
 //! // Look up an embedding.
@@ -37,8 +37,9 @@ use itertools::Itertools;
 use ndarray::Array2;
 
 use crate::embeddings::Embeddings;
-use crate::storage::{NdArray, Storage};
-use crate::util::l2_normalize;
+use crate::norms::NdNorms;
+use crate::storage::{NdArray, Storage, StorageViewMut};
+use crate::util::l2_normalize_array;
 use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a text file.
@@ -54,15 +55,36 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error>;
+    fn read_text(reader: &mut R) -> Result<Self, Error>;
 }
 
 impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text(reader: &mut R, normalize: bool) -> Result<Self, Error> {
-        read_embeds(reader, None, normalize)
+    fn read_text(reader: &mut R) -> Result<Self, Error> {
+        let (_, vocab, mut storage, _) = Self::read_text_raw(reader)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+}
+
+pub(crate) trait ReadTextRaw<R>
+where
+    Self: Sized,
+    R: BufRead,
+{
+    /// Read the unnormalized embeddings from the given buffered reader.
+    fn read_text_raw(reader: &mut R) -> Result<Self, Error>;
+}
+
+impl<R> ReadTextRaw<R> for Embeddings<SimpleVocab, NdArray>
+where
+    R: BufRead,
+{
+    fn read_text_raw(reader: &mut R) -> Result<Self, Error> {
+        read_embeds(reader, None)
     }
 }
 
@@ -84,14 +106,35 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error>;
+    fn read_text_dims(reader: &mut R) -> Result<Self, Error>;
 }
 
 impl<R> ReadTextDims<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text_dims(reader: &mut R, normalize: bool) -> Result<Self, Error> {
+    fn read_text_dims(reader: &mut R) -> Result<Self, Error> {
+        let (_, vocab, mut storage, _) = Self::read_text_dims_raw(reader)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+}
+
+pub(crate) trait ReadTextDimsRaw<R>
+where
+    Self: Sized,
+    R: BufRead,
+{
+    /// Read the unnormalized embeddings from the given buffered reader.
+    fn read_text_dims_raw(reader: &mut R) -> Result<Self, Error>;
+}
+
+impl<R> ReadTextDimsRaw<R> for Embeddings<SimpleVocab, NdArray>
+where
+    R: BufRead,
+{
+    fn read_text_dims_raw(reader: &mut R) -> Result<Self, Error> {
         let mut dims = String::new();
         reader.read_line(&mut dims)?;
 
@@ -107,14 +150,13 @@ where
             .parse::<usize>()
             .context("Cannot parse vocabulary size")?;
 
-        read_embeds(reader, Some((vocab_len, embed_len)), normalize)
+        read_embeds(reader, Some((vocab_len, embed_len)))
     }
 }
 
 fn read_embeds<R>(
     reader: &mut R,
     shape: Option<(usize, usize)>,
-    normalize: bool,
 ) -> Result<Embeddings<SimpleVocab, NdArray>, Error>
 where
     R: BufRead,
@@ -164,15 +206,9 @@ where
         "Number of dimensions per vector is not constant"
     );
 
-    let mut matrix = Array2::from_shape_vec(shape, data)?;
+    let matrix = Array2::from_shape_vec(shape, data)?;
 
-    if normalize {
-        for mut embedding in matrix.outer_iter_mut() {
-            l2_normalize(embedding.view_mut());
-        }
-    }
-
-    Ok(Embeddings::new(
+    Ok(Embeddings::new_without_norms(
         None,
         SimpleVocab::new(words),
         NdArray(matrix),
@@ -246,21 +282,21 @@ mod tests {
     use crate::embeddings::Embeddings;
     use crate::storage::{NdArray, StorageView};
     use crate::vocab::{SimpleVocab, Vocab};
-    use crate::word2vec::ReadWord2Vec;
+    use crate::word2vec::ReadWord2VecRaw;
 
-    use super::{ReadText, ReadTextDims, WriteText, WriteTextDims};
+    use super::{ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
 
     fn read_word2vec() -> Embeddings<SimpleVocab, NdArray> {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        Embeddings::read_word2vec_binary(&mut reader, false).unwrap()
+        Embeddings::read_word2vec_binary_raw(&mut reader).unwrap()
     }
 
     #[test]
     fn read_text() {
         let f = File::open("testdata/similarity.nodims").unwrap();
         let mut reader = BufReader::new(f);
-        let text_embeddings = Embeddings::read_text(&mut reader, false).unwrap();
+        let text_embeddings = Embeddings::read_text_raw(&mut reader).unwrap();
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
@@ -274,7 +310,7 @@ mod tests {
     fn read_text_dims() {
         let f = File::open("testdata/similarity.txt").unwrap();
         let mut reader = BufReader::new(f);
-        let text_embeddings = Embeddings::read_text_dims(&mut reader, false).unwrap();
+        let text_embeddings = Embeddings::read_text_dims_raw(&mut reader).unwrap();
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
@@ -292,7 +328,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_text(&mut reader, false).unwrap();
+        let embeddings = Embeddings::read_text_raw(&mut reader).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
@@ -309,7 +345,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_text_dims(&mut reader, false).unwrap();
+        let embeddings = Embeddings::read_text_dims_raw(&mut reader).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();

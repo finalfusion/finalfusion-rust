@@ -13,7 +13,7 @@
 //!
 //! // Read the embeddings. The second arguments specifies whether
 //! // the embeddings should be normalized to unit vectors.
-//! let embeddings = Embeddings::read_word2vec_binary(&mut reader, true)
+//! let embeddings = Embeddings::read_word2vec_binary(&mut reader)
 //!     .unwrap();
 //!
 //! // Look up an embedding.
@@ -29,8 +29,9 @@ use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
 use crate::embeddings::Embeddings;
-use crate::storage::{NdArray, Storage};
-use crate::util::l2_normalize;
+use crate::norms::NdNorms;
+use crate::storage::{NdArray, Storage, StorageViewMut};
+use crate::util::l2_normalize_array;
 use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a word2vec binary file.
@@ -43,14 +44,36 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary(reader: &mut R, normalize: bool) -> Result<Self, Error>;
+    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error>;
 }
 
 impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_word2vec_binary(reader: &mut R, normalize: bool) -> Result<Self, Error> {
+    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error> {
+        let (_, vocab, mut storage, _) = Embeddings::read_word2vec_binary_raw(reader)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+}
+
+/// Read raw, unnormalized embeddings.
+pub(crate) trait ReadWord2VecRaw<R>
+where
+    Self: Sized,
+    R: BufRead,
+{
+    /// Read the embeddings from the given buffered reader.
+    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self, Error>;
+}
+
+impl<R> ReadWord2VecRaw<R> for Embeddings<SimpleVocab, NdArray>
+where
+    R: BufRead,
+{
+    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self, Error> {
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
@@ -73,13 +96,7 @@ where
             }
         }
 
-        if normalize {
-            for mut embedding in matrix.outer_iter_mut() {
-                l2_normalize(embedding.view_mut());
-            }
-        }
-
-        Ok(Embeddings::new(
+        Ok(Embeddings::new_without_norms(
             None,
             SimpleVocab::new(words),
             NdArray(matrix),

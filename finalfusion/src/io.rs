@@ -106,6 +106,7 @@ pub(crate) mod private {
         SubwordVocab = 3,
         QuantizedArray = 4,
         Metadata = 5,
+        NdNorms = 6,
     }
 
     impl ChunkIdentifier {
@@ -118,6 +119,7 @@ pub(crate) mod private {
                 3 => Some(SubwordVocab),
                 4 => Some(QuantizedArray),
                 5 => Some(Metadata),
+                6 => Some(NdNorms),
                 _ => None,
             }
         }
