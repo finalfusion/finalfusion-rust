@@ -19,13 +19,11 @@ struct Config {
     metadata_filename: Option<String>,
     input_format: EmbeddingFormat,
     output_format: EmbeddingFormat,
-    normalization: bool,
 }
 
 // Option constants
 static INPUT_FORMAT: &str = "input_format";
 static METADATA_FILENAME: &str = "metadata_filename";
-static NO_NORMALIZATION: &str = "no_normalization";
 static OUTPUT_FORMAT: &str = "output_format";
 
 // Argument constants
@@ -59,12 +57,6 @@ fn parse_args() -> ArgMatches<'static> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name(NO_NORMALIZATION)
-                .short("n")
-                .long("no-normalization")
-                .help("Do not normalize embeddings during conversion."),
-        )
-        .arg(
             Arg::with_name(OUTPUT_FORMAT)
                 .short("t")
                 .long("to")
@@ -89,15 +81,12 @@ fn config_from_matches(matches: &ArgMatches) -> Config {
 
     let metadata_filename = matches.value_of(METADATA_FILENAME).map(ToOwned::to_owned);
 
-    let normalization = !matches.is_present(NO_NORMALIZATION);
-
     Config {
         input_filename,
         output_filename,
         input_format,
         output_format,
         metadata_filename,
-        normalization,
     }
 }
 
@@ -107,11 +96,7 @@ fn main() {
 
     let metadata = config.metadata_filename.map(read_metadata).map(Metadata);
 
-    let mut embeddings = read_embeddings(
-        &config.input_filename,
-        config.input_format,
-        config.normalization,
-    );
+    let mut embeddings = read_embeddings(&config.input_filename, config.input_format);
 
     // Overwrite metadata if provided, otherwise retain existing metadata.
     if metadata.is_some() {
@@ -135,7 +120,6 @@ fn read_metadata(filename: impl AsRef<str>) -> Value {
 fn read_embeddings(
     filename: &str,
     embedding_format: EmbeddingFormat,
-    normalization: bool,
 ) -> Embeddings<VocabWrap, StorageWrap> {
     let f = File::open(filename).or_exit("Cannot open embeddings file", 1);
     let mut reader = BufReader::new(f);
@@ -144,11 +128,9 @@ fn read_embeddings(
     match embedding_format {
         FinalFusion => ReadEmbeddings::read_embeddings(&mut reader),
         FinalFusionMmap => MmapEmbeddings::mmap_embeddings(&mut reader),
-        Word2Vec => {
-            ReadWord2Vec::read_word2vec_binary(&mut reader, normalization).map(Embeddings::into)
-        }
-        Text => ReadText::read_text(&mut reader, normalization).map(Embeddings::into),
-        TextDims => ReadTextDims::read_text_dims(&mut reader, normalization).map(Embeddings::into),
+        Word2Vec => ReadWord2Vec::read_word2vec_binary(&mut reader).map(Embeddings::into),
+        Text => ReadText::read_text(&mut reader).map(Embeddings::into),
+        TextDims => ReadTextDims::read_text_dims(&mut reader).map(Embeddings::into),
     }
     .or_exit("Cannot read embeddings", 1)
 }

@@ -11,6 +11,8 @@ pub mod io;
 
 pub mod metadata;
 
+pub mod norms;
+
 pub mod prelude;
 
 pub mod similarity;

@@ -201,11 +201,20 @@ fn print_loss(storage: &StorageView, quantized_storage: &Storage) {
 }
 
 #[cfg(not(feature = "opq"))]
-fn quantize_storage(config: &Config, storage: &impl StorageView) -> QuantizedArray {
-    let n_subquantizers = config.n_subquantizers.unwrap_or(storage.shape().1 / 2);
+fn quantize_embeddings<V, S>(
+    config: &Config,
+    embeddings: &Embeddings<V, S>,
+) -> Embeddings<V, QuantizedArray>
+where
+    V: Vocab,
+    S: StorageView,
+{
+    let n_subquantizers = config
+        .n_subquantizers
+        .unwrap_or(embeddings.storage().shape().1 / 2);
 
     match config.quantizer.as_str() {
-        "pq" => storage.quantize::<PQ<f32>>(
+        "pq" => embeddings.quantize::<PQ<f32>>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
@@ -220,25 +229,34 @@ fn quantize_storage(config: &Config, storage: &impl StorageView) -> QuantizedArr
 }
 
 #[cfg(feature = "opq")]
-fn quantize_storage(config: &Config, storage: &impl StorageView) -> QuantizedArray {
-    let n_subquantizers = config.n_subquantizers.unwrap_or(storage.shape().1 / 2);
+fn quantize_embeddings<V, S>(
+    config: &Config,
+    embeddings: &Embeddings<V, S>,
+) -> Embeddings<V, QuantizedArray>
+where
+    V: Vocab,
+    S: StorageView,
+{
+    let n_subquantizers = config
+        .n_subquantizers
+        .unwrap_or(embeddings.storage().shape().1 / 2);
 
     match config.quantizer.as_str() {
-        "pq" => storage.quantize::<PQ<f32>>(
+        "pq" => embeddings.quantize::<PQ<f32>>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
             true,
         ),
-        "opq" => storage.quantize::<OPQ>(
+        "opq" => embeddings.quantize::<OPQ>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
             config.n_attempts,
             true,
         ),
-        "gaussian_opq" => storage.quantize::<GaussianOPQ>(
+        "gaussian_opq" => embeddings.quantize::<GaussianOPQ>(
             n_subquantizers,
             config.quantizer_bits,
             config.n_iterations,
@@ -275,13 +293,7 @@ fn main() {
         .or_exit("Cannot read embeddings", 1);
 
     // Quantize
-    let quantized_storage = quantize_storage(&config, embeddings.storage());
-    let quantized_embeddings = Embeddings::new(
-        embeddings.metadata().cloned(),
-        embeddings.vocab().clone(),
-        quantized_storage,
-    );
-
+    let quantized_embeddings = quantize_embeddings(&config, &embeddings);
     write_embeddings(&quantized_embeddings, &config.output_filename);
 
     print_loss(embeddings.storage(), quantized_embeddings.storage());

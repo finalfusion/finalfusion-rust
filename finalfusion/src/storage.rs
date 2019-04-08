@@ -7,12 +7,13 @@ use std::mem::size_of;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use failure::{ensure, format_err, Error};
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array, Array1, Array2, ArrayView, ArrayView2, Dimension, Ix1, Ix2};
+use ndarray::{Array, Array1, Array2, ArrayView, ArrayView2, ArrayViewMut2, Dimension, Ix1, Ix2};
 use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use crate::io::private::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+use crate::util::padding;
 
 /// Copy-on-write wrapper for `Array`/`ArrayView`.
 ///
@@ -687,6 +688,18 @@ impl StorageView for StorageViewWrap {
     }
 }
 
+/// Storage that provide a mutable view of the embedding matrix.
+pub(crate) trait StorageViewMut: Storage {
+    /// Get a view of the embedding matrix.
+    fn view_mut(&mut self) -> ArrayViewMut2<f32>;
+}
+
+impl StorageViewMut for NdArray {
+    fn view_mut(&mut self) -> ArrayViewMut2<f32> {
+        self.0.view_mut()
+    }
+}
+
 /// Quantizable embedding matrix.
 pub trait Quantize {
     /// Quantize the embedding matrix.
@@ -784,11 +797,6 @@ where
             norms,
         }
     }
-}
-
-fn padding<T>(pos: u64) -> u64 {
-    let size = size_of::<T>() as u64;
-    size - (pos % size)
 }
 
 #[cfg(test)]

@@ -1,14 +1,13 @@
 //! Prelude exports the most commonly-used types and traits.
 
-pub use crate::embeddings::Embeddings;
+pub use crate::embeddings::{Embeddings, Quantize};
 
 pub use crate::io::{MmapEmbeddings, ReadEmbeddings, ReadMetadata, WriteEmbeddings};
 
 pub use crate::metadata::Metadata;
 
 pub use crate::storage::{
-    MmapArray, NdArray, Quantize, QuantizedArray, Storage, StorageView, StorageViewWrap,
-    StorageWrap,
+    MmapArray, NdArray, QuantizedArray, Storage, StorageView, StorageViewWrap, StorageWrap,
 };
 
 pub use crate::text::{ReadText, ReadTextDims, WriteText, WriteTextDims};
