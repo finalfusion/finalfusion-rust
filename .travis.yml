@@ -8,7 +8,6 @@ script:
   - rustup component add clippy
   - cargo build --verbose
   - cargo test --verbose
-  - ( cd finalfusion-utils ; cargo build --verbose --features "opq reductive/openblas" )
   - cargo clippy -- -D warnings
 matrix:
   allow_failures:
