@@ -480,7 +480,7 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Seek, SeekFrom};
 
-    use toml::{toml, toml_internal};
+    use toml::toml;
 
     use super::Embeddings;
     use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};

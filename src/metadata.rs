@@ -83,7 +83,7 @@ mod tests {
     use std::io::{Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
-    use toml::{toml, toml_internal};
+    use toml::toml;
 
     use super::Metadata;
     use crate::io::private::{ReadChunk, WriteChunk};
