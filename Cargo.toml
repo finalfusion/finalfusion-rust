@@ -9,7 +9,7 @@ keywords = ["embeddings", "word2vec", "glove", "finalfusion", "subword"]
 homepage = "https://github.com/finalfusion/finalfusion-rust"
 repository = "https://github.com/finalfusion/finalfusion-rust"
 license = "Apache-2.0"
-readme = "../README.md"
+readme = "README.md"
 exclude = [
   ".gitignore",
   ".travis.yml"
