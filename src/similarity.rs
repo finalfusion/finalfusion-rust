@@ -53,6 +53,30 @@ pub trait Analogy {
         word2: &str,
         word3: &str,
         limit: usize,
+    ) -> Option<Vec<WordSimilarity>> {
+        self.analogy_masked(word1, word2, word3, limit, [true, true, true])
+    }
+
+    /// Perform an analogy query.
+    ///
+    /// This method returns words that are close in vector space for the
+    /// analogy query `word1` is to `word2` as `word3` is to `?`. More
+    /// concretely, it searches embeddings that are similar to:
+    ///
+    /// *embedding(word2) - embedding(word1) + embedding(word3)*
+    ///
+    /// At most, `limit` results are returned.
+    ///
+    /// `remove` specifies which parts of the queries are excluded from the
+    /// output candidates. If `remove[0]` is `true`, `word1` cannot be
+    /// returned as an answer to the query.
+    fn analogy_masked(
+        &self,
+        word1: &str,
+        word2: &str,
+        word3: &str,
+        limit: usize,
+        remove: [bool; 3],
     ) -> Option<Vec<WordSimilarity>>;
 }
 
@@ -61,19 +85,21 @@ where
     V: Vocab,
     S: StorageView,
 {
-    fn analogy(
+    fn analogy_masked(
         &self,
         word1: &str,
         word2: &str,
         word3: &str,
         limit: usize,
+        remove: [bool; 3],
     ) -> Option<Vec<WordSimilarity>> {
-        self.analogy_by(word1, word2, word3, limit, |embeds, embed| {
-            embeds.dot(&embed)
-        })
+        {
+            self.analogy_by_masked(word1, word2, word3, limit, remove, |embeds, embed| {
+                embeds.dot(&embed)
+            })
+        }
     }
 }
-
 /// Trait for analogy queries with a custom similarity function.
 pub trait AnalogyBy {
     /// Perform an analogy query using the given similarity function.
@@ -94,6 +120,34 @@ pub trait AnalogyBy {
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
+    {
+        self.analogy_by_masked(word1, word2, word3, limit, [true, true, true], similarity)
+    }
+
+    /// Perform an analogy query using the given similarity function.
+    ///
+    /// This method returns words that are close in vector space the analogy
+    /// query `word1` is to `word2` as `word3` is to `?`. More concretely,
+    /// it searches embeddings that are similar to:
+    ///
+    /// *embedding(word2) - embedding(word1) + embedding(word3)*
+    ///
+    /// At most, `limit` results are returned.
+    ///
+    /// `remove` specifies which parts of the queries are excluded from the
+    /// output candidates. If `remove[0]` is `true`, `word1` cannot be
+    /// returned as an answer to the query.
+    fn analogy_by_masked<F>(
+        &self,
+        word1: &str,
+        word2: &str,
+        word3: &str,
+        limit: usize,
+        remove: [bool; 3],
+        similarity: F,
+    ) -> Option<Vec<WordSimilarity>>
+    where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
@@ -102,12 +156,13 @@ where
     V: Vocab,
     S: StorageView,
 {
-    fn analogy_by<F>(
+    fn analogy_by_masked<F>(
         &self,
         word1: &str,
         word2: &str,
         word3: &str,
         limit: usize,
+        remove: [bool; 3],
         similarity: F,
     ) -> Option<Vec<WordSimilarity>>
     where
@@ -120,7 +175,12 @@ where
         let mut embedding = (&embedding2.as_view() - &embedding1.as_view()) + embedding3.as_view();
         l2_normalize(embedding.view_mut());
 
-        let skip = [word1, word2, word3].iter().cloned().collect();
+        let skip = [word1, word2, word3]
+            .iter()
+            .zip(remove.iter())
+            .filter(|(_, &exclude)| exclude)
+            .map(|(word, _)| word.to_owned())
+            .collect();
 
         Some(self.similarity_(embedding.view(), &skip, limit, similarity))
     }
