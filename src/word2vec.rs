@@ -30,7 +30,7 @@ use ndarray::{Array2, Axis};
 
 use crate::embeddings::Embeddings;
 use crate::norms::NdNorms;
-use crate::storage::{NdArray, Storage, StorageViewMut};
+use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::util::l2_normalize_array;
 use crate::vocab::{SimpleVocab, Vocab};
 
@@ -132,7 +132,10 @@ where
     W: Write,
 {
     /// Write the embeddings from the given writer.
-    fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>;
+    ///
+    /// If `unnormalize` is `true`, the norms vector is used to
+    /// restore the original vector magnitudes.
+    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<(), Error>;
 }
 
 impl<W, V, S> WriteWord2Vec<W> for Embeddings<V, S>
@@ -141,16 +144,21 @@ where
     V: Vocab,
     S: Storage,
 {
-    fn write_word2vec_binary(&self, w: &mut W) -> Result<(), Error>
+    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<(), Error>
     where
         W: Write,
     {
         writeln!(w, "{} {}", self.vocab().len(), self.dims())?;
 
-        for (word, embed) in self.iter() {
+        for (word, embed_norm) in self.iter_with_norms() {
             write!(w, "{} ", word)?;
 
-            // Write embedding to a vector with little-endian encoding.
+            let embed = if unnormalize {
+                CowArray::Owned(embed_norm.into_unnormalized())
+            } else {
+                embed_norm.embedding
+            };
+
             for v in embed.as_view() {
                 w.write_f32::<LittleEndian>(*v)?;
             }

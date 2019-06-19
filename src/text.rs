@@ -38,7 +38,7 @@ use ndarray::Array2;
 
 use crate::embeddings::Embeddings;
 use crate::norms::NdNorms;
-use crate::storage::{NdArray, Storage, StorageViewMut};
+use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::util::l2_normalize_array;
 use crate::vocab::{SimpleVocab, Vocab};
 
@@ -227,7 +227,10 @@ where
     W: Write,
 {
     /// Read the embeddings from the given buffered reader.
-    fn write_text(&self, writer: &mut W) -> Result<(), Error>;
+    ///
+    /// If `unnormalize` is `true`, the norms vector is used to
+    /// restore the original vector magnitudes.
+    fn write_text(&self, writer: &mut W, unnormalize: bool) -> Result<(), Error>;
 }
 
 impl<W, V, S> WriteText<W> for Embeddings<V, S>
@@ -236,9 +239,14 @@ where
     V: Vocab,
     S: Storage,
 {
-    /// Write the embeddings to the given writer.
-    fn write_text(&self, write: &mut W) -> Result<(), Error> {
-        for (word, embed) in self.iter() {
+    fn write_text(&self, write: &mut W, unnormalize: bool) -> Result<(), Error> {
+        for (word, embed_norm) in self.iter_with_norms() {
+            let embed = if unnormalize {
+                CowArray::Owned(embed_norm.into_unnormalized())
+            } else {
+                embed_norm.embedding
+            };
+
             let embed_str = embed.as_view().iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", word, embed_str)?;
         }
@@ -259,7 +267,10 @@ where
     W: Write,
 {
     /// Write the embeddings to the given writer.
-    fn write_text_dims(&self, writer: &mut W) -> Result<(), Error>;
+    ///
+    /// If `unnormalize` is `true`, the norms vector is used to
+    /// restore the original vector magnitudes.
+    fn write_text_dims(&self, writer: &mut W, unnormalize: bool) -> Result<(), Error>;
 }
 
 impl<W, V, S> WriteTextDims<W> for Embeddings<V, S>
@@ -268,23 +279,23 @@ where
     V: Vocab,
     S: Storage,
 {
-    fn write_text_dims(&self, write: &mut W) -> Result<(), Error> {
+    fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<(), Error> {
         writeln!(write, "{} {}", self.vocab().len(), self.dims())?;
-        self.write_text(write)
+        self.write_text(write, unnormalize)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::{BufReader, Read, Seek, SeekFrom};
+    use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
     use crate::embeddings::Embeddings;
     use crate::storage::{NdArray, StorageView};
     use crate::vocab::{SimpleVocab, Vocab};
     use crate::word2vec::ReadWord2VecRaw;
 
-    use super::{ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
+    use super::{ReadText, ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
 
     fn read_word2vec() -> Embeddings<SimpleVocab, NdArray> {
         let f = File::open("testdata/similarity.bin").unwrap();
@@ -332,7 +343,7 @@ mod tests {
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
-        embeddings.write_text(&mut output).unwrap();
+        embeddings.write_text(&mut output, false).unwrap();
 
         assert_eq!(check, String::from_utf8_lossy(&output));
     }
@@ -349,8 +360,32 @@ mod tests {
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
-        embeddings.write_text_dims(&mut output).unwrap();
+        embeddings.write_text_dims(&mut output, false).unwrap();
 
         assert_eq!(check, String::from_utf8_lossy(&output));
     }
+
+    #[test]
+    fn test_word2vec_text_write_unnormalized() {
+        let mut reader = BufReader::new(File::open("testdata/similarity.nodims").unwrap());
+
+        // Read unnormalized embeddings
+        let embeddings_check = Embeddings::read_text_raw(&mut reader).unwrap();
+
+        // Read normalized embeddings.
+        reader.seek(SeekFrom::Start(0)).unwrap();
+        let embeddings = Embeddings::read_text(&mut reader).unwrap();
+
+        // Write embeddings to a byte vector.
+        let mut output = Vec::new();
+        embeddings.write_text(&mut output, true).unwrap();
+
+        let embeddings = Embeddings::read_text_raw(&mut Cursor::new(&output)).unwrap();
+
+        assert!(embeddings
+            .storage()
+            .0
+            .all_close(&embeddings_check.storage().0, 1e-6));
+    }
+
 }

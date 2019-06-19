@@ -436,6 +436,15 @@ pub struct EmbeddingWithNorm<'a> {
     pub norm: f32,
 }
 
+impl<'a> EmbeddingWithNorm<'a> {
+    // Compute the unnormalized embedding.
+    pub fn into_unnormalized(self) -> Array1<f32> {
+        let mut unnormalized = self.embedding.into_owned();
+        unnormalized *= self.norm;
+        unnormalized
+    }
+}
+
 /// Iterator over embeddings.
 pub struct Iter<'a> {
     storage: &'a Storage,
