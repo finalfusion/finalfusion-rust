@@ -1,6 +1,6 @@
 [package]
 name = "finalfusion"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2018"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 description = "Reader and writer for common word embedding formats"
@@ -8,7 +8,9 @@ documentation = "https://docs.rs/finalfusion/"
 keywords = ["embeddings", "word2vec", "glove", "finalfusion", "subword"]
 homepage = "https://github.com/finalfusion/finalfusion-rust"
 repository = "https://github.com/finalfusion/finalfusion-rust"
-license = "BlueOak-1.0.0"
+# Use after SPDX list is updated
+# license = "BlueOak-1.0.0"
+license-file = "LICENSE.md"
 readme = "README.md"
 exclude = [
   ".gitignore",
