@@ -342,6 +342,11 @@ where
 
         self.vocab.write_chunk(write)?;
         self.storage.write_chunk(write)?;
+
+        if let Some(norms) = self.norms() {
+            norms.write_chunk(write)?;
+        }
+
         Ok(())
     }
 }
@@ -489,11 +494,13 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Seek, SeekFrom};
 
+    use ndarray::array;
     use toml::toml;
 
     use super::Embeddings;
     use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};
     use crate::metadata::Metadata;
+    use crate::norms::NdNorms;
     use crate::storage::{MmapArray, NdArray, StorageView};
     use crate::vocab::SimpleVocab;
     use crate::word2vec::ReadWord2VecRaw;
@@ -523,6 +530,27 @@ mod tests {
             Embeddings::mmap_embeddings(&mut reader).unwrap();
         assert_eq!(embeds.vocab(), check_embeds.vocab());
         assert_eq!(embeds.storage().view(), check_embeds.storage().view());
+    }
+
+    #[test]
+    fn norms() {
+        let vocab = SimpleVocab::new(vec!["norms".to_string(), "test".to_string()]);
+        let storage = NdArray(array![[1f32], [-1f32]]);
+        let norms = NdNorms(array![2f32, 3f32]);
+        let check = Embeddings::new(None, vocab, storage, norms);
+
+        let mut serialized = Cursor::new(Vec::new());
+        check.write_embeddings(&mut serialized).unwrap();
+        serialized.seek(SeekFrom::Start(0)).unwrap();
+
+        let embeddings: Embeddings<SimpleVocab, NdArray> =
+            Embeddings::read_embeddings(&mut serialized).unwrap();
+
+        assert!(check
+            .norms()
+            .unwrap()
+            .0
+            .all_close(&embeddings.norms().unwrap().0, 1e-8),);
     }
 
     #[test]
