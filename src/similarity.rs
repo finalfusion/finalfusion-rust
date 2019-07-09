@@ -7,7 +7,7 @@ use ndarray::{s, Array1, ArrayView1, ArrayView2};
 use ordered_float::NotNan;
 
 use crate::embeddings::Embeddings;
-use crate::storage::StorageView;
+use crate::storage::{CowArray1, Storage, StorageView};
 use crate::util::l2_normalize;
 use crate::vocab::Vocab;
 
@@ -46,14 +46,16 @@ pub trait Analogy {
     ///
     /// *embedding(word2) - embedding(word1) + embedding(word3)*
     ///
-    /// At most, `limit` results are returned.
+    /// At most, `limit` results are returned. `Result::Err` is returned
+    /// when no embedding could be computed for one or more of the tokens,
+    /// indicating which of the tokens were present.
     fn analogy(
         &self,
         word1: &str,
         word2: &str,
         word3: &str,
         limit: usize,
-    ) -> Option<Vec<WordSimilarity>> {
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]> {
         self.analogy_masked(word1, word2, word3, limit, [true, true, true])
     }
 
@@ -70,6 +72,10 @@ pub trait Analogy {
     /// `remove` specifies which parts of the queries are excluded from the
     /// output candidates. If `remove[0]` is `true`, `word1` cannot be
     /// returned as an answer to the query.
+    ///
+    ///`Result::Err` is returned when no embedding could be computed
+    /// for one or more of the tokens, indicating which of the tokens
+    /// were present.
     fn analogy_masked(
         &self,
         word1: &str,
@@ -77,7 +83,7 @@ pub trait Analogy {
         word3: &str,
         limit: usize,
         remove: [bool; 3],
-    ) -> Option<Vec<WordSimilarity>>;
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]>;
 }
 
 impl<V, S> Analogy for Embeddings<V, S>
@@ -92,7 +98,7 @@ where
         word3: &str,
         limit: usize,
         remove: [bool; 3],
-    ) -> Option<Vec<WordSimilarity>> {
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]> {
         {
             self.analogy_by_masked(word1, word2, word3, limit, remove, |embeds, embed| {
                 embeds.dot(&embed)
@@ -111,6 +117,10 @@ pub trait AnalogyBy {
     /// *embedding(word2) - embedding(word1) + embedding(word3)*
     ///
     /// At most, `limit` results are returned.
+    ///
+    ///`Result::Err` is returned when no embedding could be computed
+    /// for one or more of the tokens, indicating which of the tokens
+    /// were present.
     fn analogy_by<F>(
         &self,
         word1: &str,
@@ -118,7 +128,7 @@ pub trait AnalogyBy {
         word3: &str,
         limit: usize,
         similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
@@ -138,6 +148,10 @@ pub trait AnalogyBy {
     /// `remove` specifies which parts of the queries are excluded from the
     /// output candidates. If `remove[0]` is `true`, `word1` cannot be
     /// returned as an answer to the query.
+    ///
+    ///`Result::Err` is returned when no embedding could be computed
+    /// for one or more of the tokens, indicating which of the tokens
+    /// were present.
     fn analogy_by_masked<F>(
         &self,
         word1: &str,
@@ -146,7 +160,7 @@ pub trait AnalogyBy {
         limit: usize,
         remove: [bool; 3],
         similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
@@ -164,13 +178,11 @@ where
         limit: usize,
         remove: [bool; 3],
         similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
+    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let embedding1 = self.embedding(word1)?;
-        let embedding2 = self.embedding(word2)?;
-        let embedding3 = self.embedding(word3)?;
+        let [embedding1, embedding2, embedding3] = lookup_words3(self, word1, word2, word3)?;
 
         let mut embedding = (&embedding2.as_view() - &embedding1.as_view()) + embedding3.as_view();
         l2_normalize(embedding.view_mut());
@@ -182,7 +194,7 @@ where
             .map(|(word, _)| word.to_owned())
             .collect();
 
-        Some(self.similarity_(embedding.view(), &skip, limit, similarity))
+        Ok(self.similarity_(embedding.view(), &skip, limit, similarity))
     }
 }
 
@@ -307,6 +319,37 @@ where
 
         results.into_sorted_vec()
     }
+}
+
+fn lookup_words3<'a, V, S>(
+    embeddings: &'a Embeddings<V, S>,
+    word1: &str,
+    word2: &str,
+    word3: &str,
+) -> Result<[CowArray1<'a, f32>; 3], [bool; 3]>
+where
+    V: Vocab,
+    S: Storage,
+{
+    let embedding1 = embeddings.embedding(word1);
+    let embedding2 = embeddings.embedding(word2);
+    let embedding3 = embeddings.embedding(word3);
+
+    let present = [
+        embedding1.is_some(),
+        embedding2.is_some(),
+        embedding3.is_some(),
+    ];
+
+    if !present.iter().all(|&present| present) {
+        return Err(present);
+    }
+
+    Ok([
+        embedding1.unwrap(),
+        embedding2.unwrap(),
+        embedding3.unwrap(),
+    ])
 }
 
 #[cfg(test)]
@@ -470,13 +513,33 @@ mod tests {
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
         let result = embeddings.analogy("Paris", "Frankreich", "Berlin", 40);
-        assert!(result.is_some());
+        assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(40, result.len());
 
         for (idx, word_similarity) in result.iter().enumerate() {
             assert_eq!(ANALOGY_ORDER[idx], word_similarity.word)
         }
+    }
+
+    #[test]
+    fn test_analogy_absent() {
+        let f = File::open("testdata/analogy.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
+
+        assert_eq!(
+            embeddings.analogy("Foo", "Frankreich", "Berlin", 40),
+            Err([false, true, true])
+        );
+        assert_eq!(
+            embeddings.analogy("Paris", "Foo", "Berlin", 40),
+            Err([true, false, true])
+        );
+        assert_eq!(
+            embeddings.analogy("Paris", "Frankreich", "Foo", 40),
+            Err([true, true, false])
+        );
     }
 
 }
