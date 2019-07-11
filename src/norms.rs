@@ -2,10 +2,10 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure::{ensure, format_err, Error};
 use ndarray::Array1;
 
 use crate::io::private::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
+use crate::io::Result;
 use crate::util::padding;
 
 /// Trait for norm chunks.
@@ -31,28 +31,18 @@ impl Norms for NdNorms {
 }
 
 impl ReadChunk for NdNorms {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = read.read_u32::<LittleEndian>()?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::NdNorms,
-            "Cannot read chunk {:?} as NdNorms",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdNorms)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
 
         let len = read.read_u64::<LittleEndian>()? as usize;
 
-        ensure!(
-            read.read_u32::<LittleEndian>()? == f32::type_id(),
-            "Expected single precision floating point matrix for NdNorms."
-        );
+        f32::ensure_data_type(read)?;
 
         let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
         read.seek(SeekFrom::Current(n_padding as i64))?;
@@ -69,7 +59,7 @@ impl WriteChunk for NdNorms {
         ChunkIdentifier::NdNorms
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {

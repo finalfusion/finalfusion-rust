@@ -1,13 +1,83 @@
-//! Traits for I/O.
+//! Traits and error types for I/O.
 //!
 //! This module provides traits for reading embeddings
 //! (`ReadEmbeddings`), memory mapping embeddings (`MmapEmbeddings`),
-//! and writing embeddings (`WriteEmbeddings`).
+//! and writing embeddings (`WriteEmbeddings`). Moreover, the module
+//! provides the `Error`, `ErrorKind`, and `Result` types that are
+//! used for handling I/O errors throughout the crate.
 
+use std::fmt;
 use std::fs::File;
+use std::io;
 use std::io::{BufReader, Read, Seek, Write};
 
-use failure::Error;
+use ndarray::ShapeError;
+
+/// `Result` type alias for operations that can lead to I/O errors.
+pub type Result<T> = ::std::result::Result<T, Error>;
+
+/// I/O errors in reading or writing embeddings.
+#[derive(Debug)]
+pub enum Error {
+    /// finalfusion errors.
+    FinalFusion(ErrorKind),
+
+    /// Wrapped `std::io::Error`.
+    Io(io::Error),
+
+    /// `ndarray` shape error.
+    Shape(ShapeError),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+        match *self {
+            FinalFusion(ref kind) => kind.fmt(f),
+            Io(ref err) => err.fmt(f),
+            Shape(ref err) => err.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn description(&self) -> &str {
+        use self::Error::*;
+
+        match *self {
+            FinalFusion(ErrorKind::Format(ref desc)) => desc,
+            Io(ref err) => err.description(),
+            Shape(ref err) => err.description(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ErrorKind {
+    /// Invalid file format.
+    Format(String),
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ErrorKind::*;
+        match *self {
+            Format(ref desc) => write!(f, "{}", desc),
+        }
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Error {
+        Error::FinalFusion(kind)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Self {
+        Error::Io(error)
+    }
+}
 
 /// Read finalfusion embeddings.
 ///
@@ -29,7 +99,7 @@ where
     Self: Sized,
 {
     /// Read the embeddings.
-    fn read_embeddings<R>(read: &mut R) -> Result<Self, Error>
+    fn read_embeddings<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek;
 }
@@ -54,7 +124,7 @@ where
     Self: Sized,
 {
     /// Read the metadata.
-    fn read_metadata<R>(read: &mut R) -> Result<Self, Error>
+    fn read_metadata<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek;
 }
@@ -72,7 +142,7 @@ pub trait MmapEmbeddings
 where
     Self: Sized,
 {
-    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self, Error>;
+    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self>;
 }
 
 /// Write embeddings in finalfusion format.
@@ -81,17 +151,19 @@ where
 /// format. Writing in finalfusion format is supported regardless of
 /// the original format of the embeddings.
 pub trait WriteEmbeddings {
-    fn write_embeddings<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_embeddings<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek;
 }
 
 pub(crate) mod private {
+    use std::fmt::{self, Display};
     use std::fs::File;
     use std::io::{BufReader, Read, Seek, Write};
 
     use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-    use failure::{ensure, format_err, Error, ResultExt};
+
+    use super::{Error, ErrorKind, Result};
 
     const MODEL_VERSION: u32 = 0;
 
@@ -123,15 +195,73 @@ pub(crate) mod private {
                 _ => None,
             }
         }
+
+        /// Read and ensure that the chunk has the given identifier.
+        pub fn ensure_chunk_type<R>(read: &mut R, identifier: ChunkIdentifier) -> Result<()>
+        where
+            R: Read,
+        {
+            let chunk_id = read.read_u32::<LittleEndian>()?;
+            let chunk_id = ChunkIdentifier::try_from(chunk_id)
+                .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+                .map_err(Error::from)?;
+            if chunk_id != identifier {
+                return Err(ErrorKind::Format(format!(
+                    "Invalid chunk identifier, expected: {}, got: {}",
+                    identifier, chunk_id
+                ))
+                .into());
+            }
+
+            Ok(())
+        }
+    }
+
+    impl Display for ChunkIdentifier {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            use self::ChunkIdentifier::*;
+
+            match self {
+                Header => write!(f, "Header"),
+                SimpleVocab => write!(f, "SimpleVocab"),
+                NdArray => write!(f, "NdArray"),
+                SubwordVocab => write!(f, "SubwordVoceab"),
+                QuantizedArray => write!(f, "QuantizedArray"),
+                Metadata => write!(f, "Metadata"),
+                NdNorms => write!(f, "NdNorms"),
+            }
+        }
     }
 
     pub trait TypeId {
+        /// Read and ensure that the data type is equal to `Self`.
+        fn ensure_data_type<R>(read: &mut R) -> Result<()>
+        where
+            R: Read;
+
         fn type_id() -> u32;
     }
 
     macro_rules! typeid_impl {
         ($type:ty, $id:expr) => {
             impl TypeId for $type {
+                fn ensure_data_type<R>(read: &mut R) -> Result<()>
+                where
+                    R: Read,
+                {
+                    let type_id = read.read_u32::<LittleEndian>()?;
+                    if type_id != Self::type_id() {
+                        return Err(ErrorKind::Format(format!(
+                            "Invalid type, expected: {}, got: {}",
+                            Self::type_id(),
+                            type_id
+                        ))
+                        .into());
+                    }
+
+                    Ok(())
+                }
+
                 fn type_id() -> u32 {
                     $id
                 }
@@ -146,7 +276,7 @@ pub(crate) mod private {
     where
         Self: Sized,
     {
-        fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+        fn read_chunk<R>(read: &mut R) -> Result<Self>
         where
             R: Read + Seek;
     }
@@ -159,14 +289,14 @@ pub(crate) mod private {
         /// Memory map a chunk.
         ///
         /// The given `File` object should be positioned at the start of the chunk.
-        fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error>;
+        fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self>;
     }
 
     pub trait WriteChunk {
         /// Get the identifier of a chunk.
         fn chunk_identifier(&self) -> ChunkIdentifier;
 
-        fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+        fn write_chunk<W>(&self, write: &mut W) -> Result<()>
         where
             W: Write + Seek;
     }
@@ -193,7 +323,7 @@ pub(crate) mod private {
             ChunkIdentifier::Header
         }
 
-        fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+        fn write_chunk<W>(&self, write: &mut W) -> Result<()>
         where
             W: Write + Seek,
         {
@@ -210,36 +340,39 @@ pub(crate) mod private {
     }
 
     impl ReadChunk for Header {
-        fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+        fn read_chunk<R>(read: &mut R) -> Result<Self>
         where
             R: Read + Seek,
         {
             // Magic and version ceremony.
             let mut magic = [0u8; 4];
             read.read_exact(&mut magic)?;
-            ensure!(
-                magic == MAGIC,
-                "File does not have finalfusion magic, expected: {}, was: {}",
-                String::from_utf8_lossy(&MAGIC),
-                String::from_utf8_lossy(&magic)
-            );
+
+            if magic != MAGIC {
+                return Err(ErrorKind::Format(format!(
+                    "Expected 'FiFu' as magic, got: {}",
+                    String::from_utf8_lossy(&magic).into_owned()
+                ))
+                .into());
+            }
+
             let version = read.read_u32::<LittleEndian>()?;
-            ensure!(
-                version == MODEL_VERSION,
-                "Unknown model version, expected: {}, was: {}",
-                MODEL_VERSION,
-                version
-            );
+            if version != MODEL_VERSION {
+                return Err(
+                    ErrorKind::Format(format!("Unknown finalfusion version: {}", version)).into(),
+                );
+            }
 
             // Read chunk identifiers.
             let chunk_identifiers_len = read.read_u32::<LittleEndian>()? as usize;
             let mut chunk_identifiers = Vec::with_capacity(chunk_identifiers_len);
             for _ in 0..chunk_identifiers_len {
-                let identifier = read
-                    .read_u32::<LittleEndian>()
-                    .with_context(|e| format!("Cannot read chunk identifier: {}", e))?;
+                let identifier = read.read_u32::<LittleEndian>()?;
                 let chunk_identifier = ChunkIdentifier::try_from(identifier)
-                    .ok_or_else(|| format_err!("Unknown chunk identifier: {}", identifier))?;
+                    .ok_or_else(|| {
+                        ErrorKind::Format(format!("Unknown chunk identifier: {}", identifier))
+                    })
+                    .map_err(Error::from)?;
                 chunk_identifiers.push(chunk_identifier);
             }
 

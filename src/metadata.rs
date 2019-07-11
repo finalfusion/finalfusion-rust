@@ -3,12 +3,11 @@
 use std::io::{Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure::{ensure, err_msg, Error};
 use toml::Value;
 
 use crate::io::{
     private::{ChunkIdentifier, Header, ReadChunk, WriteChunk},
-    ReadMetadata,
+    Error, ErrorKind, ReadMetadata, Result,
 };
 
 /// Embeddings metadata.
@@ -18,17 +17,11 @@ use crate::io::{
 pub struct Metadata(pub Value);
 
 impl ReadChunk for Metadata {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::Metadata,
-            "Cannot read chunk {:?} as Metadata",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::Metadata)?;
 
         // Read chunk length.
         let chunk_len = read.read_u64::<LittleEndian>()? as usize;
@@ -36,9 +29,16 @@ impl ReadChunk for Metadata {
         // Read TOML data.
         let mut buf = vec![0; chunk_len];
         read.read_exact(&mut buf)?;
-        let buf_str = String::from_utf8(buf)?;
+        let buf_str = String::from_utf8(buf)
+            .map_err(|e| ErrorKind::Format(format!("TOML metadata contains invalid UTF-8: {}", e)))
+            .map_err(Error::from)?;
 
-        Ok(Metadata(buf_str.parse::<Value>()?))
+        Ok(Metadata(
+            buf_str
+                .parse::<Value>()
+                .map_err(|e| ErrorKind::Format(format!("Cannot deserialize TOML metadata: {}", e)))
+                .map_err(Error::from)?,
+        ))
     }
 }
 
@@ -47,7 +47,7 @@ impl WriteChunk for Metadata {
         ChunkIdentifier::Metadata
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -62,13 +62,18 @@ impl WriteChunk for Metadata {
 }
 
 impl ReadMetadata for Option<Metadata> {
-    fn read_metadata<R>(read: &mut R) -> Result<Self, Error>
+    fn read_metadata<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
         let header = Header::read_chunk(read)?;
         let chunks = header.chunk_identifiers();
-        ensure!(!chunks.is_empty(), "Embedding file without chunks.");
+
+        if chunks.is_empty() {
+            return Err(
+                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
+            );
+        }
 
         if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
             Ok(Some(Metadata::read_chunk(read)?))
