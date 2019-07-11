@@ -5,9 +5,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure::{ensure, err_msg, format_err, Error};
 
 use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
+use crate::io::{Error, ErrorKind, Result};
 use crate::subword::SubwordIndices;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,17 +36,11 @@ impl SimpleVocab {
 }
 
 impl ReadChunk for SimpleVocab {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::SimpleVocab,
-            "Cannot read chunk {:?} as SimpleVocab",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::SimpleVocab)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
@@ -57,7 +51,9 @@ impl ReadChunk for SimpleVocab {
             let word_len = read.read_u32::<LittleEndian>()? as usize;
             let mut bytes = vec![0; word_len];
             read.read_exact(&mut bytes)?;
-            let word = String::from_utf8(bytes)?;
+            let word = String::from_utf8(bytes)
+                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
+                .map_err(Error::from)?;
             words.push(word);
         }
 
@@ -70,7 +66,7 @@ impl WriteChunk for SimpleVocab {
         ChunkIdentifier::SimpleVocab
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -156,17 +152,11 @@ impl SubwordVocab {
 }
 
 impl ReadChunk for SubwordVocab {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::SubwordVocab,
-            "Cannot read chunk {:?} as SubwordVocab",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::SubwordVocab)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
@@ -181,7 +171,9 @@ impl ReadChunk for SubwordVocab {
             let word_len = read.read_u32::<LittleEndian>()? as usize;
             let mut bytes = vec![0; word_len];
             read.read_exact(&mut bytes)?;
-            let word = String::from_utf8(bytes)?;
+            let word = String::from_utf8(bytes)
+                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
+                .map_err(Error::from)?;
             words.push(word);
         }
 
@@ -194,7 +186,7 @@ impl WriteChunk for SubwordVocab {
         ChunkIdentifier::SubwordVocab
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -257,13 +249,15 @@ impl From<SubwordVocab> for VocabWrap {
 }
 
 impl ReadChunk for VocabWrap {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
         let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
-        let chunk_id = ChunkIdentifier::try_from(read.read_u32::<LittleEndian>()?)
-            .ok_or_else(|| err_msg("Unknown chunk identifier"))?;
+        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -274,10 +268,13 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::SubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::SubwordVocab)
             }
-            _ => Err(format_err!(
-                "Chunk type {:?} cannot be read as a vocabulary",
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected one of: {} or {}, got: {}",
+                ChunkIdentifier::SimpleVocab,
+                ChunkIdentifier::SubwordVocab,
                 chunk_id
-            )),
+            ))
+            .into()),
         }
     }
 }
@@ -290,7 +287,7 @@ impl WriteChunk for VocabWrap {
         }
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {

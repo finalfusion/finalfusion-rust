@@ -6,7 +6,6 @@ use std::iter::Enumerate;
 use std::mem;
 use std::slice;
 
-use failure::{ensure, Error};
 use ndarray::Array1;
 use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
@@ -14,7 +13,7 @@ use reductive::pq::TrainPQ;
 
 use crate::io::{
     private::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk},
-    MmapEmbeddings, ReadEmbeddings, WriteEmbeddings,
+    ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings,
 };
 use crate::metadata::Metadata;
 use crate::norms::{NdNorms, Norms};
@@ -260,10 +259,14 @@ where
     V: ReadChunk,
     S: MmapChunk,
 {
-    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self, Error> {
+    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self> {
         let header = Header::read_chunk(read)?;
         let chunks = header.chunk_identifiers();
-        ensure!(!chunks.is_empty(), "Embedding file without chunks.");
+        if chunks.is_empty() {
+            return Err(
+                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
+            );
+        }
 
         let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
             Some(Metadata::read_chunk(read)?)
@@ -289,13 +292,17 @@ where
     V: ReadChunk,
     S: ReadChunk,
 {
-    fn read_embeddings<R>(read: &mut R) -> Result<Self, Error>
+    fn read_embeddings<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
         let header = Header::read_chunk(read)?;
         let chunks = header.chunk_identifiers();
-        ensure!(!chunks.is_empty(), "Embedding file without chunks.");
+        if chunks.is_empty() {
+            return Err(
+                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
+            );
+        }
 
         let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
             Some(Metadata::read_chunk(read)?)
@@ -321,7 +328,7 @@ where
     V: WriteChunk,
     S: WriteChunk,
 {
-    fn write_embeddings<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_embeddings<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {

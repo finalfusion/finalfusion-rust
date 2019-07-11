@@ -5,7 +5,6 @@ use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use failure::{ensure, format_err, Error};
 use memmap::{Mmap, MmapOptions};
 use ndarray::{Array, Array1, Array2, ArrayView, ArrayView2, ArrayViewMut2, Dimension, Ix1, Ix2};
 use rand::{FromEntropy, Rng};
@@ -13,6 +12,7 @@ use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use crate::io::private::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
 /// Copy-on-write wrapper for `Array`/`ArrayView`.
@@ -61,11 +61,8 @@ pub struct MmapArray {
 }
 
 impl MmapChunk for MmapArray {
-    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error> {
-        ensure!(
-            read.read_u32::<LittleEndian>()? == ChunkIdentifier::NdArray as u32,
-            "invalid chunk identifier for NdArray"
-        );
+    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
@@ -74,10 +71,8 @@ impl MmapChunk for MmapArray {
         let cols = read.read_u32::<LittleEndian>()? as usize;
         let shape = Ix2(rows, cols);
 
-        ensure!(
-            read.read_u32::<LittleEndian>()? == f32::type_id(),
-            "Expected single precision floating point matrix for NdArray."
-        );
+        // The components of the embedding matrix should be of type f32.
+        f32::ensure_data_type(read)?;
 
         let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
         read.seek(SeekFrom::Current(n_padding as i64))?;
@@ -105,7 +100,7 @@ impl WriteChunk for MmapArray {
         ChunkIdentifier::NdArray
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -118,7 +113,7 @@ impl WriteChunk for MmapArray {
 pub struct NdArray(pub Array2<f32>);
 
 impl NdArray {
-    fn write_ndarray_chunk<W>(data: ArrayView2<f32>, write: &mut W) -> Result<(), Error>
+    fn write_ndarray_chunk<W>(data: ArrayView2<f32>, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -161,18 +156,11 @@ impl NdArray {
 }
 
 impl ReadChunk for NdArray {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = read.read_u32::<LittleEndian>()?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::NdArray,
-            "Cannot read chunk {:?} as NdArray",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
@@ -180,10 +168,8 @@ impl ReadChunk for NdArray {
         let rows = read.read_u64::<LittleEndian>()? as usize;
         let cols = read.read_u32::<LittleEndian>()? as usize;
 
-        ensure!(
-            read.read_u32::<LittleEndian>()? == f32::type_id(),
-            "Expected single precision floating point matrix for NdArray."
-        );
+        // The components of the embedding matrix should be of type f32.
+        f32::ensure_data_type(read)?;
 
         let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
         read.seek(SeekFrom::Current(n_padding as i64))?;
@@ -191,7 +177,9 @@ impl ReadChunk for NdArray {
         let mut data = vec![0f32; rows * cols];
         read.read_f32_into::<LittleEndian>(&mut data)?;
 
-        Ok(NdArray(Array2::from_shape_vec((rows, cols), data)?))
+        Ok(NdArray(
+            Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
+        ))
     }
 }
 
@@ -200,7 +188,7 @@ impl WriteChunk for NdArray {
         ChunkIdentifier::NdArray
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -216,18 +204,11 @@ pub struct QuantizedArray {
 }
 
 impl ReadChunk for QuantizedArray {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        let chunk_id = read.read_u32::<LittleEndian>()?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
-        ensure!(
-            chunk_id == ChunkIdentifier::QuantizedArray,
-            "Cannot read chunk {:?} as QuantizedArray",
-            chunk_id
-        );
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()?;
@@ -239,15 +220,11 @@ impl ReadChunk for QuantizedArray {
         let n_centroids = read.read_u32::<LittleEndian>()? as usize;
         let n_embeddings = read.read_u64::<LittleEndian>()? as usize;
 
-        ensure!(
-            read.read_u32::<LittleEndian>()? == u8::type_id(),
-            "Expected unsigned byte quantized embedding matrices."
-        );
+        // Quantized storage type.
+        u8::ensure_data_type(read)?;
 
-        ensure!(
-            read.read_u32::<LittleEndian>()? == f32::type_id(),
-            "Expected single precision floating point matrix quantizer matrices."
-        );
+        // Reconstructed embedding type.
+        f32::ensure_data_type(read)?;
 
         let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
         read.seek(SeekFrom::Current(n_padding as i64))?;
@@ -255,10 +232,10 @@ impl ReadChunk for QuantizedArray {
         let projection = if projection {
             let mut projection_vec = vec![0f32; reconstructed_len * reconstructed_len];
             read.read_f32_into::<LittleEndian>(&mut projection_vec)?;
-            Some(Array2::from_shape_vec(
-                (reconstructed_len, reconstructed_len),
-                projection_vec,
-            )?)
+            Some(
+                Array2::from_shape_vec((reconstructed_len, reconstructed_len), projection_vec)
+                    .map_err(Error::Shape)?,
+            )
         } else {
             None
         };
@@ -271,7 +248,8 @@ impl ReadChunk for QuantizedArray {
             let subquantizer = Array2::from_shape_vec(
                 (n_centroids, reconstructed_len / quantized_len),
                 subquantizer_vec,
-            )?;
+            )
+            .map_err(Error::Shape)?;
             quantizers.push(subquantizer);
         }
 
@@ -286,7 +264,8 @@ impl ReadChunk for QuantizedArray {
         let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantized_len];
         read.read_exact(&mut quantized_embeddings_vec)?;
         let quantized =
-            Array2::from_shape_vec((n_embeddings, quantized_len), quantized_embeddings_vec)?;
+            Array2::from_shape_vec((n_embeddings, quantized_len), quantized_embeddings_vec)
+                .map_err(Error::Shape)?;
 
         Ok(QuantizedArray {
             quantizer: PQ::new(projection, quantizers),
@@ -301,7 +280,7 @@ impl WriteChunk for QuantizedArray {
         ChunkIdentifier::QuantizedArray
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -420,7 +399,7 @@ impl From<QuantizedArray> for StorageWrap {
 }
 
 impl ReadChunk for StorageWrap {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
@@ -428,7 +407,8 @@ impl ReadChunk for StorageWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
@@ -437,30 +417,36 @@ impl ReadChunk for StorageWrap {
             ChunkIdentifier::QuantizedArray => {
                 QuantizedArray::read_chunk(read).map(StorageWrap::QuantizedArray)
             }
-            _ => Err(format_err!(
-                "Chunk type {:?} cannot be read as storage",
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected one of: {} or {}, got: {}",
+                ChunkIdentifier::NdArray,
+                ChunkIdentifier::QuantizedArray,
                 chunk_id
-            )),
+            ))
+            .into()),
         }
     }
 }
 
 impl MmapChunk for StorageWrap {
-    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error> {
+    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageWrap::MmapArray),
-            _ => Err(format_err!(
-                "Chunk type {:?} cannot be memory mapped as viewable storage",
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected: {}, got: {}",
+                ChunkIdentifier::NdArray,
                 chunk_id
-            )),
+            ))
+            .into()),
         }
     }
 }
@@ -474,7 +460,7 @@ impl WriteChunk for StorageWrap {
         }
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -508,7 +494,7 @@ impl From<NdArray> for StorageViewWrap {
 }
 
 impl ReadChunk for StorageViewWrap {
-    fn read_chunk<R>(read: &mut R) -> Result<Self, Error>
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
@@ -516,16 +502,19 @@ impl ReadChunk for StorageViewWrap {
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageViewWrap::NdArray),
-            _ => Err(format_err!(
-                "Chunk type {:?} cannot be read as viewable storage",
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected: {}, got: {}",
+                ChunkIdentifier::NdArray,
                 chunk_id
-            )),
+            ))
+            .into()),
         }
     }
 }
@@ -538,7 +527,7 @@ impl WriteChunk for StorageViewWrap {
         }
     }
 
-    fn write_chunk<W>(&self, write: &mut W) -> Result<(), Error>
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -550,21 +539,24 @@ impl WriteChunk for StorageViewWrap {
 }
 
 impl MmapChunk for StorageViewWrap {
-    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self, Error> {
+    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
 
         let chunk_id = read.read_u32::<LittleEndian>()?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| format_err!("Unknown chunk identifier: {}", chunk_id))?;
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageViewWrap::MmapArray),
-            _ => Err(format_err!(
-                "Chunk type {:?} cannot be memory mapped as viewable storage",
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected: {}, got: {}",
+                ChunkIdentifier::NdArray,
                 chunk_id
-            )),
+            ))
+            .into()),
         }
     }
 }

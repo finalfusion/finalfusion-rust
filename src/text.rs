@@ -32,14 +32,14 @@
 
 use std::io::{BufRead, Write};
 
-use failure::{ensure, err_msg, Error, ResultExt};
 use itertools::Itertools;
 use ndarray::Array2;
 
 use crate::embeddings::Embeddings;
+use crate::io::{Error, ErrorKind, Result};
 use crate::norms::NdNorms;
 use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
-use crate::util::l2_normalize_array;
+use crate::util::{l2_normalize_array, read_number};
 use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a text file.
@@ -55,14 +55,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text(reader: &mut R) -> Result<Self, Error>;
+    fn read_text(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text(reader: &mut R) -> Result<Self, Error> {
+    fn read_text(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_raw(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
@@ -76,14 +76,14 @@ where
     R: BufRead,
 {
     /// Read the unnormalized embeddings from the given buffered reader.
-    fn read_text_raw(reader: &mut R) -> Result<Self, Error>;
+    fn read_text_raw(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadTextRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text_raw(reader: &mut R) -> Result<Self, Error> {
+    fn read_text_raw(reader: &mut R) -> Result<Self> {
         read_embeds(reader, None)
     }
 }
@@ -106,14 +106,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_text_dims(reader: &mut R) -> Result<Self, Error>;
+    fn read_text_dims(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadTextDims<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text_dims(reader: &mut R) -> Result<Self, Error> {
+    fn read_text_dims(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_dims_raw(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
@@ -127,37 +127,25 @@ where
     R: BufRead,
 {
     /// Read the unnormalized embeddings from the given buffered reader.
-    fn read_text_dims_raw(reader: &mut R) -> Result<Self, Error>;
+    fn read_text_dims_raw(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadTextDimsRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text_dims_raw(reader: &mut R) -> Result<Self, Error> {
-        let mut dims = String::new();
-        reader.read_line(&mut dims)?;
+    fn read_text_dims_raw(reader: &mut R) -> Result<Self> {
+        let n_words = read_number(reader, b' ')?;
+        let embed_len = read_number(reader, b'\n')?;
 
-        let mut dims_iter = dims.split_whitespace();
-        let vocab_len = dims_iter
-            .next()
-            .ok_or_else(|| failure::err_msg("Missing vocabulary size"))?
-            .parse::<usize>()
-            .context("Cannot parse vocabulary size")?;
-        let embed_len = dims_iter
-            .next()
-            .ok_or_else(|| failure::err_msg("Missing vocabulary size"))?
-            .parse::<usize>()
-            .context("Cannot parse vocabulary size")?;
-
-        read_embeds(reader, Some((vocab_len, embed_len)))
+        read_embeds(reader, Some((n_words, embed_len)))
     }
 }
 
 fn read_embeds<R>(
     reader: &mut R,
     shape: Option<(usize, usize)>,
-) -> Result<Embeddings<SimpleVocab, NdArray>, Error>
+) -> Result<Embeddings<SimpleVocab, NdArray>>
 where
     R: BufRead,
 {
@@ -174,39 +162,45 @@ where
         let line = line?;
         let mut parts = line.split_whitespace();
 
-        let word = parts.next().ok_or_else(|| err_msg("Empty line"))?.trim();
+        let word = parts
+            .next()
+            .ok_or_else(|| ErrorKind::Format(String::from("Spurious empty line")))?
+            .trim();
         words.push(word.to_owned());
 
         for part in parts {
-            data.push(part.parse()?);
+            data.push(part.parse().map_err(|e| {
+                ErrorKind::Format(format!("Cannot parse vector component '{}': {}", part, e))
+            })?);
         }
     }
 
     let shape = if let Some((n_words, dims)) = shape {
-        ensure!(
-            words.len() == n_words,
-            "Expected {} words, got: {}",
-            n_words,
-            words.len()
-        );
-        ensure!(
-            data.len() / n_words == dims,
-            "Expected {} dimensions, got: {}",
-            dims,
-            data.len() / n_words
-        );
+        if words.len() != n_words {
+            return Err(ErrorKind::Format(format!(
+                "Incorrect vocabulary size, expected: {}, got: {}",
+                n_words,
+                words.len()
+            ))
+            .into());
+        }
+
+        if data.len() / n_words != dims {
+            return Err(ErrorKind::Format(format!(
+                "Incorrect embedding dimensionality, expected: {}, got: {}",
+                dims,
+                data.len() / n_words,
+            ))
+            .into());
+        };
+
         (n_words, dims)
     } else {
         let dims = data.len() / words.len();
         (words.len(), dims)
     };
 
-    ensure!(
-        data.len() % shape.1 == 0,
-        "Number of dimensions per vector is not constant"
-    );
-
-    let matrix = Array2::from_shape_vec(shape, data)?;
+    let matrix = Array2::from_shape_vec(shape, data).map_err(Error::Shape)?;
 
     Ok(Embeddings::new_without_norms(
         None,
@@ -230,7 +224,7 @@ where
     ///
     /// If `unnormalize` is `true`, the norms vector is used to
     /// restore the original vector magnitudes.
-    fn write_text(&self, writer: &mut W, unnormalize: bool) -> Result<(), Error>;
+    fn write_text(&self, writer: &mut W, unnormalize: bool) -> Result<()>;
 }
 
 impl<W, V, S> WriteText<W> for Embeddings<V, S>
@@ -239,7 +233,7 @@ where
     V: Vocab,
     S: Storage,
 {
-    fn write_text(&self, write: &mut W, unnormalize: bool) -> Result<(), Error> {
+    fn write_text(&self, write: &mut W, unnormalize: bool) -> Result<()> {
         for (word, embed_norm) in self.iter_with_norms() {
             let embed = if unnormalize {
                 CowArray::Owned(embed_norm.into_unnormalized())
@@ -270,7 +264,7 @@ where
     ///
     /// If `unnormalize` is `true`, the norms vector is used to
     /// restore the original vector magnitudes.
-    fn write_text_dims(&self, writer: &mut W, unnormalize: bool) -> Result<(), Error>;
+    fn write_text_dims(&self, writer: &mut W, unnormalize: bool) -> Result<()>;
 }
 
 impl<W, V, S> WriteTextDims<W> for Embeddings<V, S>
@@ -279,7 +273,7 @@ where
     V: Vocab,
     S: Storage,
 {
-    fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<(), Error> {
+    fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<()> {
         writeln!(write, "{} {}", self.vocab().len(), self.dims())?;
         self.write_text(write, unnormalize)
     }

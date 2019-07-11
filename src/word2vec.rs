@@ -25,13 +25,13 @@ use std::mem;
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use failure::{err_msg, Error};
 use ndarray::{Array2, Axis};
 
 use crate::embeddings::Embeddings;
+use crate::io::Result;
 use crate::norms::NdNorms;
 use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
-use crate::util::l2_normalize_array;
+use crate::util::{l2_normalize_array, read_number, read_string};
 use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a word2vec binary file.
@@ -44,14 +44,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error>;
+    fn read_word2vec_binary(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_word2vec_binary(reader: &mut R) -> Result<Self, Error> {
+    fn read_word2vec_binary(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Embeddings::read_word2vec_binary_raw(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
@@ -66,14 +66,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self, Error>;
+    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadWord2VecRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self, Error> {
+    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self> {
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
@@ -88,9 +88,8 @@ where
             let mut embedding = matrix.index_axis_mut(Axis(0), idx);
 
             {
-                let mut embedding_raw = match embedding.as_slice_mut() {
-                    Some(s) => unsafe { typed_to_bytes(s) },
-                    None => return Err(err_msg("Matrix not contiguous")),
+                let mut embedding_raw = unsafe {
+                    typed_to_bytes(embedding.as_slice_mut().expect("Matrix not contiguous"))
                 };
                 reader.read_exact(&mut embedding_raw)?;
             }
@@ -102,18 +101,6 @@ where
             NdArray(matrix),
         ))
     }
-}
-
-fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize, Error> {
-    let field_str = read_string(reader, delim)?;
-    Ok(field_str.parse()?)
-}
-
-fn read_string(reader: &mut BufRead, delim: u8) -> Result<String, Error> {
-    let mut buf = Vec::new();
-    reader.read_until(delim, &mut buf)?;
-    buf.pop();
-    Ok(String::from_utf8(buf)?)
 }
 
 unsafe fn typed_to_bytes<T>(slice: &mut [T]) -> &mut [u8] {
@@ -135,7 +122,7 @@ where
     ///
     /// If `unnormalize` is `true`, the norms vector is used to
     /// restore the original vector magnitudes.
-    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<(), Error>;
+    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<()>;
 }
 
 impl<W, V, S> WriteWord2Vec<W> for Embeddings<V, S>
@@ -144,7 +131,7 @@ where
     V: Vocab,
     S: Storage,
 {
-    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<(), Error>
+    fn write_word2vec_binary(&self, w: &mut W, unnormalize: bool) -> Result<()>
     where
         W: Write,
     {
