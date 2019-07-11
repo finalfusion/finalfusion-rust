@@ -81,6 +81,7 @@ pub trait SubwordIndices {
     ///
     /// The largest possible bucket exponent is 64.
     fn subword_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<u64>;
+    fn ngrams_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<(String, u64)>;
 }
 
 impl SubwordIndices for str {
@@ -106,6 +107,29 @@ impl SubwordIndices for str {
         }
 
         indices
+    }
+
+    fn ngrams_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<(String, u64)> {
+        assert!(
+            buckets_exp <= 64,
+            "The largest possible buckets exponent is 64."
+        );
+
+        let mask = if buckets_exp == 64 {
+            !0
+        } else {
+            (1 << buckets_exp) - 1
+        };
+        let chars: Vec<_> = self.chars().collect();
+
+        let mut ngrams_indices = Vec::with_capacity((max_n - min_n + 1) * chars.len());
+        for ngram in NGrams::new(&chars, min_n, max_n) {
+            let mut hasher = FnvHasher::default();
+            ngram.hash(&mut hasher);
+            ngrams_indices.push((ngram.into_iter().collect(), hasher.finish() & mask));
+        }
+
+        ngrams_indices
     }
 }
 
@@ -233,6 +257,19 @@ mod tests {
         };
     }
 
+    lazy_static! {
+        static ref NGRAMS_INDICES_TESTS_36: HashMap<&'static str, Vec<(&'static str, u64)>> = hashmap! {
+            "<Daniël>" =>
+                vec![("Dan",214157), ("iël",233912), ("Danië",311961), ("iël>",488897), ("niël>",620206), ("anië",741276), ("Dani",841219),
+                     ("Daniël",1167494), ("ani",1192256), ("niël",1489905), ("ël>",1532271), ("nië",1644730), ("<Dan",1666166),
+                     ("aniël",1679745), ("<Danië",1680294), ("aniël>",1693100), ("<Da",2026735), ("<Dani",2065822)],
+            "<hallo>" =>
+                vec![("lo>",75867), ("<hal",104120), ("hallo>",136555), ("hal",456131), ("allo>",599360), ("llo",722393), ("all",938007),
+                     ("<ha",985859), ("hallo",1006102), ("allo",1163391), ("llo>",1218704), ("<hallo",1321513), ("<hall",1505861),
+                     ("hall",1892376)],
+        };
+    }
+
     #[test]
     fn subword_indices_4_test() {
         // The goal of this test is to ensure that we are correctly bucketing
@@ -256,6 +293,22 @@ mod tests {
             let mut indices = word.subword_indices(3, 6, 21);
             indices.sort();
             assert_eq!(indices_check, &indices);
+        }
+    }
+
+    #[test]
+    fn ngrams_indices_2m_test() {
+        // This test checks against precomputed bucket numbers. The goal of
+        // if this test is to ensure that the subword_indices() method hashes
+        // to the same buckets in the future.
+
+        for (word, ngrams_indices_check) in NGRAMS_INDICES_TESTS_36.iter() {
+            let mut ngrams_indices_test = word.ngrams_indices(3, 6, 21);
+            ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1);
+            for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)
+            {
+                assert_eq!(iter_check.0, &iter_test.0);
+            }
         }
     }
 }

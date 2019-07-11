@@ -153,6 +153,24 @@ impl SubwordVocab {
             Some(indices)
         }
     }
+
+    fn ngrams_indices(&self, word: &str) -> Option<Vec<(String, usize)>> {
+        let ngrams_indices = Self::bracket(word)
+            .as_str()
+            .ngrams_indices(
+                self.min_n as usize,
+                self.max_n as usize,
+                self.buckets_exp as usize,
+            )
+            .into_iter()
+            .map(|(ngram, idx)| (ngram, idx as usize + self.len()))
+            .collect::<Vec<(String, usize)>>();
+        if ngrams_indices.is_empty() {
+            None
+        } else {
+            Some(ngrams_indices)
+        }
+    }
 }
 
 impl ReadChunk for SubwordVocab {
