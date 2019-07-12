@@ -1,7 +1,35 @@
 use std::cmp;
+use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 use fnv::FnvHasher;
+
+use crate::util::CollectWithCapacity;
+
+/// A string reference with its length in characters.
+struct StrWithCharLen<'a> {
+    inner: &'a str,
+    char_len: usize,
+}
+
+impl<'a> Deref for StrWithCharLen<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+
+impl<'a> Hash for StrWithCharLen<'a> {
+    fn hash<H>(&self, hasher: &mut H)
+    where
+        H: Hasher,
+    {
+        self.char_len.hash(hasher);
+        self.inner.chars().for_each(|ch| ch.hash(hasher));
+    }
+}
 
 /// Iterator over n-grams in a sequence.
 ///
@@ -10,58 +38,78 @@ use fnv::FnvHasher;
 ///
 /// **Warning:** no guarantee is provided with regard to the iteration
 /// order. The iterator only guarantees that all n-grams are produced.
-pub struct NGrams<'a, T>
-where
-    T: 'a,
-{
+struct NGrams<'a> {
     max_n: usize,
     min_n: usize,
-    seq: &'a [T],
-    ngram: &'a [T],
+    string: &'a str,
+    char_offsets: VecDeque<usize>,
+    ngram_len: usize,
 }
 
-impl<'a, T> NGrams<'a, T> {
+impl<'a> NGrams<'a> {
     /// Create a new n-ngram iterator.
     ///
     /// The iterator will create n-ngrams of length *[min_n, max_n]*
-    pub fn new(seq: &'a [T], min_n: usize, max_n: usize) -> Self {
+    pub fn new(string: &'a str, min_n: usize, max_n: usize) -> Self {
         assert!(min_n != 0, "The minimum n-gram length cannot be zero.");
         assert!(
             min_n <= max_n,
             "The maximum length should be equal to or greater than the minimum length."
         );
 
-        let upper = cmp::min(max_n, seq.len());
+        // Get the byte offsets of the characters in `string`.
+        let char_offsets = string
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .collect_with_capacity::<VecDeque<_>>(string.len());
+
+        let ngram_len = cmp::min(max_n, char_offsets.len());
 
         NGrams {
             min_n,
             max_n,
-            seq,
-            ngram: &seq[..upper],
+            string,
+            char_offsets,
+            ngram_len,
         }
     }
 }
 
-impl<'a, T> Iterator for NGrams<'a, T> {
-    type Item = &'a [T];
+impl<'a> Iterator for NGrams<'a> {
+    type Item = StrWithCharLen<'a>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.ngram.len() < self.min_n {
-            if self.seq.len() <= self.min_n {
+        // If the n-grams for the current suffix are exhausted,
+        // move to the next suffix.
+        if self.ngram_len < self.min_n {
+            // Remove first character, to get the next suffix.
+            self.char_offsets.pop_front();
+
+            // If the suffix is smaller than the minimal n-gram
+            // length, the iterator is exhausted.
+            if self.char_offsets.len() < self.min_n {
                 return None;
             }
 
-            self.seq = &self.seq[1..];
-
-            let upper = cmp::min(self.max_n, self.seq.len());
-            self.ngram = &self.seq[..upper];
+            // Get the maximum n-gram length for this suffix.
+            self.ngram_len = cmp::min(self.max_n, self.char_offsets.len());
         }
 
-        let ngram = self.ngram;
+        let ngram = if self.ngram_len == self.char_offsets.len() {
+            &self.string[self.char_offsets[0]..]
+        } else {
+            &self.string[self.char_offsets[0]..self.char_offsets[self.ngram_len]]
+        };
 
-        self.ngram = &self.ngram[..self.ngram.len() - 1];
+        let ngram_with_len = StrWithCharLen {
+            inner: ngram,
+            char_len: self.ngram_len,
+        };
 
-        Some(ngram)
+        self.ngram_len -= 1;
+
+        Some(ngram_with_len)
     }
 }
 
@@ -96,10 +144,10 @@ impl SubwordIndices for str {
             (1 << buckets_exp) - 1
         };
 
-        let chars: Vec<_> = self.chars().collect();
-
-        let mut indices = Vec::with_capacity((max_n - min_n + 1) * chars.len());
-        for ngram in NGrams::new(&chars, min_n, max_n) {
+        // Rough approximation, is correct for ASCII, avoids resizes
+        // when the string contains non-ASCII characters.
+        let mut indices = Vec::with_capacity((max_n - min_n + 1) * self.len());
+        for ngram in NGrams::new(self, min_n, max_n) {
             let mut hasher = FnvHasher::default();
             ngram.hash(&mut hasher);
             indices.push(hasher.finish() & mask);
@@ -119,43 +167,15 @@ mod tests {
 
     #[test]
     fn ngrams_test() {
-        let hello_chars: Vec<_> = "hellö world".chars().collect();
-        let mut hello_check: Vec<&[char]> = vec![
-            &['h'],
-            &['h', 'e'],
-            &['h', 'e', 'l'],
-            &['e'],
-            &['e', 'l'],
-            &['e', 'l', 'l'],
-            &['l'],
-            &['l', 'l'],
-            &['l', 'l', 'ö'],
-            &['l'],
-            &['l', 'ö'],
-            &['l', 'ö', ' '],
-            &['ö'],
-            &['ö', ' '],
-            &['ö', ' ', 'w'],
-            &[' '],
-            &[' ', 'w'],
-            &[' ', 'w', 'o'],
-            &['w'],
-            &['w', 'o'],
-            &['w', 'o', 'r'],
-            &['o'],
-            &['o', 'r'],
-            &['o', 'r', 'l'],
-            &['r'],
-            &['r', 'l'],
-            &['r', 'l', 'd'],
-            &['l'],
-            &['l', 'd'],
-            &['d'],
+        let mut hello_check: Vec<&str> = vec![
+            "h", "he", "hel", "e", "el", "ell", "l", "ll", "llö", "l", "lö", "lö ", "ö", "ö ",
+            "ö w", " ", " w", " wo", "w", "wo", "wor", "o", "or", "orl", "r", "rl", "rld", "l",
+            "ld", "d",
         ];
 
         hello_check.sort();
 
-        let mut hello_ngrams: Vec<_> = NGrams::new(&hello_chars, 1, 3).collect();
+        let mut hello_ngrams: Vec<_> = NGrams::new("hellö world", 1, 3).map(|s| s.inner).collect();
         hello_ngrams.sort();
 
         assert_eq!(hello_check, hello_ngrams);
@@ -163,52 +183,49 @@ mod tests {
 
     #[test]
     fn ngrams_23_test() {
-        let hello_chars: Vec<_> = "hello world".chars().collect();
-        let mut hello_check: Vec<&[char]> = vec![
-            &['h', 'e'],
-            &['h', 'e', 'l'],
-            &['e', 'l'],
-            &['e', 'l', 'l'],
-            &['l', 'l'],
-            &['l', 'l', 'o'],
-            &['l', 'o'],
-            &['l', 'o', ' '],
-            &['o', ' '],
-            &['o', ' ', 'w'],
-            &[' ', 'w'],
-            &[' ', 'w', 'o'],
-            &['w', 'o'],
-            &['w', 'o', 'r'],
-            &['o', 'r'],
-            &['o', 'r', 'l'],
-            &['r', 'l'],
-            &['r', 'l', 'd'],
-            &['l', 'd'],
+        let mut hello_check: Vec<&str> = vec![
+            "he", "hel", "el", "ell", "ll", "llo", "lo", "lo ", "o ", "o w", " w", " wo", "wo",
+            "wor", "or", "orl", "rl", "rld", "ld",
         ];
+
         hello_check.sort();
 
-        let mut hello_ngrams: Vec<_> = NGrams::new(&hello_chars, 2, 3).collect();
+        let mut hello_ngrams: Vec<_> = NGrams::new("hello world", 2, 3).map(|s| s.inner).collect();
         hello_ngrams.sort();
 
         assert_eq!(hello_check, hello_ngrams);
     }
 
     #[test]
+    fn short_ngram_test() {
+        let mut yep_check: Vec<&str> = vec!["ˈjə", "jəp", "ˈjəp"];
+        yep_check.sort();
+
+        let mut yep_ngrams: Vec<_> = NGrams::new("ˈjəp", 3, 6).map(|s| s.inner).collect();
+        yep_ngrams.sort();
+
+        assert_eq!(yep_check, yep_ngrams);
+    }
+
+    #[test]
     fn empty_ngram_test() {
-        let check: &[&[char]] = &[];
-        assert_eq!(NGrams::<char>::new(&[], 1, 3).collect::<Vec<_>>(), check);
+        let check: &[&str] = &[];
+        assert_eq!(
+            NGrams::new("", 1, 3).map(|s| s.inner).collect::<Vec<_>>(),
+            check
+        );
     }
 
     #[test]
     #[should_panic]
     fn incorrect_min_n_test() {
-        NGrams::<char>::new(&[], 0, 3);
+        NGrams::new("", 0, 3);
     }
 
     #[test]
     #[should_panic]
     fn incorrect_max_n_test() {
-        NGrams::<char>::new(&[], 2, 1);
+        NGrams::new("", 2, 1);
     }
 
     lazy_static! {
