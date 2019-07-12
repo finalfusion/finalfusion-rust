@@ -43,14 +43,22 @@ impl ReadChunk for SimpleVocab {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::SimpleVocab)?;
 
         // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()?;
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk length", e))?;
 
-        let vocab_len = read.read_u64::<LittleEndian>()? as usize;
+        let vocab_len = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary length", e))?
+            as usize;
         let mut words = Vec::with_capacity(vocab_len);
         for _ in 0..vocab_len {
-            let word_len = read.read_u32::<LittleEndian>()? as usize;
+            let word_len = read
+                .read_u32::<LittleEndian>()
+                .map_err(|e| ErrorKind::io_error("Cannot read token length", e))?
+                as usize;
             let mut bytes = vec![0; word_len];
-            read.read_exact(&mut bytes)?;
+            read.read_exact(&mut bytes)
+                .map_err(|e| ErrorKind::io_error("Cannot read token", e))?;
             let word = String::from_utf8(bytes)
                 .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
                 .map_err(Error::from)?;
@@ -79,13 +87,23 @@ impl WriteChunk for SimpleVocab {
                 .map(|w| w.len() + size_of::<u32>())
                 .sum::<usize>();
 
-        write.write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)?;
-        write.write_u64::<LittleEndian>(chunk_len as u64)?;
-        write.write_u64::<LittleEndian>(self.words.len() as u64)?;
+        write
+            .write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary chunk identifier", e))?;
+        write
+            .write_u64::<LittleEndian>(chunk_len as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary chunk length", e))?;
+        write
+            .write_u64::<LittleEndian>(self.words.len() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary length", e))?;
 
         for word in &self.words {
-            write.write_u32::<LittleEndian>(word.len() as u32)?;
-            write.write_all(word.as_bytes())?;
+            write
+                .write_u32::<LittleEndian>(word.len() as u32)
+                .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
+            write
+                .write_all(word.as_bytes())
+                .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
         }
 
         Ok(())
@@ -159,18 +177,32 @@ impl ReadChunk for SubwordVocab {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::SubwordVocab)?;
 
         // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()?;
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk length", e))?;
 
-        let vocab_len = read.read_u64::<LittleEndian>()? as usize;
-        let min_n = read.read_u32::<LittleEndian>()?;
-        let max_n = read.read_u32::<LittleEndian>()?;
-        let buckets_exp = read.read_u32::<LittleEndian>()?;
+        let vocab_len = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary length", e))?
+            as usize;
+        let min_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read minimum n-gram length", e))?;
+        let max_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read maximum n-gram length", e))?;
+        let buckets_exp = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot bucket exponent", e))?;
 
         let mut words = Vec::with_capacity(vocab_len);
         for _ in 0..vocab_len {
-            let word_len = read.read_u32::<LittleEndian>()? as usize;
+            let word_len = read
+                .read_u32::<LittleEndian>()
+                .map_err(|e| ErrorKind::io_error("Cannot read token length", e))?
+                as usize;
             let mut bytes = vec![0; word_len];
-            read.read_exact(&mut bytes)?;
+            read.read_exact(&mut bytes)
+                .map_err(|e| ErrorKind::io_error("Cannot read token", e))?;
             let word = String::from_utf8(bytes)
                 .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
                 .map_err(Error::from)?;
@@ -204,16 +236,34 @@ impl WriteChunk for SubwordVocab {
                 .map(|w| w.len() + size_of::<u32>())
                 .sum::<usize>();
 
-        write.write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)?;
-        write.write_u64::<LittleEndian>(chunk_len as u64)?;
-        write.write_u64::<LittleEndian>(self.words.len() as u64)?;
-        write.write_u32::<LittleEndian>(self.min_n)?;
-        write.write_u32::<LittleEndian>(self.max_n)?;
-        write.write_u32::<LittleEndian>(self.buckets_exp)?;
+        write
+            .write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write subword vocabulary chunk identifier", e)
+            })?;
+        write
+            .write_u64::<LittleEndian>(chunk_len as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write subword vocabulary chunk length", e))?;
+        write
+            .write_u64::<LittleEndian>(self.words.len() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.min_n)
+            .map_err(|e| ErrorKind::io_error("Cannot write minimum n-gram length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.max_n)
+            .map_err(|e| ErrorKind::io_error("Cannot write maximum n-gram length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.buckets_exp)
+            .map_err(|e| ErrorKind::io_error("Cannot write bucket exponent", e))?;
 
         for word in self.words() {
-            write.write_u32::<LittleEndian>(word.len() as u32)?;
-            write.write_all(word.as_bytes())?;
+            write
+                .write_u32::<LittleEndian>(word.len() as u32)
+                .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
+            write
+                .write_all(word.as_bytes())
+                .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
         }
 
         Ok(())
@@ -253,13 +303,19 @@ impl ReadChunk for VocabWrap {
     where
         R: Read + Seek,
     {
-        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
-        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get vocabulary chunk start position", e))?;
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
             .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
             .map_err(Error::from)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos))?;
+        read.seek(SeekFrom::Start(chunk_start_pos)).map_err(|e| {
+            ErrorKind::io_error("Cannot seek to vocabulary chunk start position", e)
+        })?;
 
         match chunk_id {
             ChunkIdentifier::SimpleVocab => {
