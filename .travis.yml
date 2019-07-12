@@ -18,3 +18,5 @@ addons:
     packages:
       - libopenblas-dev
       - gfortran
+after_success:
+  - ci/after-success.sh

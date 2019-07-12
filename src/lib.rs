@@ -19,7 +19,7 @@ pub mod similarity;
 
 pub mod storage;
 
-pub(crate) mod subword;
+pub mod subword;
 
 pub mod text;
 

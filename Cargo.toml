@@ -32,3 +32,9 @@ toml = "0.5"
 [dev-dependencies]
 maplit = "1"
 lazy_static = "1"
+criterion = "0.2"
+
+[[bench]]
+name = "subword"
+harness = false
+
