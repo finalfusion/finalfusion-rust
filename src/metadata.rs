@@ -24,11 +24,15 @@ impl ReadChunk for Metadata {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::Metadata)?;
 
         // Read chunk length.
-        let chunk_len = read.read_u64::<LittleEndian>()? as usize;
+        let chunk_len = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read chunk length", e))?
+            as usize;
 
         // Read TOML data.
         let mut buf = vec![0; chunk_len];
-        read.read_exact(&mut buf)?;
+        read.read_exact(&mut buf)
+            .map_err(|e| ErrorKind::io_error("Cannot read TOML metadata", e))?;
         let buf_str = String::from_utf8(buf)
             .map_err(|e| ErrorKind::Format(format!("TOML metadata contains invalid UTF-8: {}", e)))
             .map_err(Error::from)?;
@@ -53,9 +57,15 @@ impl WriteChunk for Metadata {
     {
         let metadata_str = self.0.to_string();
 
-        write.write_u32::<LittleEndian>(self.chunk_identifier() as u32)?;
-        write.write_u64::<LittleEndian>(metadata_str.len() as u64)?;
-        write.write_all(metadata_str.as_bytes())?;
+        write
+            .write_u32::<LittleEndian>(self.chunk_identifier() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write metadata chunk identifier", e))?;
+        write
+            .write_u64::<LittleEndian>(metadata_str.len() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write metadata length", e))?;
+        write
+            .write_all(metadata_str.as_bytes())
+            .map_err(|e| ErrorKind::io_error("Cannot write metadata", e))?;
 
         Ok(())
     }

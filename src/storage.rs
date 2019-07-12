@@ -65,31 +65,46 @@ impl MmapChunk for MmapArray {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
 
         // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()?;
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix chunk length", e))?;
 
-        let rows = read.read_u64::<LittleEndian>()? as usize;
-        let cols = read.read_u32::<LittleEndian>()? as usize;
+        let rows = read.read_u64::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read number of rows of the embedding matrix", e)
+        })? as usize;
+        let cols = read.read_u32::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read number of columns of the embedding matrix", e)
+        })? as usize;
         let shape = Ix2(rows, cols);
 
         // The components of the embedding matrix should be of type f32.
         f32::ensure_data_type(read)?;
 
-        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
-        read.seek(SeekFrom::Current(n_padding as i64))?;
+        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
+        read.seek(SeekFrom::Current(n_padding as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip padding", e))?;
 
         // Set up memory mapping.
         let matrix_len = shape.size() * size_of::<f32>();
-        let offset = read.seek(SeekFrom::Current(0))?;
+        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error(
+                "Cannot get file position for memory mapping embedding matrix",
+                e,
+            )
+        })?;
         let mut mmap_opts = MmapOptions::new();
         let map = unsafe {
             mmap_opts
                 .offset(offset)
                 .len(matrix_len)
-                .map(&read.get_ref())?
+                .map(&read.get_ref())
+                .map_err(|e| ErrorKind::io_error("Cannot memory map embedding matrix", e))?
         };
 
         // Position the reader after the matrix.
-        read.seek(SeekFrom::Current(matrix_len as i64))?;
+        read.seek(SeekFrom::Current(matrix_len as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip embedding matrix", e))?;
 
         Ok(MmapArray { map, shape })
     }
@@ -117,8 +132,14 @@ impl NdArray {
     where
         W: Write + Seek,
     {
-        write.write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)?;
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
+        write
+            .write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write embedding matrix chunk identifier", e)
+            })?;
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
         // Chunk size: rows (u64), columns (u32), type id (u32),
         //             padding ([0,4) bytes), matrix.
         let chunk_len = size_of::<u64>()
@@ -126,10 +147,22 @@ impl NdArray {
             + size_of::<u32>()
             + n_padding as usize
             + (data.rows() * data.cols() * size_of::<f32>());
-        write.write_u64::<LittleEndian>(chunk_len as u64)?;
-        write.write_u64::<LittleEndian>(data.rows() as u64)?;
-        write.write_u32::<LittleEndian>(data.cols() as u32)?;
-        write.write_u32::<LittleEndian>(f32::type_id())?;
+        write
+            .write_u64::<LittleEndian>(chunk_len as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write embedding matrix chunk length", e))?;
+        write
+            .write_u64::<LittleEndian>(data.rows() as u64)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write number of rows of the embedding matrix", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(data.cols() as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write number of columns of the embedding matrix", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(f32::type_id())
+            .map_err(|e| ErrorKind::io_error("Cannot write embedding matrix type identifier", e))?;
 
         // Write padding, such that the embedding matrix starts on at
         // a multiple of the size of f32 (4 bytes). This is necessary
@@ -143,11 +176,15 @@ impl NdArray {
         // boundary is also a multiple of 4.
 
         let padding = vec![0; n_padding as usize];
-        write.write_all(&padding)?;
+        write
+            .write_all(&padding)
+            .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
 
         for row in data.outer_iter() {
             for col in row.iter() {
-                write.write_f32::<LittleEndian>(*col)?;
+                write.write_f32::<LittleEndian>(*col).map_err(|e| {
+                    ErrorKind::io_error("Cannot write embedding matrix component", e)
+                })?;
             }
         }
 
@@ -163,19 +200,28 @@ impl ReadChunk for NdArray {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
 
         // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()?;
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix chunk length", e))?;
 
-        let rows = read.read_u64::<LittleEndian>()? as usize;
-        let cols = read.read_u32::<LittleEndian>()? as usize;
+        let rows = read.read_u64::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read number of rows of the embedding matrix", e)
+        })? as usize;
+        let cols = read.read_u32::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read number of columns of the embedding matrix", e)
+        })? as usize;
 
         // The components of the embedding matrix should be of type f32.
         f32::ensure_data_type(read)?;
 
-        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
-        read.seek(SeekFrom::Current(n_padding as i64))?;
+        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
+        read.seek(SeekFrom::Current(n_padding as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip padding", e))?;
 
         let mut data = vec![0f32; rows * cols];
-        read.read_f32_into::<LittleEndian>(&mut data)?;
+        read.read_f32_into::<LittleEndian>(&mut data)
+            .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix", e))?;
 
         Ok(NdArray(
             Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
@@ -211,14 +257,33 @@ impl ReadChunk for QuantizedArray {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
 
         // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()?;
+        read.read_u64::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read quantized embedding matrix chunk length", e)
+        })?;
 
-        let projection = read.read_u32::<LittleEndian>()? != 0;
-        let read_norms = read.read_u32::<LittleEndian>()? != 0;
-        let quantized_len = read.read_u32::<LittleEndian>()? as usize;
-        let reconstructed_len = read.read_u32::<LittleEndian>()? as usize;
-        let n_centroids = read.read_u32::<LittleEndian>()? as usize;
-        let n_embeddings = read.read_u64::<LittleEndian>()? as usize;
+        let projection = read.read_u32::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read quantized embedding matrix projection", e)
+        })? != 0;
+        let read_norms = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read quantized embedding matrix norms", e))?
+            != 0;
+        let quantized_len = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read quantized embedding length", e))?
+            as usize;
+        let reconstructed_len = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read reconstructed embedding length", e))?
+            as usize;
+        let n_centroids = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read number of subquantizers", e))?
+            as usize;
+        let n_embeddings = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read number of quantized embeddings", e))?
+            as usize;
 
         // Quantized storage type.
         u8::ensure_data_type(read)?;
@@ -226,12 +291,16 @@ impl ReadChunk for QuantizedArray {
         // Reconstructed embedding type.
         f32::ensure_data_type(read)?;
 
-        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0))?);
-        read.seek(SeekFrom::Current(n_padding as i64))?;
+        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
+        read.seek(SeekFrom::Current(n_padding as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip padding", e))?;
 
         let projection = if projection {
             let mut projection_vec = vec![0f32; reconstructed_len * reconstructed_len];
-            read.read_f32_into::<LittleEndian>(&mut projection_vec)?;
+            read.read_f32_into::<LittleEndian>(&mut projection_vec)
+                .map_err(|e| ErrorKind::io_error("Cannot read projection matrix", e))?;
             Some(
                 Array2::from_shape_vec((reconstructed_len, reconstructed_len), projection_vec)
                     .map_err(Error::Shape)?,
@@ -244,7 +313,8 @@ impl ReadChunk for QuantizedArray {
         for _ in 0..quantized_len {
             let mut subquantizer_vec =
                 vec![0f32; n_centroids * (reconstructed_len / quantized_len)];
-            read.read_f32_into::<LittleEndian>(&mut subquantizer_vec)?;
+            read.read_f32_into::<LittleEndian>(&mut subquantizer_vec)
+                .map_err(|e| ErrorKind::io_error("Cannot read subquantizer", e))?;
             let subquantizer = Array2::from_shape_vec(
                 (n_centroids, reconstructed_len / quantized_len),
                 subquantizer_vec,
@@ -255,14 +325,16 @@ impl ReadChunk for QuantizedArray {
 
         let norms = if read_norms {
             let mut norms_vec = vec![0f32; n_embeddings];
-            read.read_f32_into::<LittleEndian>(&mut norms_vec)?;
+            read.read_f32_into::<LittleEndian>(&mut norms_vec)
+                .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
             Some(Array1::from_vec(norms_vec))
         } else {
             None
         };
 
         let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantized_len];
-        read.read_exact(&mut quantized_embeddings_vec)?;
+        read.read_exact(&mut quantized_embeddings_vec)
+            .map_err(|e| ErrorKind::io_error("Cannot read quantized embeddings", e))?;
         let quantized =
             Array2::from_shape_vec((n_embeddings, quantized_len), quantized_embeddings_vec)
                 .map_err(Error::Shape)?;
@@ -284,13 +356,22 @@ impl WriteChunk for QuantizedArray {
     where
         W: Write + Seek,
     {
-        write.write_u32::<LittleEndian>(ChunkIdentifier::QuantizedArray as u32)?;
+        write
+            .write_u32::<LittleEndian>(ChunkIdentifier::QuantizedArray as u32)
+            .map_err(|e| {
+                ErrorKind::io_error(
+                    "Cannot write quantized embedding matrix chunk identifier",
+                    e,
+                )
+            })?;
 
         // projection (u32), use_norms (u32), quantized_len (u32),
         // reconstructed_len (u32), n_centroids (u32), rows (u64),
         // types (2 x u32 bytes), padding, projection matrix,
         // centroids, norms, quantized data.
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0))?);
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
         let chunk_size = size_of::<u32>()
             + size_of::<u32>()
             + size_of::<u32>()
@@ -310,27 +391,57 @@ impl WriteChunk for QuantizedArray {
             + self.norms.is_some() as usize * self.quantized.rows() * size_of::<f32>()
             + self.quantized.rows() * self.quantizer.quantized_len();
 
-        write.write_u64::<LittleEndian>(chunk_size as u64)?;
+        write
+            .write_u64::<LittleEndian>(chunk_size as u64)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding matrix chunk length", e)
+            })?;
 
-        write.write_u32::<LittleEndian>(self.quantizer.projection().is_some() as u32)?;
-        write.write_u32::<LittleEndian>(self.norms.is_some() as u32)?;
-        write.write_u32::<LittleEndian>(self.quantizer.quantized_len() as u32)?;
-        write.write_u32::<LittleEndian>(self.quantizer.reconstructed_len() as u32)?;
-        write.write_u32::<LittleEndian>(self.quantizer.n_quantizer_centroids() as u32)?;
-        write.write_u64::<LittleEndian>(self.quantized.rows() as u64)?;
+        write
+            .write_u32::<LittleEndian>(self.quantizer.projection().is_some() as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding matrix projection", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(self.norms.is_some() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding matrix norms", e))?;
+        write
+            .write_u32::<LittleEndian>(self.quantizer.quantized_len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.quantizer.reconstructed_len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write reconstructed embedding length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.quantizer.n_quantizer_centroids() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write number of subquantizers", e))?;
+        write
+            .write_u64::<LittleEndian>(self.quantized.rows() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write number of quantized embeddings", e))?;
 
         // Quantized and reconstruction types.
-        write.write_u32::<LittleEndian>(u8::type_id())?;
-        write.write_u32::<LittleEndian>(f32::type_id())?;
+        write
+            .write_u32::<LittleEndian>(u8::type_id())
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding type identifier", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(f32::type_id())
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write reconstructed embedding type identifier", e)
+            })?;
 
         let padding = vec![0u8; n_padding as usize];
-        write.write_all(&padding)?;
+        write
+            .write_all(&padding)
+            .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
 
         // Write projection matrix.
         if let Some(projection) = self.quantizer.projection() {
             for row in projection.outer_iter() {
                 for &col in row {
-                    write.write_f32::<LittleEndian>(col)?;
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write projection matrix component", e)
+                    })?;
                 }
             }
         }
@@ -339,7 +450,9 @@ impl WriteChunk for QuantizedArray {
         for subquantizer in self.quantizer.subquantizers() {
             for row in subquantizer.outer_iter() {
                 for &col in row {
-                    write.write_f32::<LittleEndian>(col)?;
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write subquantizer component", e)
+                    })?;
                 }
             }
         }
@@ -348,7 +461,9 @@ impl WriteChunk for QuantizedArray {
         if let Some(ref norms) = self.norms {
             for row in norms.outer_iter() {
                 for &col in row {
-                    write.write_f32::<LittleEndian>(col)?;
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write norm vector component", e)
+                    })?;
                 }
             }
         }
@@ -356,7 +471,9 @@ impl WriteChunk for QuantizedArray {
         // Write quantized embedding matrix.
         for row in self.quantized.outer_iter() {
             for &col in row {
-                write.write_u8(col)?;
+                write.write_u8(col).map_err(|e| {
+                    ErrorKind::io_error("Cannot write quantized embedding matrix component", e)
+                })?;
             }
         }
 
@@ -403,14 +520,19 @@ impl ReadChunk for StorageWrap {
     where
         R: Read + Seek,
     {
-        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
 
-        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
             .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
             .map_err(Error::from)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos))?;
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageWrap::NdArray),
@@ -430,14 +552,19 @@ impl ReadChunk for StorageWrap {
 
 impl MmapChunk for StorageWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
-        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
 
-        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
             .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
             .map_err(Error::from)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos))?;
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageWrap::MmapArray),
@@ -498,14 +625,19 @@ impl ReadChunk for StorageViewWrap {
     where
         R: Read + Seek,
     {
-        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
 
-        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
             .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
             .map_err(Error::from)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos))?;
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageViewWrap::NdArray),
@@ -540,14 +672,19 @@ impl WriteChunk for StorageViewWrap {
 
 impl MmapChunk for StorageViewWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
-        let chunk_start_pos = read.seek(SeekFrom::Current(0))?;
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
 
-        let chunk_id = read.read_u32::<LittleEndian>()?;
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)
             .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
             .map_err(Error::from)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos))?;
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageViewWrap::MmapArray),

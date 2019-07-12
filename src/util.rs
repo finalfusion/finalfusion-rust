@@ -43,7 +43,9 @@ pub fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize> {
 
 pub fn read_string(reader: &mut BufRead, delim: u8) -> Result<String> {
     let mut buf = Vec::new();
-    reader.read_until(delim, &mut buf)?;
+    reader
+        .read_until(delim, &mut buf)
+        .map_err(|e| ErrorKind::io_error("Cannot read string", e))?;
     buf.pop();
     Ok(String::from_utf8(buf)
         .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?)

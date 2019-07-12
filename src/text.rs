@@ -159,7 +159,8 @@ where
     };
 
     for line in reader.lines() {
-        let line = line?;
+        let line =
+            line.map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?;
         let mut parts = line.split_whitespace();
 
         let word = parts
@@ -242,7 +243,8 @@ where
             };
 
             let embed_str = embed.as_view().iter().map(ToString::to_string).join(" ");
-            writeln!(write, "{} {}", word, embed_str)?;
+            writeln!(write, "{} {}", word, embed_str)
+                .map_err(|e| ErrorKind::io_error("Cannot write word embedding", e))?;
         }
 
         Ok(())
@@ -274,7 +276,8 @@ where
     S: Storage,
 {
     fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<()> {
-        writeln!(write, "{} {}", self.vocab().len(), self.dims())?;
+        writeln!(write, "{} {}", self.vocab().len(), self.dims())
+            .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
         self.write_text(write, unnormalize)
     }
 }

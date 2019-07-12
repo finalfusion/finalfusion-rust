@@ -22,9 +22,6 @@ pub enum Error {
     /// finalfusion errors.
     FinalFusion(ErrorKind),
 
-    /// Wrapped `std::io::Error`.
-    Io(io::Error),
-
     /// `ndarray` shape error.
     Shape(ShapeError),
 }
@@ -34,7 +31,6 @@ impl fmt::Display for Error {
         use self::Error::*;
         match *self {
             FinalFusion(ref kind) => kind.fmt(f),
-            Io(ref err) => err.fmt(f),
             Shape(ref err) => err.fmt(f),
         }
     }
@@ -46,16 +42,28 @@ impl std::error::Error for Error {
 
         match *self {
             FinalFusion(ErrorKind::Format(ref desc)) => desc,
-            Io(ref err) => err.description(),
+            FinalFusion(ErrorKind::Io { ref desc, .. }) => desc,
             Shape(ref err) => err.description(),
         }
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Debug)]
 pub enum ErrorKind {
     /// Invalid file format.
     Format(String),
+
+    /// I/O error.
+    Io { desc: String, error: io::Error },
+}
+
+impl ErrorKind {
+    pub fn io_error(desc: impl Into<String>, error: io::Error) -> Self {
+        ErrorKind::Io {
+            desc: desc.into(),
+            error,
+        }
+    }
 }
 
 impl fmt::Display for ErrorKind {
@@ -63,6 +71,10 @@ impl fmt::Display for ErrorKind {
         use self::ErrorKind::*;
         match *self {
             Format(ref desc) => write!(f, "{}", desc),
+            Io {
+                ref desc,
+                ref error,
+            } => write!(f, "{}: {}", desc, error),
         }
     }
 }
@@ -70,12 +82,6 @@ impl fmt::Display for ErrorKind {
 impl From<ErrorKind> for Error {
     fn from(kind: ErrorKind) -> Error {
         Error::FinalFusion(kind)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(error: io::Error) -> Self {
-        Error::Io(error)
     }
 }
 
@@ -201,7 +207,9 @@ pub(crate) mod private {
         where
             R: Read,
         {
-            let chunk_id = read.read_u32::<LittleEndian>()?;
+            let chunk_id = read
+                .read_u32::<LittleEndian>()
+                .map_err(|e| ErrorKind::io_error("Cannot read chunk identifier", e))?;
             let chunk_id = ChunkIdentifier::try_from(chunk_id)
                 .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
                 .map_err(Error::from)?;
@@ -249,7 +257,9 @@ pub(crate) mod private {
                 where
                     R: Read,
                 {
-                    let type_id = read.read_u32::<LittleEndian>()?;
+                    let type_id = read
+                        .read_u32::<LittleEndian>()
+                        .map_err(|e| ErrorKind::io_error("Cannot read type identifier", e))?;
                     if type_id != Self::type_id() {
                         return Err(ErrorKind::Format(format!(
                             "Invalid type, expected: {}, got: {}",
@@ -327,12 +337,20 @@ pub(crate) mod private {
         where
             W: Write + Seek,
         {
-            write.write_all(&MAGIC)?;
-            write.write_u32::<LittleEndian>(MODEL_VERSION)?;
-            write.write_u32::<LittleEndian>(self.chunk_identifiers.len() as u32)?;
+            write
+                .write_all(&MAGIC)
+                .map_err(|e| ErrorKind::io_error("Cannot write magic", e))?;
+            write
+                .write_u32::<LittleEndian>(MODEL_VERSION)
+                .map_err(|e| ErrorKind::io_error("Cannot write model version", e))?;
+            write
+                .write_u32::<LittleEndian>(self.chunk_identifiers.len() as u32)
+                .map_err(|e| ErrorKind::io_error("Cannot write chunk identifiers length", e))?;
 
             for &identifier in &self.chunk_identifiers {
-                write.write_u32::<LittleEndian>(identifier as u32)?
+                write
+                    .write_u32::<LittleEndian>(identifier as u32)
+                    .map_err(|e| ErrorKind::io_error("Cannot write chunk identifier", e))?;
             }
 
             Ok(())
@@ -346,7 +364,8 @@ pub(crate) mod private {
         {
             // Magic and version ceremony.
             let mut magic = [0u8; 4];
-            read.read_exact(&mut magic)?;
+            read.read_exact(&mut magic)
+                .map_err(|e| ErrorKind::io_error("Cannot read magic", e))?;
 
             if magic != MAGIC {
                 return Err(ErrorKind::Format(format!(
@@ -356,7 +375,9 @@ pub(crate) mod private {
                 .into());
             }
 
-            let version = read.read_u32::<LittleEndian>()?;
+            let version = read
+                .read_u32::<LittleEndian>()
+                .map_err(|e| ErrorKind::io_error("Cannot read model version", e))?;
             if version != MODEL_VERSION {
                 return Err(
                     ErrorKind::Format(format!("Unknown finalfusion version: {}", version)).into(),
@@ -364,10 +385,15 @@ pub(crate) mod private {
             }
 
             // Read chunk identifiers.
-            let chunk_identifiers_len = read.read_u32::<LittleEndian>()? as usize;
+            let chunk_identifiers_len = read
+                .read_u32::<LittleEndian>()
+                .map_err(|e| ErrorKind::io_error("Cannot read chunk identifiers length", e))?
+                as usize;
             let mut chunk_identifiers = Vec::with_capacity(chunk_identifiers_len);
             for _ in 0..chunk_identifiers_len {
-                let identifier = read.read_u32::<LittleEndian>()?;
+                let identifier = read
+                    .read_u32::<LittleEndian>()
+                    .map_err(|e| ErrorKind::io_error("Cannot read chunk identifier", e))?;
                 let chunk_identifier = ChunkIdentifier::try_from(identifier)
                     .ok_or_else(|| {
                         ErrorKind::Format(format!("Unknown chunk identifier: {}", identifier))

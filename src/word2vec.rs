@@ -28,7 +28,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use ndarray::{Array2, Axis};
 
 use crate::embeddings::Embeddings;
-use crate::io::Result;
+use crate::io::{ErrorKind, Result};
 use crate::norms::NdNorms;
 use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::util::{l2_normalize_array, read_number, read_string};
@@ -91,7 +91,9 @@ where
                 let mut embedding_raw = unsafe {
                     typed_to_bytes(embedding.as_slice_mut().expect("Matrix not contiguous"))
                 };
-                reader.read_exact(&mut embedding_raw)?;
+                reader
+                    .read_exact(&mut embedding_raw)
+                    .map_err(|e| ErrorKind::io_error("Cannot read word embedding", e))?;
             }
         }
 
@@ -135,10 +137,11 @@ where
     where
         W: Write,
     {
-        writeln!(w, "{} {}", self.vocab().len(), self.dims())?;
+        writeln!(w, "{} {}", self.vocab().len(), self.dims())
+            .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
 
         for (word, embed_norm) in self.iter_with_norms() {
-            write!(w, "{} ", word)?;
+            write!(w, "{} ", word).map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
 
             let embed = if unnormalize {
                 CowArray::Owned(embed_norm.into_unnormalized())
@@ -147,10 +150,12 @@ where
             };
 
             for v in embed.as_view() {
-                w.write_f32::<LittleEndian>(*v)?;
+                w.write_f32::<LittleEndian>(*v)
+                    .map_err(|e| ErrorKind::io_error("Cannot write embedding component", e))?;
             }
 
-            w.write_all(&[0x0a])?;
+            w.write_all(&[0x0a])
+                .map_err(|e| ErrorKind::io_error("Cannot write embedding separator", e))?;
         }
 
         Ok(())
