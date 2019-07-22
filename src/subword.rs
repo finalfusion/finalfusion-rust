@@ -133,27 +133,9 @@ pub trait SubwordIndices {
 
 impl SubwordIndices for str {
     fn subword_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<u64> {
-        assert!(
-            buckets_exp <= 64,
-            "The largest possible buckets exponent is 64."
-        );
-
-        let mask = if buckets_exp == 64 {
-            !0
-        } else {
-            (1 << buckets_exp) - 1
-        };
-
-        // Rough approximation, is correct for ASCII, avoids resizes
-        // when the string contains non-ASCII characters.
-        let mut indices = Vec::with_capacity((max_n - min_n + 1) * self.len());
-        for ngram in NGrams::new(self, min_n, max_n) {
-            let mut hasher = FnvHasher::default();
-            ngram.hash(&mut hasher);
-            indices.push(hasher.finish() & mask);
-        }
-
-        indices
+        NGramsIndicesIter::new(self, min_n, max_n, buckets_exp)
+            .map(|(_, idx)| idx)
+            .collect()
     }
 }
 
