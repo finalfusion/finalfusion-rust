@@ -16,12 +16,12 @@ use crate::vocab::Vocab;
 /// This data structure is used to store a pair consisting of a word and
 /// its similarity to a query word.
 #[derive(Debug, Eq, PartialEq)]
-pub struct WordSimilarity<'a> {
+pub struct WordSimilarityResult<'a> {
     pub similarity: NotNan<f32>,
     pub word: &'a str,
 }
 
-impl<'a> Ord for WordSimilarity<'a> {
+impl<'a> Ord for WordSimilarityResult<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         match other.similarity.cmp(&self.similarity) {
             Ordering::Equal => self.word.cmp(other.word),
@@ -30,8 +30,8 @@ impl<'a> Ord for WordSimilarity<'a> {
     }
 }
 
-impl<'a> PartialOrd for WordSimilarity<'a> {
-    fn partial_cmp(&self, other: &WordSimilarity) -> Option<Ordering> {
+impl<'a> PartialOrd for WordSimilarityResult<'a> {
+    fn partial_cmp(&self, other: &WordSimilarityResult) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -55,7 +55,7 @@ pub trait Analogy {
         word2: &str,
         word3: &str,
         limit: usize,
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]> {
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
         self.analogy_masked(word1, word2, word3, limit, [true, true, true])
     }
 
@@ -83,7 +83,7 @@ pub trait Analogy {
         word3: &str,
         limit: usize,
         remove: [bool; 3],
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]>;
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>;
 }
 
 impl<V, S> Analogy for Embeddings<V, S>
@@ -98,7 +98,7 @@ where
         word3: &str,
         limit: usize,
         remove: [bool; 3],
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]> {
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
         {
             self.analogy_by_masked(word1, word2, word3, limit, remove, |embeds, embed| {
                 embeds.dot(&embed)
@@ -128,7 +128,7 @@ pub trait AnalogyBy {
         word3: &str,
         limit: usize,
         similarity: F,
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
@@ -160,7 +160,7 @@ pub trait AnalogyBy {
         limit: usize,
         remove: [bool; 3],
         similarity: F,
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
@@ -178,7 +178,7 @@ where
         limit: usize,
         remove: [bool; 3],
         similarity: F,
-    ) -> Result<Vec<WordSimilarity>, [bool; 3]>
+    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
@@ -198,56 +198,47 @@ where
     }
 }
 
-/// Trait for similarity queries.
-pub trait Similarity {
+/// Trait for word similarity queries.
+pub trait WordSimilarity {
     /// Find words that are similar to the query word.
     ///
     /// The similarity between two words is defined by the dot product of
     /// the embeddings. If the vectors are unit vectors (e.g. by virtue of
     /// calling `normalize`), this is the cosine similarity. At most, `limit`
     /// results are returned.
-    fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>>;
-}
+    fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>>;
 
-impl<V, S> Similarity for Embeddings<V, S>
-where
-    V: Vocab,
-    S: StorageView,
-{
-    fn similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarity>> {
-        self.similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
-    }
-}
-
-/// Trait for similarity queries with a custom similarity function.
-pub trait SimilarityBy {
     /// Find words that are similar to the query word using the given similarity
     /// function.
     ///
     /// The similarity function should return, given the embeddings matrix and
     /// the word vector a vector of similarity scores. At most, `limit` results
     /// are returned.
-    fn similarity_by<F>(
+    fn word_similarity_by<F>(
         &self,
         word: &str,
         limit: usize,
         similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
+    ) -> Option<Vec<WordSimilarityResult>>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
-impl<V, S> SimilarityBy for Embeddings<V, S>
+impl<V, S> WordSimilarity for Embeddings<V, S>
 where
     V: Vocab,
     S: StorageView,
 {
-    fn similarity_by<F>(
+    fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>> {
+        self.word_similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
+    }
+
+    fn word_similarity_by<F>(
         &self,
         word: &str,
         limit: usize,
         similarity: F,
-    ) -> Option<Vec<WordSimilarity>>
+    ) -> Option<Vec<WordSimilarityResult>>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
@@ -259,6 +250,81 @@ where
     }
 }
 
+/// Trait for embedding similarity queries.
+pub trait EmbeddingSimilarity {
+    /// Find words that are similar to the query embedding.
+    ///
+    /// The similarity between the query embedding and other embeddings is
+    /// defined by the dot product of the embeddings. If the vectors are unit
+    /// vectors (e.g. by virtue of calling `normalize`), this is the cosine
+    /// similarity. At most, `limit` results are returned.
+    fn embedding_similarity(
+        &self,
+        query: ArrayView1<f32>,
+        limit: usize,
+    ) -> Option<Vec<WordSimilarityResult>> {
+        self.embedding_similarity_masked(query, limit, &HashSet::new())
+    }
+
+    /// Find words that are similar to the query embedding while skipping
+    /// certain words.
+    ///
+    /// The similarity between the query embedding and other embeddings is
+    /// defined by the dot product of the embeddings. If the vectors are unit
+    /// vectors (e.g. by virtue of calling `normalize`), this is the cosine
+    /// similarity. At most, `limit` results are returned.
+    fn embedding_similarity_masked(
+        &self,
+        query: ArrayView1<f32>,
+        limit: usize,
+        skips: &HashSet<&str>,
+    ) -> Option<Vec<WordSimilarityResult>>;
+
+    /// Find words that are similar to the query embedding using the given
+    /// similarity function.
+    ///
+    /// The similarity function should return, given the embeddings matrix and
+    /// the query vector a vector of similarity scores. At most, `limit` results
+    /// are returned.
+    fn embedding_similarity_by<F>(
+        &self,
+        query: ArrayView1<f32>,
+        limit: usize,
+        skip: &HashSet<&str>,
+        similarity: F,
+    ) -> Option<Vec<WordSimilarityResult>>
+    where
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
+}
+
+impl<V, S> EmbeddingSimilarity for Embeddings<V, S>
+where
+    V: Vocab,
+    S: StorageView,
+{
+    fn embedding_similarity_masked(
+        &self,
+        query: ArrayView1<f32>,
+        limit: usize,
+        skip: &HashSet<&str>,
+    ) -> Option<Vec<WordSimilarityResult>> {
+        self.embedding_similarity_by(query, limit, skip, |embeds, embed| embeds.dot(&embed))
+    }
+
+    fn embedding_similarity_by<F>(
+        &self,
+        query: ArrayView1<f32>,
+        limit: usize,
+        skip: &HashSet<&str>,
+        similarity: F,
+    ) -> Option<Vec<WordSimilarityResult>>
+    where
+        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
+    {
+        Some(self.similarity_(query, skip, limit, similarity))
+    }
+}
+
 trait SimilarityPrivate {
     fn similarity_<F>(
         &self,
@@ -266,7 +332,7 @@ trait SimilarityPrivate {
         skip: &HashSet<&str>,
         limit: usize,
         similarity: F,
-    ) -> Vec<WordSimilarity>
+    ) -> Vec<WordSimilarityResult>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
@@ -282,7 +348,7 @@ where
         skip: &HashSet<&str>,
         limit: usize,
         mut similarity: F,
-    ) -> Vec<WordSimilarity>
+    ) -> Vec<WordSimilarityResult>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
@@ -302,7 +368,7 @@ where
                 continue;
             }
 
-            let word_similarity = WordSimilarity {
+            let word_similarity = WordSimilarityResult {
                 word,
                 similarity: NotNan::new(sim).expect("Encountered NaN"),
             };
@@ -359,7 +425,7 @@ mod tests {
     use std::io::BufReader;
 
     use crate::embeddings::Embeddings;
-    use crate::similarity::{Analogy, Similarity};
+    use crate::similarity::{Analogy, EmbeddingSimilarity, WordSimilarity};
     use crate::word2vec::ReadWord2Vec;
 
     static SIMILARITY_ORDER_STUTTGART_10: &'static [&'static str] = &[
@@ -467,7 +533,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.similarity("Berlin", 40);
+        let result = embeddings.word_similarity("Berlin", 40);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(40, result.len());
@@ -476,7 +542,7 @@ mod tests {
             assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
         }
 
-        let result = embeddings.similarity("Berlin", 10);
+        let result = embeddings.word_similarity("Berlin", 10);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
@@ -489,12 +555,29 @@ mod tests {
     }
 
     #[test]
+    fn test_embedding_similarity() {
+        let f = File::open("testdata/similarity.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
+        let embedding = embeddings.embedding("Berlin").unwrap();
+        let result = embeddings.embedding_similarity(embedding.as_view(), 10);
+        assert!(result.is_some());
+        let mut result = result.unwrap().into_iter();
+        assert_eq!(10, result.len());
+        assert_eq!(result.next().unwrap().word, "Berlin");
+
+        for (idx, word_similarity) in result.into_iter().enumerate() {
+            assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
+        }
+    }
+
+    #[test]
     fn test_similarity_limit() {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.similarity("Stuttgart", 10);
+        let result = embeddings.word_similarity("Stuttgart", 10);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
