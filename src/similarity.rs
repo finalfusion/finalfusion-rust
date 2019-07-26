@@ -51,12 +51,10 @@ pub trait Analogy {
     /// indicating which of the tokens were present.
     fn analogy(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
+        query: [&str; 3],
         limit: usize,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
-        self.analogy_masked(word1, word2, word3, limit, [true, true, true])
+        self.analogy_masked(query, [true, true, true], limit)
     }
 
     /// Perform an analogy query.
@@ -78,11 +76,9 @@ pub trait Analogy {
     /// were present.
     fn analogy_masked(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
+        query: [&str; 3],
         remove: [bool; 3],
+        limit: usize,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>;
 }
 
@@ -93,16 +89,12 @@ where
 {
     fn analogy_masked(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
+        query: [&str; 3],
         remove: [bool; 3],
+        limit: usize,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
         {
-            self.analogy_by_masked(word1, word2, word3, limit, remove, |embeds, embed| {
-                embeds.dot(&embed)
-            })
+            self.analogy_by_masked(query, remove, limit, |embeds, embed| embeds.dot(&embed))
         }
     }
 }
@@ -123,16 +115,14 @@ pub trait AnalogyBy {
     /// were present.
     fn analogy_by<F>(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
+        query: [&str; 3],
         limit: usize,
         similarity: F,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        self.analogy_by_masked(word1, word2, word3, limit, [true, true, true], similarity)
+        self.analogy_by_masked(query, [true, true, true], limit, similarity)
     }
 
     /// Perform an analogy query using the given similarity function.
@@ -154,11 +144,9 @@ pub trait AnalogyBy {
     /// were present.
     fn analogy_by_masked<F>(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
+        query: [&str; 3],
         remove: [bool; 3],
+        limit: usize,
         similarity: F,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
@@ -172,22 +160,20 @@ where
 {
     fn analogy_by_masked<F>(
         &self,
-        word1: &str,
-        word2: &str,
-        word3: &str,
-        limit: usize,
+        query: [&str; 3],
         remove: [bool; 3],
+        limit: usize,
         similarity: F,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
     where
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
     {
-        let [embedding1, embedding2, embedding3] = lookup_words3(self, word1, word2, word3)?;
+        let [embedding1, embedding2, embedding3] = lookup_words3(self, query)?;
 
         let mut embedding = (&embedding2.as_view() - &embedding1.as_view()) + embedding3.as_view();
         l2_normalize(embedding.view_mut());
 
-        let skip = [word1, word2, word3]
+        let skip = query
             .iter()
             .zip(remove.iter())
             .filter(|(_, &exclude)| exclude)
@@ -389,17 +375,15 @@ where
 
 fn lookup_words3<'a, V, S>(
     embeddings: &'a Embeddings<V, S>,
-    word1: &str,
-    word2: &str,
-    word3: &str,
+    query: [&str; 3],
 ) -> Result<[CowArray1<'a, f32>; 3], [bool; 3]>
 where
     V: Vocab,
     S: Storage,
 {
-    let embedding1 = embeddings.embedding(word1);
-    let embedding2 = embeddings.embedding(word2);
-    let embedding3 = embeddings.embedding(word3);
+    let embedding1 = embeddings.embedding(query[0]);
+    let embedding2 = embeddings.embedding(query[1]);
+    let embedding3 = embeddings.embedding(query[2]);
 
     let present = [
         embedding1.is_some(),
@@ -595,7 +579,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.analogy("Paris", "Frankreich", "Berlin", 40);
+        let result = embeddings.analogy(["Paris", "Frankreich", "Berlin"], 40);
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(40, result.len());
@@ -612,15 +596,15 @@ mod tests {
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
         assert_eq!(
-            embeddings.analogy("Foo", "Frankreich", "Berlin", 40),
+            embeddings.analogy(["Foo", "Frankreich", "Berlin"], 40),
             Err([false, true, true])
         );
         assert_eq!(
-            embeddings.analogy("Paris", "Foo", "Berlin", 40),
+            embeddings.analogy(["Paris", "Foo", "Berlin"], 40),
             Err([true, false, true])
         );
         assert_eq!(
-            embeddings.analogy("Paris", "Frankreich", "Foo", 40),
+            embeddings.analogy(["Paris", "Frankreich", "Foo"], 40),
             Err([true, true, false])
         );
     }
