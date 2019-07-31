@@ -1,14 +1,99 @@
 use std::cmp;
 use std::collections::VecDeque;
+use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 use fnv::FnvHasher;
 
 use crate::util::CollectWithCapacity;
 
+/// N-Gram indexer
+///
+/// An indexer maps an n-gram to an index in the subword embedding
+/// matrix.
+pub trait Indexer {
+    /// Map an n-gram to an index in the subword embedding matrix.
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> u64;
+}
+
+/// Indexer using a hash function.
+///
+/// This indexer first hashes a given n-gram and then maps the
+/// resulting hash into *2^buckets_exp* buckets.
+///
+/// The largest possible bucket exponent is 64.
+pub struct HashIndexer<H> {
+    mask: u64,
+    _phantom: PhantomData<H>,
+}
+
+impl<H> HashIndexer<H> {
+    /// Construct a `HashIndexer`.
+    ///
+    /// The largest possible bucket exponent is 64.
+    pub fn new(buckets_exp: usize) -> Self {
+        assert!(
+            buckets_exp <= 64,
+            "The largest possible buckets exponent is 64."
+        );
+
+        let mask = if buckets_exp == 64 {
+            !0
+        } else {
+            (1 << buckets_exp) - 1
+        };
+
+        HashIndexer {
+            mask,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<H> Clone for HashIndexer<H> {
+    fn clone(&self) -> Self {
+        HashIndexer {
+            mask: self.mask,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<H> Copy for HashIndexer<H> {}
+
+impl<H> fmt::Debug for HashIndexer<H> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        // std::intrinsics::type_name requires nightly
+        write!(f, "HashIndexer<impl Hasher> {{ mask: {} }}", self.mask)
+    }
+}
+
+impl<H> Eq for HashIndexer<H> {}
+
+impl<H> Indexer for HashIndexer<H>
+where
+    H: Default + Hasher,
+{
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> u64 {
+        let mut hasher = H::default();
+        ngram.hash(&mut hasher);
+        hasher.finish() & self.mask
+    }
+}
+
+impl<H> PartialEq for HashIndexer<H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.mask.eq(&other.mask)
+    }
+}
+
+/// Standard hash-based indexer in finalfusion.
+pub type FinalfusionHashIndexer = HashIndexer<FnvHasher>;
+
 /// A string reference with its length in characters.
-struct StrWithCharLen<'a> {
+pub struct StrWithCharLen<'a> {
     inner: &'a str,
     char_len: usize,
 }
@@ -125,15 +210,20 @@ pub trait SubwordIndices {
     /// Return the subword indices of the subwords of a string.
     ///
     /// The n-grams that are used are of length *[min_n, max_n]*, these are
-    /// mapped to indices into *2^buckets_exp* buckets.
+    /// mapped to indices using the given indexer.
     ///
     /// The largest possible bucket exponent is 64.
-    fn subword_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<u64>;
+    fn subword_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<u64>
+    where
+        I: Indexer;
 }
 
 impl SubwordIndices for str {
-    fn subword_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<u64> {
-        NGramsIndicesIter::new(self, min_n, max_n, buckets_exp)
+    fn subword_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<u64>
+    where
+        I: Indexer,
+    {
+        NGramsIndicesIter::new(self, min_n, max_n, indexer)
             .map(|(_, idx)| idx)
             .collect()
     }
@@ -146,43 +236,33 @@ impl SubwordIndices for str {
 ///
 /// **Warning:** no guarantee is provided with regard to the iteration
 /// order. The iterator only guarantees that all n-grams and their indices are produced.
-struct NGramsIndicesIter<'a> {
+struct NGramsIndicesIter<'a, 'b, I> {
     ngrams: NGrams<'a>,
-    mask: u64,
+    indexer: &'b I,
 }
 
-impl<'a> NGramsIndicesIter<'a> {
+impl<'a, 'b, I> NGramsIndicesIter<'a, 'b, I> {
     /// Create a new ngrams-indices iterator.
     ///
     /// The iterator will create all ngrams of length *[min_n, max_n]* and corresponding
     /// subword indices.
-    pub fn new(string: &'a str, min_n: usize, max_n: usize, buckets_exp: usize) -> Self {
-        assert!(
-            buckets_exp <= 64,
-            "The largest possible buckets exponent is 64."
-        );
-
-        let mask = if buckets_exp == 64 {
-            !0
-        } else {
-            (1 << buckets_exp) - 1
-        };
-
+    pub fn new(string: &'a str, min_n: usize, max_n: usize, indexer: &'b I) -> Self {
         let ngrams = NGrams::new(string, min_n, max_n);
-        NGramsIndicesIter { ngrams, mask }
+        NGramsIndicesIter { indexer, ngrams }
     }
 }
 
-impl<'a> Iterator for NGramsIndicesIter<'a> {
+impl<'a, 'b, I> Iterator for NGramsIndicesIter<'a, 'b, I>
+where
+    I: Indexer,
+{
     type Item = (&'a str, u64);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.ngrams.next().map(|ngram| {
-            let mut hasher = FnvHasher::default();
-            ngram.hash(&mut hasher);
-            (ngram.inner, hasher.finish() & self.mask)
-        })
+        self.ngrams
+            .next()
+            .map(|ngram| (ngram.inner, self.indexer.index_ngram(&ngram)))
     }
 }
 
@@ -201,12 +281,17 @@ pub trait NGramsIndices {
     /// mapped to indices into *2^buckets_exp* buckets.
     ///
     /// The largest possible bucket exponent is 64.
-    fn ngrams_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<(&str, u64)>;
+    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, u64)>
+    where
+        I: Indexer;
 }
 
 impl NGramsIndices for str {
-    fn ngrams_indices(&self, min_n: usize, max_n: usize, buckets_exp: usize) -> Vec<(&str, u64)> {
-        NGramsIndicesIter::new(self, min_n, max_n, buckets_exp).collect()
+    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, u64)>
+    where
+        I: Indexer,
+    {
+        NGramsIndicesIter::new(self, min_n, max_n, indexer).collect()
     }
 }
 
@@ -216,7 +301,7 @@ mod tests {
     use maplit::hashmap;
     use std::collections::HashMap;
 
-    use super::{NGrams, NGramsIndices, SubwordIndices};
+    use super::{FinalfusionHashIndexer, NGrams, NGramsIndices, SubwordIndices};
 
     #[test]
     fn ngrams_test() {
@@ -359,8 +444,9 @@ mod tests {
         // subwords. With a bucket exponent of 2, there are 2^2 = 4 buckets,
         // so we should see bucket numbers [0..3].
 
+        let indexer = FinalfusionHashIndexer::new(2);
         for (word, indices_check) in SUBWORD_TESTS_2.iter() {
-            let mut indices = word.subword_indices(3, 6, 2);
+            let mut indices = word.subword_indices(3, 6, &indexer);
             indices.sort();
             assert_eq!(indices_check, &indices);
         }
@@ -372,8 +458,9 @@ mod tests {
         // if this test is to ensure that the subword_indices() method hashes
         // to the same buckets in the future.
 
+        let indexer = FinalfusionHashIndexer::new(21);
         for (word, indices_check) in SUBWORD_TESTS_21.iter() {
-            let mut indices = word.subword_indices(3, 6, 21);
+            let mut indices = word.subword_indices(3, 6, &indexer);
             indices.sort();
             assert_eq!(indices_check, &indices);
         }
@@ -385,8 +472,9 @@ mod tests {
         // if this test is to ensure that the ngrams_indices() method hashes
         // to the same buckets in the future.
 
+        let indexer = FinalfusionHashIndexer::new(21);
         for (word, ngrams_indices_check) in NGRAMS_INDICES_TESTS_36.iter() {
-            let mut ngrams_indices_test = word.ngrams_indices(3, 6, 21);
+            let mut ngrams_indices_test = word.ngrams_indices(3, 6, &indexer);
             ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1);
             for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)
             {

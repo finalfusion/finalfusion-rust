@@ -8,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
-use crate::subword::SubwordIndices;
+use crate::subword::{FinalfusionHashIndexer, SubwordIndices};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Index of a vocabulary word.
@@ -117,6 +117,7 @@ pub struct SubwordVocab {
     words: Vec<String>,
     min_n: u32,
     max_n: u32,
+    indexer: FinalfusionHashIndexer,
     buckets_exp: u32,
 }
 
@@ -133,6 +134,7 @@ impl SubwordVocab {
             words,
             min_n,
             max_n,
+            indexer: FinalfusionHashIndexer::new(buckets_exp as usize),
             buckets_exp,
         }
     }
@@ -153,11 +155,7 @@ impl SubwordVocab {
     fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
         let indices = Self::bracket(word)
             .as_str()
-            .subword_indices(
-                self.min_n as usize,
-                self.max_n as usize,
-                self.buckets_exp as usize,
-            )
+            .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
             .into_iter()
             .map(|idx| idx as usize + self.len())
             .collect::<Vec<_>>();
