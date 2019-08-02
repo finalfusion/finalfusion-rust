@@ -160,7 +160,7 @@ where
     ///
     /// Returns `None` when the model does not support subwords or
     /// when no subwords could be extracted.
-    fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
+    pub(crate) fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
         let indices = Self::bracket(word)
             .as_str()
             .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
