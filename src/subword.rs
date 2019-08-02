@@ -110,6 +110,16 @@ pub struct StrWithCharLen<'a> {
     char_len: usize,
 }
 
+impl<'a> StrWithCharLen<'a> {
+    pub fn as_str(&self) -> &str {
+        self.inner
+    }
+
+    pub fn char_len(&self) -> usize {
+        self.char_len
+    }
+}
+
 impl<'a> Deref for StrWithCharLen<'a> {
     type Target = str;
 

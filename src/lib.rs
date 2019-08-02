@@ -7,6 +7,8 @@
 
 pub mod embeddings;
 
+pub mod fasttext;
+
 pub mod io;
 
 pub mod metadata;
