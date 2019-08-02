@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
-use finalfusion::subword::{FinalfusionHashIndexer, Indexer, SubwordIndices};
+use finalfusion::subword::{BucketIndexer, FinalfusionHashIndexer, Indexer, SubwordIndices};
 
 const MIN_N: usize = 3;
 const MAX_N: usize = 6;

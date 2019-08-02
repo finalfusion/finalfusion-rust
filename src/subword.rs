@@ -18,6 +18,15 @@ pub trait Indexer {
     fn index_ngram(&self, ngram: &StrWithCharLen) -> u64;
 }
 
+/// N-Gram indexer with bucketing.
+pub trait BucketIndexer: Indexer {
+    /// Create a new indexer.
+    ///
+    /// The buckets argument is the number of buckets or the
+    /// bucket exponent (depending on the implementation).
+    fn new(buckets: usize) -> Self;
+}
+
 /// Indexer using a hash function.
 ///
 /// This indexer first hashes a given n-gram and then maps the
@@ -29,11 +38,14 @@ pub struct HashIndexer<H> {
     _phantom: PhantomData<H>,
 }
 
-impl<H> HashIndexer<H> {
+impl<H> BucketIndexer for HashIndexer<H>
+where
+    H: Default + Hasher,
+{
     /// Construct a `HashIndexer`.
     ///
     /// The largest possible bucket exponent is 64.
-    pub fn new(buckets_exp: usize) -> Self {
+    fn new(buckets_exp: usize) -> Self {
         assert!(
             buckets_exp <= 64,
             "The largest possible buckets exponent is 64."
@@ -301,7 +313,7 @@ mod tests {
     use maplit::hashmap;
     use std::collections::HashMap;
 
-    use super::{FinalfusionHashIndexer, NGrams, NGramsIndices, SubwordIndices};
+    use super::{BucketIndexer, FinalfusionHashIndexer, NGrams, NGramsIndices, SubwordIndices};
 
     #[test]
     fn ngrams_test() {
