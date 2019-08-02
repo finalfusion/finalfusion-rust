@@ -22,7 +22,9 @@ use crate::storage::{
     StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::util::l2_normalize;
-use crate::vocab::{FinalfusionSubwordVocab, SimpleVocab, Vocab, VocabWrap, WordIndex};
+use crate::vocab::{
+    FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab, VocabWrap, WordIndex,
+};
 
 /// Word embeddings.
 ///
@@ -239,6 +241,11 @@ impl_embeddings_from!(FinalfusionSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FinalfusionSubwordVocab, MmapArray, StorageWrap);
 impl_embeddings_from!(FinalfusionSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FinalfusionSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where

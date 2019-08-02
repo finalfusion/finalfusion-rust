@@ -6,6 +6,7 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
+use crate::fasttext::FastTextIndexer;
 use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{BucketIndexer, FinalfusionHashIndexer, Indexer, SubwordIndices};
@@ -110,6 +111,9 @@ impl WriteChunk for SimpleVocab {
     }
 }
 
+/// fastText subword vocabulary.
+pub type FastTextSubwordVocab = SubwordVocab<FastTextIndexer>;
+
 /// Native finalfusion subword vocabulary.
 pub type FinalfusionSubwordVocab = SubwordVocab<FinalfusionHashIndexer>;
 
@@ -171,12 +175,34 @@ where
     }
 }
 
+impl ReadChunk for FastTextSubwordVocab {
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
+    where
+        R: Read + Seek,
+    {
+        Self::read_bucketed_chunk(read, ChunkIdentifier::FastTextSubwordVocab)
+    }
+}
+
 impl ReadChunk for FinalfusionSubwordVocab {
     fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
         Self::read_bucketed_chunk(read, ChunkIdentifier::FinalfusionSubwordVocab)
+    }
+}
+
+impl WriteChunk for FastTextSubwordVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::FastTextSubwordVocab
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        self.write_bucketed_chunk(write, self.chunk_identifier())
     }
 }
 
@@ -316,12 +342,19 @@ where
 #[derive(Clone, Debug)]
 pub enum VocabWrap {
     SimpleVocab(SimpleVocab),
+    FastTextSubwordVocab(FastTextSubwordVocab),
     FinalfusionSubwordVocab(FinalfusionSubwordVocab),
 }
 
 impl From<SimpleVocab> for VocabWrap {
     fn from(v: SimpleVocab) -> Self {
         VocabWrap::SimpleVocab(v)
+    }
+}
+
+impl From<FastTextSubwordVocab> for VocabWrap {
+    fn from(v: FastTextSubwordVocab) -> Self {
+        VocabWrap::FastTextSubwordVocab(v)
     }
 }
 
@@ -354,12 +387,16 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::SimpleVocab => {
                 SimpleVocab::read_chunk(read).map(VocabWrap::SimpleVocab)
             }
+            ChunkIdentifier::FastTextSubwordVocab => {
+                SubwordVocab::read_chunk(read).map(VocabWrap::FastTextSubwordVocab)
+            }
             ChunkIdentifier::FinalfusionSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::FinalfusionSubwordVocab)
             }
             _ => Err(ErrorKind::Format(format!(
-                "Invalid chunk identifier, expected one of: {} or {}, got: {}",
+                "Invalid chunk identifier, expected one of: {}, {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
+                ChunkIdentifier::FastTextSubwordVocab,
                 ChunkIdentifier::FinalfusionSubwordVocab,
                 chunk_id
             ))
@@ -372,6 +409,7 @@ impl WriteChunk for VocabWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.chunk_identifier(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.chunk_identifier(),
         }
     }
@@ -382,6 +420,7 @@ impl WriteChunk for VocabWrap {
     {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.write_chunk(write),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.write_chunk(write),
         }
     }
@@ -441,6 +480,7 @@ impl Vocab for VocabWrap {
     fn idx(&self, word: &str) -> Option<WordIndex> {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.idx(word),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.idx(word),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.idx(word),
         }
     }
@@ -449,6 +489,7 @@ impl Vocab for VocabWrap {
     fn len(&self) -> usize {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.len(),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.len(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.len(),
         }
     }
@@ -457,6 +498,7 @@ impl Vocab for VocabWrap {
     fn words(&self) -> &[String] {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.words(),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.words(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.words(),
         }
     }
@@ -478,9 +520,21 @@ mod tests {
 
     use byteorder::{LittleEndian, ReadBytesExt};
 
-    use super::{FinalfusionSubwordVocab, SimpleVocab, SubwordVocab};
+    use super::{FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, SubwordVocab};
+    use crate::fasttext::FastTextIndexer;
     use crate::io::private::{ReadChunk, WriteChunk};
     use crate::subword::{BucketIndexer, FinalfusionHashIndexer};
+
+    fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
+        let words = vec![
+            "this".to_owned(),
+            "is".to_owned(),
+            "a".to_owned(),
+            "test".to_owned(),
+        ];
+        let indexer = FastTextIndexer::new(20);
+        SubwordVocab::new(words, 3, 6, indexer)
+    }
 
     fn test_simple_vocab() -> SimpleVocab {
         let words = vec![
@@ -510,6 +564,16 @@ mod tests {
 
         // Return chunk length.
         read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    #[test]
+    fn fasttext_subword_vocab_write_read_roundtrip() {
+        let check_vocab = test_fasttext_subword_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
+        assert_eq!(vocab, check_vocab);
     }
 
     #[test]
