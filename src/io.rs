@@ -185,6 +185,7 @@ pub(crate) mod private {
         QuantizedArray = 4,
         Metadata = 5,
         NdNorms = 6,
+        FastTextSubwordVocab = 7,
     }
 
     impl ChunkIdentifier {
@@ -198,6 +199,7 @@ pub(crate) mod private {
                 4 => Some(QuantizedArray),
                 5 => Some(Metadata),
                 6 => Some(NdNorms),
+                7 => Some(FastTextSubwordVocab),
                 _ => None,
             }
         }
@@ -233,6 +235,7 @@ pub(crate) mod private {
                 Header => write!(f, "Header"),
                 SimpleVocab => write!(f, "SimpleVocab"),
                 NdArray => write!(f, "NdArray"),
+                FastTextSubwordVocab => write!(f, "FastTextSubwordVocab"),
                 FinalfusionSubwordVocab => write!(f, "FinalfusionSubwordVocab"),
                 QuantizedArray => write!(f, "QuantizedArray"),
                 Metadata => write!(f, "Metadata"),
