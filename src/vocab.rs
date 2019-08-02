@@ -8,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
-use crate::subword::{FinalfusionHashIndexer, SubwordIndices};
+use crate::subword::{BucketIndexer, FinalfusionHashIndexer, SubwordIndices};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Index of a vocabulary word.
