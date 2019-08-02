@@ -34,6 +34,10 @@ impl BucketIndexer for FastTextIndexer {
             buckets: buckets as u32,
         }
     }
+
+    fn buckets(&self) -> usize {
+        self.buckets as usize
+    }
 }
 
 impl Indexer for FastTextIndexer {

@@ -8,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
-use crate::subword::{BucketIndexer, FinalfusionHashIndexer, SubwordIndices};
+use crate::subword::{BucketIndexer, FinalfusionHashIndexer, Indexer, SubwordIndices};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Index of a vocabulary word.
@@ -110,22 +110,27 @@ impl WriteChunk for SimpleVocab {
     }
 }
 
+/// Native finalfusion subword vocabulary.
+pub type FinalfusionSubwordVocab = SubwordVocab<FinalfusionHashIndexer>;
+
 /// Vocabulary with subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SubwordVocab {
+pub struct SubwordVocab<I> {
+    indexer: I,
     indices: HashMap<String, usize>,
     words: Vec<String>,
     min_n: u32,
     max_n: u32,
-    indexer: FinalfusionHashIndexer,
-    buckets_exp: u32,
 }
 
-impl SubwordVocab {
+impl<I> SubwordVocab<I>
+where
+    I: Clone + Indexer,
+{
     const BOW: char = '<';
     const EOW: char = '>';
 
-    pub fn new(words: impl Into<Vec<String>>, min_n: u32, max_n: u32, buckets_exp: u32) -> Self {
+    pub fn new(words: impl Into<Vec<String>>, min_n: u32, max_n: u32, indexer: I) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
 
@@ -134,8 +139,7 @@ impl SubwordVocab {
             words,
             min_n,
             max_n,
-            indexer: FinalfusionHashIndexer::new(buckets_exp as usize),
-            buckets_exp,
+            indexer,
         }
     }
 
@@ -167,12 +171,40 @@ impl SubwordVocab {
     }
 }
 
-impl ReadChunk for SubwordVocab {
+impl ReadChunk for FinalfusionSubwordVocab {
     fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
         R: Read + Seek,
     {
-        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::SubwordVocab)?;
+        Self::read_bucketed_chunk(read, ChunkIdentifier::FinalfusionSubwordVocab)
+    }
+}
+
+impl WriteChunk for FinalfusionSubwordVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::FinalfusionSubwordVocab
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        self.write_bucketed_chunk(write, self.chunk_identifier())
+    }
+}
+
+impl<I> SubwordVocab<I>
+where
+    I: BucketIndexer + Clone,
+{
+    fn read_bucketed_chunk<R>(
+        read: &mut R,
+        chunk_identifier: ChunkIdentifier,
+    ) -> Result<SubwordVocab<I>>
+    where
+        R: Read + Seek,
+    {
+        ChunkIdentifier::ensure_chunk_type(read, chunk_identifier)?;
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
@@ -188,9 +220,9 @@ impl ReadChunk for SubwordVocab {
         let max_n = read
             .read_u32::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read maximum n-gram length", e))?;
-        let buckets_exp = read
+        let buckets = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot bucket exponent", e))?;
+            .map_err(|e| ErrorKind::io_error("Cannot read number of buckets", e))?;
 
         let mut words = Vec::with_capacity(vocab_len);
         for _ in 0..vocab_len {
@@ -207,16 +239,19 @@ impl ReadChunk for SubwordVocab {
             words.push(word);
         }
 
-        Ok(SubwordVocab::new(words, min_n, max_n, buckets_exp))
+        Ok(SubwordVocab::new(
+            words,
+            min_n,
+            max_n,
+            I::new(buckets as usize),
+        ))
     }
-}
 
-impl WriteChunk for SubwordVocab {
-    fn chunk_identifier(&self) -> ChunkIdentifier {
-        ChunkIdentifier::SubwordVocab
-    }
-
-    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    fn write_bucketed_chunk<W>(
+        &self,
+        write: &mut W,
+        chunk_identifier: ChunkIdentifier,
+    ) -> Result<()>
     where
         W: Write + Seek,
     {
@@ -235,7 +270,7 @@ impl WriteChunk for SubwordVocab {
                 .sum::<usize>();
 
         write
-            .write_u32::<LittleEndian>(ChunkIdentifier::SubwordVocab as u32)
+            .write_u32::<LittleEndian>(chunk_identifier as u32)
             .map_err(|e| {
                 ErrorKind::io_error("Cannot write subword vocabulary chunk identifier", e)
             })?;
@@ -252,8 +287,8 @@ impl WriteChunk for SubwordVocab {
             .write_u32::<LittleEndian>(self.max_n)
             .map_err(|e| ErrorKind::io_error("Cannot write maximum n-gram length", e))?;
         write
-            .write_u32::<LittleEndian>(self.buckets_exp)
-            .map_err(|e| ErrorKind::io_error("Cannot write bucket exponent", e))?;
+            .write_u32::<LittleEndian>(self.indexer.buckets() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write number of buckets", e))?;
 
         for word in self.words() {
             write
@@ -281,7 +316,7 @@ impl WriteChunk for SubwordVocab {
 #[derive(Clone, Debug)]
 pub enum VocabWrap {
     SimpleVocab(SimpleVocab),
-    SubwordVocab(SubwordVocab),
+    FinalfusionSubwordVocab(FinalfusionSubwordVocab),
 }
 
 impl From<SimpleVocab> for VocabWrap {
@@ -290,9 +325,9 @@ impl From<SimpleVocab> for VocabWrap {
     }
 }
 
-impl From<SubwordVocab> for VocabWrap {
-    fn from(v: SubwordVocab) -> Self {
-        VocabWrap::SubwordVocab(v)
+impl From<FinalfusionSubwordVocab> for VocabWrap {
+    fn from(v: FinalfusionSubwordVocab) -> Self {
+        VocabWrap::FinalfusionSubwordVocab(v)
     }
 }
 
@@ -319,13 +354,13 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::SimpleVocab => {
                 SimpleVocab::read_chunk(read).map(VocabWrap::SimpleVocab)
             }
-            ChunkIdentifier::SubwordVocab => {
-                SubwordVocab::read_chunk(read).map(VocabWrap::SubwordVocab)
+            ChunkIdentifier::FinalfusionSubwordVocab => {
+                SubwordVocab::read_chunk(read).map(VocabWrap::FinalfusionSubwordVocab)
             }
             _ => Err(ErrorKind::Format(format!(
                 "Invalid chunk identifier, expected one of: {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
-                ChunkIdentifier::SubwordVocab,
+                ChunkIdentifier::FinalfusionSubwordVocab,
                 chunk_id
             ))
             .into()),
@@ -337,7 +372,7 @@ impl WriteChunk for VocabWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
-            VocabWrap::SubwordVocab(inner) => inner.chunk_identifier(),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.chunk_identifier(),
         }
     }
 
@@ -347,7 +382,7 @@ impl WriteChunk for VocabWrap {
     {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
-            VocabWrap::SubwordVocab(inner) => inner.write_chunk(write),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.write_chunk(write),
         }
     }
 }
@@ -379,7 +414,10 @@ impl Vocab for SimpleVocab {
     }
 }
 
-impl Vocab for SubwordVocab {
+impl<I> Vocab for SubwordVocab<I>
+where
+    I: Clone + Indexer,
+{
     fn idx(&self, word: &str) -> Option<WordIndex> {
         // If the word is known, return its index.
         if let Some(idx) = self.indices.get(word).cloned() {
@@ -403,7 +441,7 @@ impl Vocab for VocabWrap {
     fn idx(&self, word: &str) -> Option<WordIndex> {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.idx(word),
-            VocabWrap::SubwordVocab(inner) => inner.idx(word),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.idx(word),
         }
     }
 
@@ -411,7 +449,7 @@ impl Vocab for VocabWrap {
     fn len(&self) -> usize {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.len(),
-            VocabWrap::SubwordVocab(inner) => inner.len(),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.len(),
         }
     }
 
@@ -419,7 +457,7 @@ impl Vocab for VocabWrap {
     fn words(&self) -> &[String] {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.words(),
-            VocabWrap::SubwordVocab(inner) => inner.words(),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.words(),
         }
     }
 }
@@ -440,8 +478,9 @@ mod tests {
 
     use byteorder::{LittleEndian, ReadBytesExt};
 
-    use super::{SimpleVocab, SubwordVocab};
+    use super::{FinalfusionSubwordVocab, SimpleVocab, SubwordVocab};
     use crate::io::private::{ReadChunk, WriteChunk};
+    use crate::subword::{BucketIndexer, FinalfusionHashIndexer};
 
     fn test_simple_vocab() -> SimpleVocab {
         let words = vec![
@@ -454,14 +493,15 @@ mod tests {
         SimpleVocab::new(words)
     }
 
-    fn test_subword_vocab() -> SubwordVocab {
+    fn test_subword_vocab() -> FinalfusionSubwordVocab {
         let words = vec![
             "this".to_owned(),
             "is".to_owned(),
             "a".to_owned(),
             "test".to_owned(),
         ];
-        SubwordVocab::new(words, 3, 6, 20)
+        let indexer = FinalfusionHashIndexer::new(20);
+        SubwordVocab::new(words, 3, 6, indexer)
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {

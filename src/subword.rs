@@ -25,6 +25,12 @@ pub trait BucketIndexer: Indexer {
     /// The buckets argument is the number of buckets or the
     /// bucket exponent (depending on the implementation).
     fn new(buckets: usize) -> Self;
+
+    /// Get the number of buckets.
+    ///
+    /// Depending on the indexer, this may be the actual number of
+    /// buckets or the bucket exponent.
+    fn buckets(&self) -> usize;
 }
 
 /// Indexer using a hash function.
@@ -34,6 +40,7 @@ pub trait BucketIndexer: Indexer {
 ///
 /// The largest possible bucket exponent is 64.
 pub struct HashIndexer<H> {
+    buckets_exp: usize,
     mask: u64,
     _phantom: PhantomData<H>,
 }
@@ -58,15 +65,21 @@ where
         };
 
         HashIndexer {
+            buckets_exp,
             mask,
             _phantom: PhantomData,
         }
+    }
+
+    fn buckets(&self) -> usize {
+        self.buckets_exp as usize
     }
 }
 
 impl<H> Clone for HashIndexer<H> {
     fn clone(&self) -> Self {
         HashIndexer {
+            buckets_exp: self.buckets_exp,
             mask: self.mask,
             _phantom: PhantomData,
         }
