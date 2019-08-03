@@ -31,6 +31,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.5"
 
 [dev-dependencies]
+approx = "0.3"
 maplit = "1"
 lazy_static = "1"
 criterion = "0.2"
