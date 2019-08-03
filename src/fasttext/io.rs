@@ -325,3 +325,43 @@ where
         FastTextIndexer::new(config.bucket as usize),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    use approx::assert_abs_diff_eq;
+
+    use super::ReadFastText;
+    use crate::embeddings::Embeddings;
+    use crate::similarity::WordSimilarity;
+
+    #[test]
+    fn test_read_fasttext() {
+        let f = File::open("testdata/fasttext.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeddings = Embeddings::read_fasttext(&mut reader).unwrap();
+        let results = embeddings.word_similarity("über", 3).unwrap();
+        assert_eq!(results[0].word, "auf");
+        assert_abs_diff_eq!(*results[0].similarity, 0.568513, epsilon = 1e-6);
+        assert_eq!(results[1].word, "vor");
+        assert_abs_diff_eq!(*results[1].similarity, 0.551551, epsilon = 1e-6);
+        assert_eq!(results[2].word, "durch");
+        assert_abs_diff_eq!(*results[2].similarity, 0.547349, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_read_fasttext_unknown() {
+        let f = File::open("testdata/fasttext.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeddings = Embeddings::read_fasttext(&mut reader).unwrap();
+        let results = embeddings.word_similarity("unknown", 3).unwrap();
+        assert_eq!(results[0].word, "einer");
+        assert_abs_diff_eq!(*results[0].similarity, 0.691177, epsilon = 1e-6);
+        assert_eq!(results[1].word, "und");
+        assert_abs_diff_eq!(*results[1].similarity, 0.576449, epsilon = 1e-6);
+        assert_eq!(results[2].word, "des");
+        assert_abs_diff_eq!(*results[2].similarity, 0.570398, epsilon = 1e-6);
+    }
+}
