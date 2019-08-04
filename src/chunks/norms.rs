@@ -6,7 +6,7 @@ use std::mem::size_of;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::Array1;
 
-use crate::io::private::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
+use super::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::io::{ErrorKind, Result};
 use crate::util::padding;
 
@@ -117,8 +117,8 @@ mod tests {
     use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array1;
 
-    use crate::io::private::{ReadChunk, WriteChunk};
-    use crate::norms::NdNorms;
+    use super::NdNorms;
+    use crate::chunks::io::{ReadChunk, WriteChunk};
 
     const LEN: usize = 100;
 

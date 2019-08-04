@@ -5,14 +5,14 @@ use ndarray::{s, Array2, ErrorKind as ShapeErrorKind, ShapeError};
 use serde::Serialize;
 use toml::Value;
 
+use crate::chunks::metadata::Metadata;
+use crate::chunks::norms::NdNorms;
+use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
+use crate::chunks::vocab::{FastTextSubwordVocab, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{Error, ErrorKind, Result};
-use crate::metadata::Metadata;
-use crate::norms::NdNorms;
-use crate::storage::{NdArray, Storage, StorageViewMut};
 use crate::subword::BucketIndexer;
 use crate::util::{l2_normalize_array, read_string};
-use crate::vocab::{FastTextSubwordVocab, Vocab};
 
 use super::FastTextIndexer;
 

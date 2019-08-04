@@ -54,31 +54,21 @@
 //! `word2vec` modules for information on how to read fastText,
 //! GloVe, and word2vec embeddings.
 
+pub mod chunks;
+
+pub mod compat;
+
 pub mod embeddings;
 
-pub mod fasttext;
-
 pub mod io;
-
-pub mod metadata;
-
-pub mod norms;
 
 pub mod prelude;
 
 pub mod similarity;
 
-pub mod storage;
-
 pub mod subword;
 
-pub mod text;
-
 pub(crate) mod util;
-
-pub mod vocab;
-
-pub mod word2vec;
 
 #[cfg(test)]
 mod tests;

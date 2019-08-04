@@ -11,20 +11,18 @@ use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
 
-use crate::io::{
-    private::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk},
-    ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings,
-};
-use crate::metadata::Metadata;
-use crate::norms::{NdNorms, Norms};
-use crate::storage::{
+use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk};
+use crate::chunks::metadata::Metadata;
+use crate::chunks::norms::{NdNorms, Norms};
+use crate::chunks::storage::{
     CowArray, CowArray1, MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
     StorageView, StorageViewWrap, StorageWrap,
 };
-use crate::util::l2_normalize;
-use crate::vocab::{
+use crate::chunks::vocab::{
     FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab, VocabWrap, WordIndex,
 };
+use crate::io::{ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings};
+use crate::util::l2_normalize;
 
 /// Word embeddings.
 ///
@@ -512,12 +510,12 @@ mod tests {
     use toml::toml;
 
     use super::Embeddings;
+    use crate::chunks::metadata::Metadata;
+    use crate::chunks::norms::NdNorms;
+    use crate::chunks::storage::{MmapArray, NdArray, StorageView};
+    use crate::chunks::vocab::SimpleVocab;
+    use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};
-    use crate::metadata::Metadata;
-    use crate::norms::NdNorms;
-    use crate::storage::{MmapArray, NdArray, StorageView};
-    use crate::vocab::SimpleVocab;
-    use crate::word2vec::ReadWord2VecRaw;
 
     fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());

@@ -11,7 +11,7 @@ use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
-use crate::io::private::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+use super::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
@@ -936,8 +936,8 @@ mod tests {
     use ndarray::Array2;
     use reductive::pq::PQ;
 
-    use crate::io::private::{ReadChunk, WriteChunk};
-    use crate::storage::{NdArray, Quantize, QuantizedArray, StorageView};
+    use crate::chunks::io::{ReadChunk, WriteChunk};
+    use crate::chunks::storage::{NdArray, Quantize, QuantizedArray, StorageView};
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;

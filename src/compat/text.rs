@@ -35,12 +35,12 @@ use std::io::{BufRead, Write};
 use itertools::Itertools;
 use ndarray::Array2;
 
+use crate::chunks::norms::NdNorms;
+use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
+use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{Error, ErrorKind, Result};
-use crate::norms::NdNorms;
-use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::util::{l2_normalize_array, read_number};
-use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a text file.
 ///
@@ -287,10 +287,10 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
+    use crate::chunks::storage::{NdArray, StorageView};
+    use crate::chunks::vocab::{SimpleVocab, Vocab};
+    use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::embeddings::Embeddings;
-    use crate::storage::{NdArray, StorageView};
-    use crate::vocab::{SimpleVocab, Vocab};
-    use crate::word2vec::ReadWord2VecRaw;
 
     use super::{ReadText, ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
 

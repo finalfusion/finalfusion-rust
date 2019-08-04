@@ -5,10 +5,8 @@ use std::io::{Read, Seek, Write};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use toml::Value;
 
-use crate::io::{
-    private::{ChunkIdentifier, Header, ReadChunk, WriteChunk},
-    Error, ErrorKind, ReadMetadata, Result,
-};
+use super::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
+use crate::io::{Error, ErrorKind, ReadMetadata, Result};
 
 /// Embeddings metadata.
 ///
@@ -101,7 +99,7 @@ mod tests {
     use toml::toml;
 
     use super::Metadata;
-    use crate::io::private::{ReadChunk, WriteChunk};
+    use crate::chunks::io::{ReadChunk, WriteChunk};
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
         // Skip identifier.

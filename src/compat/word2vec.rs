@@ -26,12 +26,12 @@ use std::slice::from_raw_parts_mut;
 use byteorder::{LittleEndian, WriteBytesExt};
 use ndarray::{Array2, Axis};
 
+use crate::chunks::norms::NdNorms;
+use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
+use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{ErrorKind, Result};
-use crate::norms::NdNorms;
-use crate::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::util::{l2_normalize_array, read_number, read_string};
-use crate::vocab::{SimpleVocab, Vocab};
 
 /// Method to construct `Embeddings` from a word2vec binary file.
 ///

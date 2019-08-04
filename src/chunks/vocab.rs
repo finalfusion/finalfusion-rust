@@ -6,8 +6,8 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::fasttext::FastTextIndexer;
-use crate::io::private::{ChunkIdentifier, ReadChunk, WriteChunk};
+use super::io::{ChunkIdentifier, ReadChunk, WriteChunk};
+use crate::compat::fasttext::FastTextIndexer;
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{BucketIndexer, FinalfusionHashIndexer, Indexer, SubwordIndices};
 
@@ -521,8 +521,8 @@ mod tests {
     use byteorder::{LittleEndian, ReadBytesExt};
 
     use super::{FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, SubwordVocab};
-    use crate::fasttext::FastTextIndexer;
-    use crate::io::private::{ReadChunk, WriteChunk};
+    use crate::chunks::io::{ReadChunk, WriteChunk};
+    use crate::compat::fasttext::FastTextIndexer;
     use crate::subword::{BucketIndexer, FinalfusionHashIndexer};
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
