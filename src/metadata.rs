@@ -1,4 +1,4 @@
-//! Metadata
+//! Metadata chunks
 
 use std::io::{Read, Seek, Write};
 

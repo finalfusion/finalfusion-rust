@@ -1,3 +1,5 @@
+//! Utilities for subword units.
+
 use std::cmp;
 use std::collections::VecDeque;
 use std::fmt;
