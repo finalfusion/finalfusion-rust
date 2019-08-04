@@ -2,6 +2,8 @@
 
 pub use crate::embeddings::{Embeddings, Quantize};
 
+pub use crate::fasttext::ReadFastText;
+
 pub use crate::io::{MmapEmbeddings, ReadEmbeddings, ReadMetadata, WriteEmbeddings};
 
 pub use crate::metadata::Metadata;

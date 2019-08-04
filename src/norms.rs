@@ -1,3 +1,5 @@
+//! Norms chunk
+
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 

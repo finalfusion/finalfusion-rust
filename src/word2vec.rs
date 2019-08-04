@@ -11,8 +11,7 @@
 //!
 //! let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
 //!
-//! // Read the embeddings. The second arguments specifies whether
-//! // the embeddings should be normalized to unit vectors.
+//! // Read the embeddings.
 //! let embeddings = Embeddings::read_word2vec_binary(&mut reader)
 //!     .unwrap();
 //!
