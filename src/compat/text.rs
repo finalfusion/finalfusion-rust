@@ -161,12 +161,14 @@ where
     for line in reader.lines() {
         let line =
             line.map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?;
-        let mut parts = line.split_whitespace();
+        let mut parts = line
+            .split(|c: char| c.is_ascii_whitespace())
+            .filter(|part| !part.is_empty());
 
         let word = parts
             .next()
             .ok_or_else(|| ErrorKind::Format(String::from("Spurious empty line")))?
-            .trim();
+            .trim_matches(|c: char| c.is_ascii_whitespace());
         words.push(word.to_owned());
 
         for part in parts {
