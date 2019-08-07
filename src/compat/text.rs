@@ -361,7 +361,7 @@ mod tests {
     fn read_word2vec() -> Embeddings<SimpleVocab, NdArray> {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        Embeddings::read_word2vec_binary_raw(&mut reader).unwrap()
+        Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap()
     }
 
     #[test]
