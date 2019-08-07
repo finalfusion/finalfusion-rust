@@ -69,6 +69,3 @@ pub mod similarity;
 pub mod subword;
 
 pub(crate) mod util;
-
-#[cfg(test)]
-mod tests;
