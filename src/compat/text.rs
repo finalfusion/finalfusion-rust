@@ -56,6 +56,14 @@ where
 {
     /// Read the embeddings from the given buffered reader.
     fn read_text(reader: &mut R) -> Result<Self>;
+
+    /// Read the embeddings from the given buffered reader.
+    ///
+    /// In contrast to `read_text`, this constructor does not
+    /// fail if a token contains invalid UTF-8. Instead, it will
+    /// replace invalid UTF-8 characters by the replacement
+    /// character.
+    fn read_text_lossy(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
@@ -63,7 +71,14 @@ where
     R: BufRead,
 {
     fn read_text(reader: &mut R) -> Result<Self> {
-        let (_, vocab, mut storage, _) = Self::read_text_raw(reader)?.into_parts();
+        let (_, vocab, mut storage, _) = Self::read_text_raw(reader, false)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+
+    fn read_text_lossy(reader: &mut R) -> Result<Self> {
+        let (_, vocab, mut storage, _) = Self::read_text_raw(reader, true)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
         Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
@@ -76,15 +91,15 @@ where
     R: BufRead,
 {
     /// Read the unnormalized embeddings from the given buffered reader.
-    fn read_text_raw(reader: &mut R) -> Result<Self>;
+    fn read_text_raw(reader: &mut R, lossy: bool) -> Result<Self>;
 }
 
 impl<R> ReadTextRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_text_raw(reader: &mut R) -> Result<Self> {
-        read_embeds(reader, None)
+    fn read_text_raw(reader: &mut R, lossy: bool) -> Result<Self> {
+        read_embeds(reader, None, lossy)
     }
 }
 
@@ -107,6 +122,14 @@ where
 {
     /// Read the embeddings from the given buffered reader.
     fn read_text_dims(reader: &mut R) -> Result<Self>;
+
+    /// Read the embeddings from the given buffered reader.
+    ///
+    /// In contrast to `read_text_dims`, this constructor does not
+    /// fail if a token contains invalid UTF-8. Instead, it will
+    /// replace invalid UTF-8 characters by the replacement
+    /// character.
+    fn read_text_dims_lossy(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadTextDims<R> for Embeddings<SimpleVocab, NdArray>
@@ -115,6 +138,13 @@ where
 {
     fn read_text_dims(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_dims_raw(reader)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+
+    fn read_text_dims_lossy(reader: &mut R) -> Result<Self> {
+        let (_, vocab, mut storage, _) = Self::read_text_dims_raw_lossy(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
         Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
@@ -128,6 +158,12 @@ where
 {
     /// Read the unnormalized embeddings from the given buffered reader.
     fn read_text_dims_raw(reader: &mut R) -> Result<Self>;
+
+    /// Read the unnormalized embeddings from the given buffered reader.
+    ///
+    /// This is the lossy variant of the method that accepts incorrect
+    /// UTF-8.
+    fn read_text_dims_raw_lossy(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadTextDimsRaw<R> for Embeddings<SimpleVocab, NdArray>
@@ -138,13 +174,21 @@ where
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
-        read_embeds(reader, Some((n_words, embed_len)))
+        read_embeds(reader, Some((n_words, embed_len)), false)
+    }
+
+    fn read_text_dims_raw_lossy(reader: &mut R) -> Result<Self> {
+        let n_words = read_number(reader, b' ')?;
+        let embed_len = read_number(reader, b'\n')?;
+
+        read_embeds(reader, Some((n_words, embed_len)), true)
     }
 }
 
 fn read_embeds<R>(
     reader: &mut R,
     shape: Option<(usize, usize)>,
+    lossy: bool,
 ) -> Result<Embeddings<SimpleVocab, NdArray>>
 where
     R: BufRead,
@@ -158,9 +202,27 @@ where
         (Vec::new(), Vec::new())
     };
 
-    for line in reader.lines() {
-        let line =
-            line.map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?;
+    loop {
+        let mut buf = Vec::new();
+        match reader
+            .read_until(b'\n', &mut buf)
+            .map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?
+        {
+            0 => break,
+            n => {
+                if buf[n - 1] == b'\n' {
+                    buf.pop();
+                }
+            }
+        };
+
+        let line = if lossy {
+            String::from_utf8_lossy(&buf).into_owned()
+        } else {
+            String::from_utf8(buf)
+                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?
+        };
+
         let mut parts = line
             .split(|c: char| c.is_ascii_whitespace())
             .filter(|part| !part.is_empty());
@@ -294,7 +356,7 @@ mod tests {
     use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::embeddings::Embeddings;
 
-    use super::{ReadText, ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
+    use super::{ReadText, ReadTextDims, ReadTextDimsRaw, ReadTextRaw, WriteText, WriteTextDims};
 
     fn read_word2vec() -> Embeddings<SimpleVocab, NdArray> {
         let f = File::open("testdata/similarity.bin").unwrap();
@@ -303,10 +365,42 @@ mod tests {
     }
 
     #[test]
+    fn fails_on_invalid_utf8() {
+        let f = File::open("testdata/utf8-incomplete.txt").unwrap();
+        let mut reader = BufReader::new(f);
+        assert!(Embeddings::read_text(&mut reader).is_err());
+    }
+
+    #[test]
+    fn fails_on_invalid_utf8_dims() {
+        let f = File::open("testdata/utf8-incomplete.dims").unwrap();
+        let mut reader = BufReader::new(f);
+        assert!(Embeddings::read_text_dims(&mut reader).is_err());
+    }
+
+    #[test]
+    fn read_lossy() {
+        let f = File::open("testdata/utf8-incomplete.txt").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeds = Embeddings::read_text_lossy(&mut reader).unwrap();
+        let words = embeds.vocab().words();
+        assert_eq!(words, &["meren", "zee�n", "rivieren"]);
+    }
+
+    #[test]
+    fn read_dims_lossy() {
+        let f = File::open("testdata/utf8-incomplete.dims").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeds = Embeddings::read_text_dims_lossy(&mut reader).unwrap();
+        let words = embeds.vocab().words();
+        assert_eq!(words, &["meren", "zee�n", "rivieren"]);
+    }
+
+    #[test]
     fn read_text() {
         let f = File::open("testdata/similarity.nodims").unwrap();
         let mut reader = BufReader::new(f);
-        let text_embeddings = Embeddings::read_text_raw(&mut reader).unwrap();
+        let text_embeddings = Embeddings::read_text_raw(&mut reader, false).unwrap();
 
         let embeddings = read_word2vec();
         assert_eq!(text_embeddings.vocab().words(), embeddings.vocab().words());
@@ -338,7 +432,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_text_raw(&mut reader).unwrap();
+        let embeddings = Embeddings::read_text_raw(&mut reader, false).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
@@ -369,7 +463,7 @@ mod tests {
         let mut reader = BufReader::new(File::open("testdata/similarity.nodims").unwrap());
 
         // Read unnormalized embeddings
-        let embeddings_check = Embeddings::read_text_raw(&mut reader).unwrap();
+        let embeddings_check = Embeddings::read_text_raw(&mut reader, false).unwrap();
 
         // Read normalized embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
@@ -379,7 +473,7 @@ mod tests {
         let mut output = Vec::new();
         embeddings.write_text(&mut output, true).unwrap();
 
-        let embeddings = Embeddings::read_text_raw(&mut Cursor::new(&output)).unwrap();
+        let embeddings = Embeddings::read_text_raw(&mut Cursor::new(&output), false).unwrap();
 
         assert!(embeddings
             .storage()
