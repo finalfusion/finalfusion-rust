@@ -44,6 +44,13 @@ where
 {
     /// Read the embeddings from the given buffered reader.
     fn read_word2vec_binary(reader: &mut R) -> Result<Self>;
+
+    /// Read the embeddings from the given buffered reader.
+    ///
+    /// In contrast to `read_word2vec_binary`, this constructor does
+    /// not fail if a token contains invalid UTF-8. Instead, it will
+    /// replace invalid UTF-8 characters by the replacement character.
+    fn read_word2vec_binary_lossy(reader: &mut R) -> Result<Self>;
 }
 
 impl<R> ReadWord2Vec<R> for Embeddings<SimpleVocab, NdArray>
@@ -51,7 +58,16 @@ where
     R: BufRead,
 {
     fn read_word2vec_binary(reader: &mut R) -> Result<Self> {
-        let (_, vocab, mut storage, _) = Embeddings::read_word2vec_binary_raw(reader)?.into_parts();
+        let (_, vocab, mut storage, _) =
+            Embeddings::read_word2vec_binary_raw(reader, false)?.into_parts();
+        let norms = l2_normalize_array(storage.view_mut());
+
+        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+    }
+
+    fn read_word2vec_binary_lossy(reader: &mut R) -> Result<Self> {
+        let (_, vocab, mut storage, _) =
+            Embeddings::read_word2vec_binary_raw(reader, true)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
         Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
@@ -65,14 +81,14 @@ where
     R: BufRead,
 {
     /// Read the embeddings from the given buffered reader.
-    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self>;
+    fn read_word2vec_binary_raw(reader: &mut R, lossy: bool) -> Result<Self>;
 }
 
 impl<R> ReadWord2VecRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
     R: BufRead,
 {
-    fn read_word2vec_binary_raw(reader: &mut R) -> Result<Self> {
+    fn read_word2vec_binary_raw(reader: &mut R, lossy: bool) -> Result<Self> {
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
@@ -80,7 +96,7 @@ where
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {
-            let word = read_string(reader, b' ')?;
+            let word = read_string(reader, b' ', lossy)?;
             let word = word.trim();
             words.push(word.to_owned());
 
@@ -171,10 +187,26 @@ mod tests {
     use crate::embeddings::Embeddings;
 
     #[test]
+    fn fails_on_invalid_utf8() {
+        let f = File::open("testdata/utf8-incomplete.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        assert!(Embeddings::read_word2vec_binary(&mut reader).is_err());
+    }
+
+    #[test]
+    fn read_lossy() {
+        let f = File::open("testdata/utf8-incomplete.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        let embeds = Embeddings::read_word2vec_binary_lossy(&mut reader).unwrap();
+        let words = embeds.vocab().words();
+        assert_eq!(words, &["meren", "zee�n", "rivieren"]);
+    }
+
+    #[test]
     fn test_read_word2vec_binary() {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
-        let embeddings = Embeddings::read_word2vec_binary_raw(&mut reader).unwrap();
+        let embeddings = Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap();
         assert_eq!(41, embeddings.vocab().len());
         assert_eq!(100, embeddings.dims());
     }
@@ -187,7 +219,7 @@ mod tests {
 
         // Read embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
-        let embeddings = Embeddings::read_word2vec_binary_raw(&mut reader).unwrap();
+        let embeddings = Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap();
 
         // Write embeddings to a byte vector.
         let mut output = Vec::new();
@@ -203,7 +235,7 @@ mod tests {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
 
         // Read unnormalized embeddings
-        let embeddings_check = Embeddings::read_word2vec_binary_raw(&mut reader).unwrap();
+        let embeddings_check = Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap();
 
         // Read normalized embeddings.
         reader.seek(SeekFrom::Start(0)).unwrap();
@@ -213,7 +245,8 @@ mod tests {
         let mut output = Vec::new();
         embeddings.write_word2vec_binary(&mut output, true).unwrap();
 
-        let embeddings = Embeddings::read_word2vec_binary_raw(&mut Cursor::new(&output)).unwrap();
+        let embeddings =
+            Embeddings::read_word2vec_binary_raw(&mut Cursor::new(&output), false).unwrap();
 
         assert!(embeddings
             .storage()
