@@ -304,7 +304,7 @@ where
 
     let mut words = Vec::with_capacity(size as usize);
     for _ in 0..size {
-        let word = read_string(reader, 0)?;
+        let word = read_string(reader, 0, false)?;
         reader
             .read_u64::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read word frequency", e))?;

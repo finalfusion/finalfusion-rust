@@ -86,7 +86,7 @@ pub fn l2_normalize_array(mut v: ArrayViewMut2<f32>) -> Array1<f32> {
 }
 
 pub fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize> {
-    let field_str = read_string(reader, delim)?;
+    let field_str = read_string(reader, delim, false)?;
     field_str
         .parse()
         .map_err(|e| {
@@ -98,12 +98,19 @@ pub fn read_number(reader: &mut BufRead, delim: u8) -> Result<usize> {
         .map_err(Error::from)
 }
 
-pub fn read_string(reader: &mut BufRead, delim: u8) -> Result<String> {
+pub fn read_string(reader: &mut BufRead, delim: u8, lossy: bool) -> Result<String> {
     let mut buf = Vec::new();
     reader
         .read_until(delim, &mut buf)
         .map_err(|e| ErrorKind::io_error("Cannot read string", e))?;
     buf.pop();
-    Ok(String::from_utf8(buf)
-        .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?)
+
+    let s = if lossy {
+        String::from_utf8_lossy(&buf).into_owned()
+    } else {
+        String::from_utf8(buf)
+            .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?
+    };
+
+    Ok(s)
 }
