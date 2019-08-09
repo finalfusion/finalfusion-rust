@@ -8,7 +8,7 @@ use toml::Value;
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
-use crate::chunks::vocab::{FastTextSubwordVocab, Vocab};
+use crate::chunks::vocab::{FastTextSubwordVocab, SubwordIndices, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::BucketIndexer;
