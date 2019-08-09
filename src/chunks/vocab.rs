@@ -9,7 +9,10 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use super::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::compat::fasttext::FastTextIndexer;
 use crate::io::{Error, ErrorKind, Result};
-use crate::subword::{BucketIndexer, FinalfusionHashIndexer, Indexer, SubwordIndices};
+use crate::subword::{
+    BucketIndexer, FinalfusionHashIndexer, Indexer, NGramsIndices,
+    SubwordIndices as StrSubwordIndices,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Index of a vocabulary word.
@@ -154,24 +157,6 @@ where
         bracketed.push(Self::EOW);
 
         bracketed
-    }
-
-    /// Get the subword indices of a token.
-    ///
-    /// Returns `None` when the model does not support subwords or
-    /// when no subwords could be extracted.
-    pub(crate) fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
-        let indices = Self::bracket(word)
-            .as_str()
-            .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
-            .into_iter()
-            .map(|idx| idx as usize + self.len())
-            .collect::<Vec<_>>();
-        if indices.is_empty() {
-            None
-        } else {
-            Some(indices)
-        }
     }
 }
 
@@ -500,6 +485,63 @@ impl Vocab for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.words(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.words(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.words(),
+        }
+    }
+}
+
+/// Get subword indices.
+///
+/// Get the subword ngrams and their indices of a word in the
+/// subword vocabulary.
+pub trait NGramIndices {
+    /// Return the subword ngrams and their indices of a word,
+    /// in the subword vocabulary.
+    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, usize)>>;
+}
+
+impl<I> NGramIndices for SubwordVocab<I>
+where
+    I: Clone + Indexer,
+{
+    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, usize)>> {
+        let indices = Self::bracket(word)
+            .as_str()
+            .ngrams_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
+            .into_iter()
+            .map(|(ngram, idx)| (ngram.to_owned(), idx as usize + self.len()))
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            None
+        } else {
+            Some(indices)
+        }
+    }
+}
+
+/// Get subword indices.
+///
+/// Get the subword indices of a token in the subword vocabulary.
+pub trait SubwordIndices {
+    /// Return the subword indices of the subwords of a string,
+    /// according to the subword vocabulary.
+    fn subword_indices(&self, word: &str) -> Option<Vec<usize>>;
+}
+
+impl<I> SubwordIndices for SubwordVocab<I>
+where
+    I: Clone + Indexer,
+{
+    fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
+        let indices = Self::bracket(word)
+            .as_str()
+            .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
+            .into_iter()
+            .map(|idx| idx as usize + self.len())
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            None
+        } else {
+            Some(indices)
         }
     }
 }
