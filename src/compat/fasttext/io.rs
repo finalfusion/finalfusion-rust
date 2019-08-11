@@ -26,10 +26,37 @@ where
 {
     /// Read embeddings in the fastText format.
     fn read_fasttext(reader: &mut impl BufRead) -> Result<Self>;
+
+    /// Read embeddings in the fastText format lossily.
+    ///
+    /// In constrast to `read_fasttext`, this method does not fail
+    /// on reading tokens with invalid UTF-8 byte sequences. Invalid
+    /// UTF-8 sequences will be replaced by the unicode replacement
+    /// character.
+    fn read_fasttext_lossy(reader: &mut impl BufRead) -> Result<Self>;
 }
 
 impl ReadFastText for Embeddings<FastTextSubwordVocab, NdArray> {
-    fn read_fasttext(mut reader: &mut impl BufRead) -> Result<Self> {
+    fn read_fasttext(reader: &mut impl BufRead) -> Result<Self> {
+        Self::read_fasttext_private(reader, false)
+    }
+
+    fn read_fasttext_lossy(reader: &mut impl BufRead) -> Result<Self> {
+        Self::read_fasttext_private(reader, true)
+    }
+}
+
+/// Read embeddings in the fastText format.
+pub trait ReadFastTextPrivate
+where
+    Self: Sized,
+{
+    /// Read embeddings in the fastText format.
+    fn read_fasttext_private(reader: &mut impl BufRead, lossy: bool) -> Result<Self>;
+}
+
+impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
+    fn read_fasttext_private(mut reader: &mut impl BufRead, lossy: bool) -> Result<Self> {
         let magic = reader
             .read_u32::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot fastText read magic", e))?;
@@ -54,7 +81,7 @@ impl ReadFastText for Embeddings<FastTextSubwordVocab, NdArray> {
 
         let config = Config::read(&mut reader)?;
 
-        let vocab = read_vocab(&config, &mut reader)?;
+        let vocab = read_vocab(&config, &mut reader, lossy)?;
 
         let is_quantized = reader
             .read_u8()
@@ -271,7 +298,7 @@ where
 }
 
 /// Read the vocabulary.
-fn read_vocab<R>(config: &Config, reader: &mut R) -> Result<FastTextSubwordVocab>
+fn read_vocab<R>(config: &Config, reader: &mut R, lossy: bool) -> Result<FastTextSubwordVocab>
 where
     R: BufRead,
 {
@@ -304,7 +331,7 @@ where
 
     let mut words = Vec::with_capacity(size as usize);
     for _ in 0..size {
-        let word = read_string(reader, 0, false)?;
+        let word = read_string(reader, 0, lossy)?;
         reader
             .read_u64::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read word frequency", e))?;
