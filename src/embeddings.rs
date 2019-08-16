@@ -464,7 +464,7 @@ impl<'a> EmbeddingWithNorm<'a> {
 
 /// Iterator over embeddings.
 pub struct Iter<'a> {
-    storage: &'a Storage,
+    storage: &'a dyn Storage,
     inner: Enumerate<slice::Iter<'a, String>>,
 }
 
@@ -480,7 +480,7 @@ impl<'a> Iterator for Iter<'a> {
 
 /// Iterator over embeddings.
 pub struct IterWithNorms<'a> {
-    storage: &'a Storage,
+    storage: &'a dyn Storage,
     norms: Option<&'a NdNorms>,
     inner: Enumerate<slice::Iter<'a, String>>,
 }
