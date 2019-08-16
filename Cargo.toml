@@ -1,6 +1,6 @@
 [package]
 name = "finalfusion"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2018"
 authors = ["Daniël de Kok <me@danieldk.eu>"]
 description = "Reader and writer for common word embedding formats"
