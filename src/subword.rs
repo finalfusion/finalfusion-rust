@@ -18,6 +18,9 @@ use crate::util::CollectWithCapacity;
 pub trait Indexer {
     /// Map an n-gram to an index in the subword embedding matrix.
     fn index_ngram(&self, ngram: &StrWithCharLen) -> u64;
+
+    /// Return the (exclusive) upper bound of this indexer.
+    fn upper_bound(&self) -> u64;
 }
 
 /// N-Gram indexer with bucketing.
@@ -107,6 +110,11 @@ where
         let mut hasher = H::default();
         ngram.hash(&mut hasher);
         hasher.finish() & self.mask
+    }
+
+    fn upper_bound(&self) -> u64 {
+        // max val is <= 64
+        2u64.pow(self.buckets_exp as u32)
     }
 }
 

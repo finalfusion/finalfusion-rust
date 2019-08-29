@@ -340,7 +340,7 @@ where
     S: Storage,
 {
     fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<()> {
-        writeln!(write, "{} {}", self.vocab().len(), self.dims())
+        writeln!(write, "{} {}", self.vocab().words_len(), self.dims())
             .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
         self.write_text(write, unnormalize)
     }

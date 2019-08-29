@@ -341,7 +341,9 @@ where
         // ndarray#474
         #[allow(clippy::deref_addrof)]
         let sims = similarity(
-            self.storage().view().slice(s![0..self.vocab().len(), ..]),
+            self.storage()
+                .view()
+                .slice(s![0..self.vocab().words_len(), ..]),
             embed.view(),
         );
 

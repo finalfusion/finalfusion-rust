@@ -152,7 +152,7 @@ where
     where
         W: Write,
     {
-        writeln!(w, "{} {}", self.vocab().len(), self.dims())
+        writeln!(w, "{} {}", self.vocab().words_len(), self.dims())
             .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
 
         for (word, embed_norm) in self.iter_with_norms() {
@@ -207,7 +207,7 @@ mod tests {
         let f = File::open("testdata/similarity.bin").unwrap();
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap();
-        assert_eq!(41, embeddings.vocab().len());
+        assert_eq!(41, embeddings.vocab().words_len());
         assert_eq!(100, embeddings.dims());
     }
 
