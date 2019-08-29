@@ -97,11 +97,11 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
         add_subword_embeddings(&vocab, &mut storage);
         #[allow(clippy::deref_addrof)]
         let norms = NdNorms(l2_normalize_array(
-            storage.view_mut().slice_mut(s![0..vocab.len(), ..]),
+            storage.view_mut().slice_mut(s![0..vocab.words_len(), ..]),
         ));
 
         // Verify that vocab and storage shapes match.
-        if storage.shape().0 != vocab.len() + config.bucket as usize {
+        if storage.shape().0 != vocab.words_len() + config.bucket as usize {
             return Err(Error::Shape(ShapeError::from_kind(
                 ShapeErrorKind::IncompatibleShape,
             )));

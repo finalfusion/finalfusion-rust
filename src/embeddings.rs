@@ -40,6 +40,7 @@ pub struct Embeddings<V, S> {
 impl<V, S> Embeddings<V, S>
 where
     V: Vocab,
+    S: Storage,
 {
     /// Construct an embeddings from a vocabulary, storage, and norms.
     ///
@@ -48,9 +49,14 @@ where
     /// computational cost.
     pub fn new(metadata: Option<Metadata>, vocab: V, storage: S, norms: NdNorms) -> Self {
         assert_eq!(
-            vocab.len(),
+            vocab.words_len(),
             norms.0.len(),
             "Vocab and norms do not have the same length"
+        );
+        assert_eq!(
+            vocab.vocab_len(),
+            storage.shape().0,
+            "Max vocab index must match number of rows in the embedding matrix."
         );
 
         Embeddings {
@@ -207,7 +213,7 @@ where
     ///
     /// The vocabulary size excludes subword units.
     pub fn len(&self) -> usize {
-        self.vocab.len()
+        self.vocab.words_len()
     }
 }
 

@@ -417,8 +417,11 @@ pub trait Vocab: Clone {
     /// Get the index of a token.
     fn idx(&self, word: &str) -> Option<WordIndex>;
 
-    /// Get the vocabulary size.
-    fn len(&self) -> usize;
+    /// Get the number of words in the vocabulary.
+    fn words_len(&self) -> usize;
+
+    /// Get the total length of this vocabulary, including possible subword indices.
+    fn vocab_len(&self) -> usize;
 
     /// Get the words in the vocabulary.
     fn words(&self) -> &[String];
@@ -429,8 +432,12 @@ impl Vocab for SimpleVocab {
         self.indices.get(word).cloned().map(WordIndex::Word)
     }
 
-    fn len(&self) -> usize {
+    fn words_len(&self) -> usize {
         self.indices.len()
+    }
+
+    fn vocab_len(&self) -> usize {
+        self.words_len()
     }
 
     fn words(&self) -> &[String] {
@@ -452,8 +459,12 @@ where
         self.subword_indices(word).map(WordIndex::Subword)
     }
 
-    fn len(&self) -> usize {
+    fn words_len(&self) -> usize {
         self.indices.len()
+    }
+
+    fn vocab_len(&self) -> usize {
+        self.words_len() + self.indexer.upper_bound() as usize
     }
 
     fn words(&self) -> &[String] {
@@ -471,11 +482,19 @@ impl Vocab for VocabWrap {
     }
 
     /// Get the vocabulary size.
-    fn len(&self) -> usize {
+    fn words_len(&self) -> usize {
         match self {
-            VocabWrap::SimpleVocab(inner) => inner.len(),
-            VocabWrap::FastTextSubwordVocab(inner) => inner.len(),
-            VocabWrap::FinalfusionSubwordVocab(inner) => inner.len(),
+            VocabWrap::SimpleVocab(inner) => inner.words_len(),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.words_len(),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.words_len(),
+        }
+    }
+
+    fn vocab_len(&self) -> usize {
+        match self {
+            VocabWrap::SimpleVocab(inner) => inner.vocab_len(),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.vocab_len(),
+            VocabWrap::FinalfusionSubwordVocab(inner) => inner.vocab_len(),
         }
     }
 
@@ -508,7 +527,7 @@ where
             .as_str()
             .ngrams_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
             .into_iter()
-            .map(|(ngram, idx)| (ngram.to_owned(), idx as usize + self.len()))
+            .map(|(ngram, idx)| (ngram.to_owned(), idx as usize + self.words_len()))
             .collect::<Vec<_>>();
         if indices.is_empty() {
             None
@@ -536,7 +555,7 @@ where
             .as_str()
             .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
             .into_iter()
-            .map(|idx| idx as usize + self.len())
+            .map(|idx| idx as usize + self.words_len())
             .collect::<Vec<_>>();
         if indices.is_empty() {
             None
