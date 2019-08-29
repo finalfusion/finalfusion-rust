@@ -4,7 +4,9 @@ use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use byteorder::{LittleEndian, ReadBytesExt};
 use ndarray::ArrayView2;
 
-use super::{CowArray1, MmapArray, NdArray, QuantizedArray, Storage, StorageView};
+use super::{
+    CowArray1, MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StorageView,
+};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 
@@ -22,12 +24,14 @@ pub enum StorageWrap {
     NdArray(NdArray),
     QuantizedArray(QuantizedArray),
     MmapArray(MmapArray),
+    MmapQuantizedArray(MmapQuantizedArray),
 }
 
 impl Storage for StorageWrap {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
         match self {
             StorageWrap::MmapArray(inner) => inner.embedding(idx),
+            StorageWrap::MmapQuantizedArray(inner) => inner.embedding(idx),
             StorageWrap::NdArray(inner) => inner.embedding(idx),
             StorageWrap::QuantizedArray(inner) => inner.embedding(idx),
         }
@@ -36,6 +40,7 @@ impl Storage for StorageWrap {
     fn shape(&self) -> (usize, usize) {
         match self {
             StorageWrap::MmapArray(inner) => inner.shape(),
+            StorageWrap::MmapQuantizedArray(inner) => inner.shape(),
             StorageWrap::NdArray(inner) => inner.shape(),
             StorageWrap::QuantizedArray(inner) => inner.shape(),
         }
@@ -45,6 +50,12 @@ impl Storage for StorageWrap {
 impl From<MmapArray> for StorageWrap {
     fn from(s: MmapArray) -> Self {
         StorageWrap::MmapArray(s)
+    }
+}
+
+impl From<MmapQuantizedArray> for StorageWrap {
+    fn from(s: MmapQuantizedArray) -> Self {
+        StorageWrap::MmapQuantizedArray(s)
     }
 }
 
@@ -113,6 +124,9 @@ impl MmapChunk for StorageWrap {
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageWrap::MmapArray),
+            ChunkIdentifier::QuantizedArray => {
+                MmapQuantizedArray::mmap_chunk(read).map(StorageWrap::MmapQuantizedArray)
+            }
             _ => Err(ErrorKind::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
                 ChunkIdentifier::NdArray,
@@ -127,6 +141,7 @@ impl WriteChunk for StorageWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             StorageWrap::MmapArray(inner) => inner.chunk_identifier(),
+            StorageWrap::MmapQuantizedArray(_) => unimplemented!(),
             StorageWrap::NdArray(inner) => inner.chunk_identifier(),
             StorageWrap::QuantizedArray(inner) => inner.chunk_identifier(),
         }
@@ -138,6 +153,7 @@ impl WriteChunk for StorageWrap {
     {
         match self {
             StorageWrap::MmapArray(inner) => inner.write_chunk(write),
+            StorageWrap::MmapQuantizedArray(_) => unimplemented!(),
             StorageWrap::NdArray(inner) => inner.write_chunk(write),
             StorageWrap::QuantizedArray(inner) => inner.write_chunk(write),
         }

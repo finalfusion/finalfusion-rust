@@ -1,14 +1,16 @@
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use ndarray::{Array1, Array2};
+use memmap::{Mmap, MmapOptions};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use rand::{FromEntropy, Rng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use super::{CowArray, CowArray1, Storage, StorageView};
-use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
+use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
@@ -19,33 +21,17 @@ pub struct QuantizedArray {
     norms: Option<Array1<f32>>,
 }
 
-impl Storage for QuantizedArray {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        let mut reconstructed = self.quantizer.reconstruct_vector(self.quantized.row(idx));
-        if let Some(ref norms) = self.norms {
-            reconstructed *= norms[idx];
-        }
-
-        CowArray::Owned(reconstructed)
-    }
-
-    fn shape(&self) -> (usize, usize) {
-        (self.quantized.rows(), self.quantizer.reconstructed_len())
-    }
+struct PQRead {
+    n_embeddings: usize,
+    quantizer: PQ<f32>,
+    read_norms: bool,
 }
 
-impl ReadChunk for QuantizedArray {
-    fn read_chunk<R>(read: &mut R) -> Result<Self>
+impl QuantizedArray {
+    fn read_product_quantizer<R>(read: &mut R) -> Result<PQRead>
     where
         R: Read + Seek,
     {
-        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
-
-        // Read and discard chunk length.
-        read.read_u64::<LittleEndian>().map_err(|e| {
-            ErrorKind::io_error("Cannot read quantized embedding matrix chunk length", e)
-        })?;
-
         let projection = read.read_u32::<LittleEndian>().map_err(|e| {
             ErrorKind::io_error("Cannot read quantized embedding matrix projection", e)
         })? != 0;
@@ -108,6 +94,47 @@ impl ReadChunk for QuantizedArray {
             quantizers.push(subquantizer);
         }
 
+        Ok(PQRead {
+            n_embeddings,
+            quantizer: PQ::new(projection, quantizers),
+            read_norms,
+        })
+    }
+}
+
+impl Storage for QuantizedArray {
+    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+        let mut reconstructed = self.quantizer.reconstruct_vector(self.quantized.row(idx));
+        if let Some(ref norms) = self.norms {
+            reconstructed *= norms[idx];
+        }
+
+        CowArray::Owned(reconstructed)
+    }
+
+    fn shape(&self) -> (usize, usize) {
+        (self.quantized.rows(), self.quantizer.reconstructed_len())
+    }
+}
+
+impl ReadChunk for QuantizedArray {
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
+    where
+        R: Read + Seek,
+    {
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
+
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read quantized embedding matrix chunk length", e)
+        })?;
+
+        let PQRead {
+            n_embeddings,
+            quantizer,
+            read_norms,
+        } = Self::read_product_quantizer(read)?;
+
         let norms = if read_norms {
             let mut norms_vec = vec![0f32; n_embeddings];
             read.read_f32_into::<LittleEndian>(&mut norms_vec)
@@ -117,15 +144,17 @@ impl ReadChunk for QuantizedArray {
             None
         };
 
-        let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantized_len];
+        let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantizer.quantized_len()];
         read.read_exact(&mut quantized_embeddings_vec)
             .map_err(|e| ErrorKind::io_error("Cannot read quantized embeddings", e))?;
-        let quantized =
-            Array2::from_shape_vec((n_embeddings, quantized_len), quantized_embeddings_vec)
-                .map_err(Error::Shape)?;
+        let quantized = Array2::from_shape_vec(
+            (n_embeddings, quantizer.quantized_len()),
+            quantized_embeddings_vec,
+        )
+        .map_err(Error::Shape)?;
 
         Ok(QuantizedArray {
-            quantizer: PQ::new(projection, quantizers),
+            quantizer,
             quantized,
             norms,
         })
@@ -365,16 +394,146 @@ where
     }
 }
 
+/// Memory-mapped quantized embedding matrix.
+pub struct MmapQuantizedArray {
+    quantizer: PQ<f32>,
+    quantized: Mmap,
+    norms: Option<Mmap>,
+}
+
+impl MmapQuantizedArray {
+    fn mmap_norms(read: &mut BufReader<File>, n_embeddings: usize) -> Result<Mmap> {
+        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error(
+                "Cannot get file position for memory mapping the norms vector",
+                e,
+            )
+        })?;
+
+        let norms_len = n_embeddings * size_of::<f32>();
+        let mut mmap_opts = MmapOptions::new();
+        let norms = unsafe {
+            mmap_opts
+                .offset(offset)
+                .len(norms_len)
+                .map(&read.get_ref())
+                .map_err(|e| ErrorKind::io_error("Cannot memory map norms vector", e))?
+        };
+
+        // Position the reader after the vector.
+        read.seek(SeekFrom::Current(norms_len as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip norms vector", e))?;
+
+        Ok(norms)
+    }
+
+    fn mmap_quantized_embeddings(
+        read: &mut BufReader<File>,
+        n_embeddings: usize,
+        quantized_len: usize,
+    ) -> Result<Mmap> {
+        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error(
+                "Cannot get file position for memory mapping embedding matrix",
+                e,
+            )
+        })?;
+        let matrix_len = n_embeddings * quantized_len;
+        let mut mmap_opts = MmapOptions::new();
+        let quantized = unsafe {
+            mmap_opts
+                .offset(offset)
+                .len(matrix_len)
+                .map(&read.get_ref())
+                .map_err(|e| {
+                    ErrorKind::io_error("Cannot memory map quantized embedding matrix", e)
+                })?
+        };
+
+        // Position the reader after the matrix.
+        read.seek(SeekFrom::Current(matrix_len as i64))
+            .map_err(|e| ErrorKind::io_error("Cannot skip quantized embedding matrix", e))?;
+
+        Ok(quantized)
+    }
+}
+
+impl Storage for MmapQuantizedArray {
+    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+        let n_embeddings = self.shape().0;
+
+        let quantized = unsafe {
+            ArrayView2::from_shape_ptr(
+                (n_embeddings, self.quantizer.quantized_len()),
+                self.quantized.as_ptr(),
+            )
+        };
+
+        let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
+        if let Some(ref norms) = self.norms {
+            // Alignment is ok, padding guarantees that the pointer is at
+            // a multiple of 4.
+            #[allow(clippy::cast_ptr_alignment)]
+            let norms = unsafe {
+                ArrayView1::from_shape_ptr((n_embeddings,), norms.as_ptr() as *const f32)
+            };
+            reconstructed *= norms[idx];
+        }
+
+        CowArray::Owned(reconstructed)
+    }
+
+    fn shape(&self) -> (usize, usize) {
+        (
+            self.quantized.len() / self.quantizer.quantized_len(),
+            self.quantizer.reconstructed_len(),
+        )
+    }
+}
+
+impl MmapChunk for MmapQuantizedArray {
+    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
+        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
+
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>().map_err(|e| {
+            ErrorKind::io_error("Cannot read quantized embedding matrix chunk length", e)
+        })?;
+
+        let PQRead {
+            n_embeddings,
+            quantizer,
+            read_norms,
+        } = QuantizedArray::read_product_quantizer(read)?;
+
+        let norms = if read_norms {
+            Some(Self::mmap_norms(read, n_embeddings)?)
+        } else {
+            None
+        };
+
+        let quantized =
+            Self::mmap_quantized_embeddings(read, n_embeddings, quantizer.quantized_len())?;
+
+        Ok(MmapQuantizedArray {
+            quantizer,
+            quantized,
+            norms,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::fs::File;
+    use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
     use reductive::pq::PQ;
 
-    use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::storage::{NdArray, Quantize, QuantizedArray};
+    use crate::chunks::io::{MmapChunk, ReadChunk, WriteChunk};
+    use crate::chunks::storage::{MmapQuantizedArray, NdArray, Quantize, QuantizedArray, Storage};
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -437,5 +596,25 @@ mod tests {
         let arr = QuantizedArray::read_chunk(&mut cursor).unwrap();
         assert_eq!(arr.quantizer, check_arr.quantizer);
         assert_eq!(arr.quantized, check_arr.quantized);
+    }
+
+    #[test]
+    fn mmap_quantized_array() {
+        let mut storage_read =
+            BufReader::new(File::open("testdata/quantized_storage.bin").unwrap());
+        let check_arr = QuantizedArray::read_chunk(&mut storage_read).unwrap();
+
+        // Memory map matrix.
+        storage_read.seek(SeekFrom::Start(0)).unwrap();
+        let arr = MmapQuantizedArray::mmap_chunk(&mut storage_read).unwrap();
+
+        // Check
+        assert_eq!(arr.shape(), check_arr.shape());
+        for idx in 0..check_arr.shape().0 {
+            assert_eq!(
+                arr.embedding(idx).as_view(),
+                check_arr.embedding(idx).as_view()
+            );
+        }
     }
 }
