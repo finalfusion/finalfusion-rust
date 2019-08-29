@@ -9,7 +9,7 @@ mod array;
 pub use self::array::{MmapArray, NdArray};
 
 mod quantized;
-pub use self::quantized::{Quantize, QuantizedArray};
+pub use self::quantized::{MmapQuantizedArray, Quantize, QuantizedArray};
 
 mod wrappers;
 pub use self::wrappers::{StorageViewWrap, StorageWrap};
