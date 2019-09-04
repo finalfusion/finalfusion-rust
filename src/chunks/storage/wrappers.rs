@@ -141,7 +141,7 @@ impl WriteChunk for StorageWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             StorageWrap::MmapArray(inner) => inner.chunk_identifier(),
-            StorageWrap::MmapQuantizedArray(_) => unimplemented!(),
+            StorageWrap::MmapQuantizedArray(inner) => inner.chunk_identifier(),
             StorageWrap::NdArray(inner) => inner.chunk_identifier(),
             StorageWrap::QuantizedArray(inner) => inner.chunk_identifier(),
         }
@@ -153,7 +153,7 @@ impl WriteChunk for StorageWrap {
     {
         match self {
             StorageWrap::MmapArray(inner) => inner.write_chunk(write),
-            StorageWrap::MmapQuantizedArray(_) => unimplemented!(),
+            StorageWrap::MmapQuantizedArray(inner) => inner.write_chunk(write),
             StorageWrap::NdArray(inner) => inner.write_chunk(write),
             StorageWrap::QuantizedArray(inner) => inner.write_chunk(write),
         }
