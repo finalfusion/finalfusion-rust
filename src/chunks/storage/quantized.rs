@@ -100,6 +100,139 @@ impl QuantizedArray {
             read_norms,
         })
     }
+
+    fn write_chunk<W>(
+        write: &mut W,
+        quantizer: &PQ<f32>,
+        quantized: ArrayView2<u8>,
+        norms: Option<ArrayView1<f32>>,
+    ) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        write
+            .write_u32::<LittleEndian>(ChunkIdentifier::QuantizedArray as u32)
+            .map_err(|e| {
+                ErrorKind::io_error(
+                    "Cannot write quantized embedding matrix chunk identifier",
+                    e,
+                )
+            })?;
+
+        // projection (u32), use_norms (u32), quantized_len (u32),
+        // reconstructed_len (u32), n_centroids (u32), rows (u64),
+        // types (2 x u32 bytes), padding, projection matrix,
+        // centroids, norms, quantized data.
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot get file position for computing padding", e)
+        })?);
+        let chunk_size = size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u64>()
+            + 2 * size_of::<u32>()
+            + n_padding as usize
+            + quantizer.projection().is_some() as usize
+                * quantizer.reconstructed_len()
+                * quantizer.reconstructed_len()
+                * size_of::<f32>()
+            + quantizer.quantized_len()
+                * quantizer.n_quantizer_centroids()
+                * (quantizer.reconstructed_len() / quantizer.quantized_len())
+                * size_of::<f32>()
+            + norms.is_some() as usize * quantized.rows() * size_of::<f32>()
+            + quantized.rows() * quantizer.quantized_len();
+
+        write
+            .write_u64::<LittleEndian>(chunk_size as u64)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding matrix chunk length", e)
+            })?;
+
+        write
+            .write_u32::<LittleEndian>(quantizer.projection().is_some() as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding matrix projection", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(norms.is_some() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding matrix norms", e))?;
+        write
+            .write_u32::<LittleEndian>(quantizer.quantized_len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding length", e))?;
+        write
+            .write_u32::<LittleEndian>(quantizer.reconstructed_len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write reconstructed embedding length", e))?;
+        write
+            .write_u32::<LittleEndian>(quantizer.n_quantizer_centroids() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write number of subquantizers", e))?;
+        write
+            .write_u64::<LittleEndian>(quantized.rows() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write number of quantized embeddings", e))?;
+
+        // Quantized and reconstruction types.
+        write
+            .write_u32::<LittleEndian>(u8::type_id())
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write quantized embedding type identifier", e)
+            })?;
+        write
+            .write_u32::<LittleEndian>(f32::type_id())
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write reconstructed embedding type identifier", e)
+            })?;
+
+        let padding = vec![0u8; n_padding as usize];
+        write
+            .write_all(&padding)
+            .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
+
+        // Write projection matrix.
+        if let Some(projection) = quantizer.projection() {
+            for row in projection.outer_iter() {
+                for &col in row {
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write projection matrix component", e)
+                    })?;
+                }
+            }
+        }
+
+        // Write subquantizers.
+        for subquantizer in quantizer.subquantizers() {
+            for row in subquantizer.outer_iter() {
+                for &col in row {
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write subquantizer component", e)
+                    })?;
+                }
+            }
+        }
+
+        // Write norms.
+        if let Some(ref norms) = norms {
+            for row in norms.outer_iter() {
+                for &col in row {
+                    write.write_f32::<LittleEndian>(col).map_err(|e| {
+                        ErrorKind::io_error("Cannot write norm vector component", e)
+                    })?;
+                }
+            }
+        }
+
+        // Write quantized embedding matrix.
+        for row in quantized.outer_iter() {
+            for &col in row {
+                write.write_u8(col).map_err(|e| {
+                    ErrorKind::io_error("Cannot write quantized embedding matrix component", e)
+                })?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Storage for QuantizedArray {
@@ -170,128 +303,12 @@ impl WriteChunk for QuantizedArray {
     where
         W: Write + Seek,
     {
-        write
-            .write_u32::<LittleEndian>(ChunkIdentifier::QuantizedArray as u32)
-            .map_err(|e| {
-                ErrorKind::io_error(
-                    "Cannot write quantized embedding matrix chunk identifier",
-                    e,
-                )
-            })?;
-
-        // projection (u32), use_norms (u32), quantized_len (u32),
-        // reconstructed_len (u32), n_centroids (u32), rows (u64),
-        // types (2 x u32 bytes), padding, projection matrix,
-        // centroids, norms, quantized data.
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
-            ErrorKind::io_error("Cannot get file position for computing padding", e)
-        })?);
-        let chunk_size = size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u64>()
-            + 2 * size_of::<u32>()
-            + n_padding as usize
-            + self.quantizer.projection().is_some() as usize
-                * self.quantizer.reconstructed_len()
-                * self.quantizer.reconstructed_len()
-                * size_of::<f32>()
-            + self.quantizer.quantized_len()
-                * self.quantizer.n_quantizer_centroids()
-                * (self.quantizer.reconstructed_len() / self.quantizer.quantized_len())
-                * size_of::<f32>()
-            + self.norms.is_some() as usize * self.quantized.rows() * size_of::<f32>()
-            + self.quantized.rows() * self.quantizer.quantized_len();
-
-        write
-            .write_u64::<LittleEndian>(chunk_size as u64)
-            .map_err(|e| {
-                ErrorKind::io_error("Cannot write quantized embedding matrix chunk length", e)
-            })?;
-
-        write
-            .write_u32::<LittleEndian>(self.quantizer.projection().is_some() as u32)
-            .map_err(|e| {
-                ErrorKind::io_error("Cannot write quantized embedding matrix projection", e)
-            })?;
-        write
-            .write_u32::<LittleEndian>(self.norms.is_some() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding matrix norms", e))?;
-        write
-            .write_u32::<LittleEndian>(self.quantizer.quantized_len() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write quantized embedding length", e))?;
-        write
-            .write_u32::<LittleEndian>(self.quantizer.reconstructed_len() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write reconstructed embedding length", e))?;
-        write
-            .write_u32::<LittleEndian>(self.quantizer.n_quantizer_centroids() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write number of subquantizers", e))?;
-        write
-            .write_u64::<LittleEndian>(self.quantized.rows() as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write number of quantized embeddings", e))?;
-
-        // Quantized and reconstruction types.
-        write
-            .write_u32::<LittleEndian>(u8::type_id())
-            .map_err(|e| {
-                ErrorKind::io_error("Cannot write quantized embedding type identifier", e)
-            })?;
-        write
-            .write_u32::<LittleEndian>(f32::type_id())
-            .map_err(|e| {
-                ErrorKind::io_error("Cannot write reconstructed embedding type identifier", e)
-            })?;
-
-        let padding = vec![0u8; n_padding as usize];
-        write
-            .write_all(&padding)
-            .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
-
-        // Write projection matrix.
-        if let Some(projection) = self.quantizer.projection() {
-            for row in projection.outer_iter() {
-                for &col in row {
-                    write.write_f32::<LittleEndian>(col).map_err(|e| {
-                        ErrorKind::io_error("Cannot write projection matrix component", e)
-                    })?;
-                }
-            }
-        }
-
-        // Write subquantizers.
-        for subquantizer in self.quantizer.subquantizers() {
-            for row in subquantizer.outer_iter() {
-                for &col in row {
-                    write.write_f32::<LittleEndian>(col).map_err(|e| {
-                        ErrorKind::io_error("Cannot write subquantizer component", e)
-                    })?;
-                }
-            }
-        }
-
-        // Write norms.
-        if let Some(ref norms) = self.norms {
-            for row in norms.outer_iter() {
-                for &col in row {
-                    write.write_f32::<LittleEndian>(col).map_err(|e| {
-                        ErrorKind::io_error("Cannot write norm vector component", e)
-                    })?;
-                }
-            }
-        }
-
-        // Write quantized embedding matrix.
-        for row in self.quantized.outer_iter() {
-            for &col in row {
-                write.write_u8(col).map_err(|e| {
-                    ErrorKind::io_error("Cannot write quantized embedding matrix component", e)
-                })?;
-            }
-        }
-
-        Ok(())
+        Self::write_chunk(
+            write,
+            &self.quantizer,
+            self.quantized.view(),
+            self.norms.as_ref().map(Array1::view),
+        )
     }
 }
 
@@ -402,6 +419,27 @@ pub struct MmapQuantizedArray {
 }
 
 impl MmapQuantizedArray {
+    unsafe fn norms(&self) -> Option<ArrayView1<f32>> {
+        let n_embeddings = self.shape().0;
+
+        #[allow(clippy::cast_ptr_alignment)]
+        self.norms.as_ref().map(|norms|
+            // Alignment is ok, padding guarantees that the pointer is at
+            // a multiple of 4.
+                ArrayView1::from_shape_ptr((n_embeddings,), norms.as_ptr() as *const f32))
+    }
+
+    unsafe fn quantized(&self) -> ArrayView2<u8> {
+        let n_embeddings = self.shape().0;
+
+        ArrayView2::from_shape_ptr(
+            (n_embeddings, self.quantizer.quantized_len()),
+            self.quantized.as_ptr(),
+        )
+    }
+}
+
+impl MmapQuantizedArray {
     fn mmap_norms(read: &mut BufReader<File>, n_embeddings: usize) -> Result<Mmap> {
         let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
             ErrorKind::io_error(
@@ -460,23 +498,10 @@ impl MmapQuantizedArray {
 
 impl Storage for MmapQuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        let n_embeddings = self.shape().0;
-
-        let quantized = unsafe {
-            ArrayView2::from_shape_ptr(
-                (n_embeddings, self.quantizer.quantized_len()),
-                self.quantized.as_ptr(),
-            )
-        };
+        let quantized = unsafe { self.quantized() };
 
         let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
-        if let Some(ref norms) = self.norms {
-            // Alignment is ok, padding guarantees that the pointer is at
-            // a multiple of 4.
-            #[allow(clippy::cast_ptr_alignment)]
-            let norms = unsafe {
-                ArrayView1::from_shape_ptr((n_embeddings,), norms.as_ptr() as *const f32)
-            };
+        if let Some(norms) = unsafe { self.norms() } {
             reconstructed *= norms[idx];
         }
 
@@ -523,6 +548,24 @@ impl MmapChunk for MmapQuantizedArray {
     }
 }
 
+impl WriteChunk for MmapQuantizedArray {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::QuantizedArray
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        QuantizedArray::write_chunk(
+            write,
+            &self.quantizer,
+            unsafe { self.quantized() },
+            unsafe { self.norms() },
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -557,6 +600,17 @@ mod tests {
 
         // Return chunk length.
         read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    // Compare storage for which Eq is not implemented.
+    fn storage_eq(arr: &impl Storage, check_arr: &impl Storage) {
+        assert_eq!(arr.shape(), check_arr.shape());
+        for idx in 0..check_arr.shape().0 {
+            assert_eq!(
+                arr.embedding(idx).as_view(),
+                check_arr.embedding(idx).as_view()
+            );
+        }
     }
 
     #[test]
@@ -609,12 +663,25 @@ mod tests {
         let arr = MmapQuantizedArray::mmap_chunk(&mut storage_read).unwrap();
 
         // Check
-        assert_eq!(arr.shape(), check_arr.shape());
-        for idx in 0..check_arr.shape().0 {
-            assert_eq!(
-                arr.embedding(idx).as_view(),
-                check_arr.embedding(idx).as_view()
-            );
-        }
+        storage_eq(&arr, &check_arr);
+    }
+
+    #[test]
+    fn write_mmap_quantized_array() {
+        // Memory map matrix.
+        let mut storage_read =
+            BufReader::new(File::open("testdata/quantized_storage.bin").unwrap());
+        let check_arr = MmapQuantizedArray::mmap_chunk(&mut storage_read).unwrap();
+
+        // Write matrix
+        let mut cursor = Cursor::new(Vec::new());
+        check_arr.write_chunk(&mut cursor).unwrap();
+
+        // Read using non-mmap'ed reader.
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let arr = QuantizedArray::read_chunk(&mut cursor).unwrap();
+
+        // Check
+        storage_eq(&arr, &check_arr);
     }
 }
