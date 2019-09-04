@@ -17,7 +17,7 @@ use crate::util::padding;
 /// Quantized embedding matrix.
 pub struct QuantizedArray {
     quantizer: PQ<f32>,
-    quantized: Array2<u8>,
+    quantized_embeddings: Array2<u8>,
     norms: Option<Array1<f32>>,
 }
 
@@ -237,7 +237,9 @@ impl QuantizedArray {
 
 impl Storage for QuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        let mut reconstructed = self.quantizer.reconstruct_vector(self.quantized.row(idx));
+        let mut reconstructed = self
+            .quantizer
+            .reconstruct_vector(self.quantized_embeddings.row(idx));
         if let Some(ref norms) = self.norms {
             reconstructed *= norms[idx];
         }
@@ -246,7 +248,10 @@ impl Storage for QuantizedArray {
     }
 
     fn shape(&self) -> (usize, usize) {
-        (self.quantized.rows(), self.quantizer.reconstructed_len())
+        (
+            self.quantized_embeddings.rows(),
+            self.quantizer.reconstructed_len(),
+        )
     }
 }
 
@@ -280,7 +285,7 @@ impl ReadChunk for QuantizedArray {
         let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantizer.quantized_len()];
         read.read_exact(&mut quantized_embeddings_vec)
             .map_err(|e| ErrorKind::io_error("Cannot read quantized embeddings", e))?;
-        let quantized = Array2::from_shape_vec(
+        let quantized_embeddings = Array2::from_shape_vec(
             (n_embeddings, quantizer.quantized_len()),
             quantized_embeddings_vec,
         )
@@ -288,7 +293,7 @@ impl ReadChunk for QuantizedArray {
 
         Ok(QuantizedArray {
             quantizer,
-            quantized,
+            quantized_embeddings,
             norms,
         })
     }
@@ -306,7 +311,7 @@ impl WriteChunk for QuantizedArray {
         Self::write_chunk(
             write,
             &self.quantizer,
-            self.quantized.view(),
+            self.quantized_embeddings.view(),
             self.norms.as_ref().map(Array1::view),
         )
     }
@@ -401,11 +406,11 @@ where
             rng,
         );
 
-        let quantized = quantizer.quantize_batch(embeds.as_view());
+        let quantized_embeddings = quantizer.quantize_batch(embeds.as_view());
 
         QuantizedArray {
             quantizer,
-            quantized,
+            quantized_embeddings,
             norms,
         }
     }
@@ -414,7 +419,7 @@ where
 /// Memory-mapped quantized embedding matrix.
 pub struct MmapQuantizedArray {
     quantizer: PQ<f32>,
-    quantized: Mmap,
+    quantized_embeddings: Mmap,
     norms: Option<Mmap>,
 }
 
@@ -429,12 +434,12 @@ impl MmapQuantizedArray {
                 ArrayView1::from_shape_ptr((n_embeddings,), norms.as_ptr() as *const f32))
     }
 
-    unsafe fn quantized(&self) -> ArrayView2<u8> {
+    unsafe fn quantized_embeddings(&self) -> ArrayView2<u8> {
         let n_embeddings = self.shape().0;
 
         ArrayView2::from_shape_ptr(
             (n_embeddings, self.quantizer.quantized_len()),
-            self.quantized.as_ptr(),
+            self.quantized_embeddings.as_ptr(),
         )
     }
 }
@@ -498,7 +503,7 @@ impl MmapQuantizedArray {
 
 impl Storage for MmapQuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        let quantized = unsafe { self.quantized() };
+        let quantized = unsafe { self.quantized_embeddings() };
 
         let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
         if let Some(norms) = unsafe { self.norms() } {
@@ -510,7 +515,7 @@ impl Storage for MmapQuantizedArray {
 
     fn shape(&self) -> (usize, usize) {
         (
-            self.quantized.len() / self.quantizer.quantized_len(),
+            self.quantized_embeddings.len() / self.quantizer.quantized_len(),
             self.quantizer.reconstructed_len(),
         )
     }
@@ -537,12 +542,12 @@ impl MmapChunk for MmapQuantizedArray {
             None
         };
 
-        let quantized =
+        let quantized_embeddings =
             Self::mmap_quantized_embeddings(read, n_embeddings, quantizer.quantized_len())?;
 
         Ok(MmapQuantizedArray {
             quantizer,
-            quantized,
+            quantized_embeddings,
             norms,
         })
     }
@@ -560,7 +565,7 @@ impl WriteChunk for MmapQuantizedArray {
         QuantizedArray::write_chunk(
             write,
             &self.quantizer,
-            unsafe { self.quantized() },
+            unsafe { self.quantized_embeddings() },
             unsafe { self.norms() },
         )
     }
@@ -649,7 +654,7 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let arr = QuantizedArray::read_chunk(&mut cursor).unwrap();
         assert_eq!(arr.quantizer, check_arr.quantizer);
-        assert_eq!(arr.quantized, check_arr.quantized);
+        assert_eq!(arr.quantized_embeddings, check_arr.quantized_embeddings);
     }
 
     #[test]
