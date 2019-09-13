@@ -4,8 +4,8 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
-use rand::{FromEntropy, Rng};
+use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Dimension, IntoDimension};
+use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
@@ -80,23 +80,23 @@ impl QuantizedArray {
             None
         };
 
-        let mut quantizers = Vec::with_capacity(quantized_len);
-        for _ in 0..quantized_len {
-            let mut subquantizer_vec =
-                vec![0f32; n_centroids * (reconstructed_len / quantized_len)];
-            read.read_f32_into::<LittleEndian>(&mut subquantizer_vec)
-                .map_err(|e| ErrorKind::io_error("Cannot read subquantizer", e))?;
-            let subquantizer = Array2::from_shape_vec(
-                (n_centroids, reconstructed_len / quantized_len),
-                subquantizer_vec,
-            )
-            .map_err(Error::Shape)?;
-            quantizers.push(subquantizer);
-        }
+        let quantizer_shape = (
+            quantized_len,
+            n_centroids,
+            reconstructed_len / quantized_len,
+        )
+            .into_dimension();
+        let mut quantizers = vec![0f32; quantizer_shape.size()];
+        read.read_f32_into::<LittleEndian>(&mut quantizers)
+            .map_err(|e| ErrorKind::io_error("Cannot read subquantizer", e))?;
 
         Ok(PQRead {
             n_embeddings,
-            quantizer: PQ::new(projection, quantizers),
+            quantizer: PQ::new(
+                projection,
+                Array::from_shape_vec(quantizer_shape, quantizers)
+                    .expect("Incorrect quantizer shape"),
+            ),
             read_norms,
         })
     }
@@ -201,7 +201,7 @@ impl QuantizedArray {
         }
 
         // Write subquantizers.
-        for subquantizer in quantizer.subquantizers() {
+        for subquantizer in quantizer.subquantizers().outer_iter() {
             for row in subquantizer.outer_iter() {
                 for &col in row {
                     write.write_f32::<LittleEndian>(col).map_err(|e| {
@@ -343,7 +343,7 @@ pub trait Quantize {
             n_iterations,
             n_attempts,
             normalize,
-            &mut XorShiftRng::from_entropy(),
+            XorShiftRng::from_entropy(),
         )
     }
 
@@ -358,11 +358,11 @@ pub trait Quantize {
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-        rng: &mut R,
+        rng: R,
     ) -> QuantizedArray
     where
         T: TrainPQ<f32>,
-        R: Rng;
+        R: RngCore + SeedableRng + Send;
 }
 
 impl<S> Quantize for S
@@ -380,11 +380,11 @@ where
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-        rng: &mut R,
+        rng: R,
     ) -> QuantizedArray
     where
         T: TrainPQ<f32>,
-        R: Rng,
+        R: RngCore + SeedableRng + Send,
     {
         let (embeds, norms) = if normalize {
             let norms = self.view().outer_iter().map(|e| e.dot(&e).sqrt()).collect();

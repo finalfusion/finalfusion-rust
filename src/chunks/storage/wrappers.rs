@@ -22,7 +22,9 @@ use crate::io::{Error, ErrorKind, Result};
 /// variations.
 pub enum StorageWrap {
     NdArray(NdArray),
-    QuantizedArray(QuantizedArray),
+    // Boxed: clippy complains about large variant otherwise. Boxing
+    // does not seem to have a noticable impact on performance.
+    QuantizedArray(Box<QuantizedArray>),
     MmapArray(MmapArray),
     MmapQuantizedArray(MmapQuantizedArray),
 }
@@ -67,7 +69,7 @@ impl From<NdArray> for StorageWrap {
 
 impl From<QuantizedArray> for StorageWrap {
     fn from(s: QuantizedArray) -> Self {
-        StorageWrap::QuantizedArray(s)
+        StorageWrap::QuantizedArray(Box::new(s))
     }
 }
 
@@ -92,9 +94,9 @@ impl ReadChunk for StorageWrap {
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageWrap::NdArray),
-            ChunkIdentifier::QuantizedArray => {
-                QuantizedArray::read_chunk(read).map(StorageWrap::QuantizedArray)
-            }
+            ChunkIdentifier::QuantizedArray => QuantizedArray::read_chunk(read)
+                .map(Box::new)
+                .map(StorageWrap::QuantizedArray),
             _ => Err(ErrorKind::Format(format!(
                 "Invalid chunk identifier, expected one of: {} or {}, got: {}",
                 ChunkIdentifier::NdArray,
