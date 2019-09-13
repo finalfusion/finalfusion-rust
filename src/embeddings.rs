@@ -7,7 +7,7 @@ use std::mem;
 use std::slice;
 
 use ndarray::Array1;
-use rand::{FromEntropy, Rng};
+use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
 
@@ -395,7 +395,7 @@ pub trait Quantize<V> {
             n_iterations,
             n_attempts,
             normalize,
-            &mut XorShiftRng::from_entropy(),
+            XorShiftRng::from_entropy(),
         )
     }
 
@@ -410,11 +410,11 @@ pub trait Quantize<V> {
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-        rng: &mut R,
+        rng: R,
     ) -> Embeddings<V, QuantizedArray>
     where
         T: TrainPQ<f32>,
-        R: Rng;
+        R: RngCore + SeedableRng + Send;
 }
 
 impl<V, S> Quantize<V> for Embeddings<V, S>
@@ -429,11 +429,11 @@ where
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-        rng: &mut R,
+        rng: R,
     ) -> Embeddings<V, QuantizedArray>
     where
         T: TrainPQ<f32>,
-        R: Rng,
+        R: RngCore + SeedableRng + Send,
     {
         let quantized_storage = self.storage().quantize_using::<T, R>(
             n_subquantizers,
