@@ -28,6 +28,14 @@ struct PQRead {
 }
 
 impl QuantizedArray {
+    fn check_quantizer_invariants(quantized_len: usize, reconstructed_len: usize) -> Result<()> {
+        if reconstructed_len % quantized_len != 0 {
+            return Err(ErrorKind::Format(format!("Reconstructed embedding length ({}) not a multiple of the quantized embedding length: ({})", quantized_len, reconstructed_len)).into());
+        }
+
+        Ok(())
+    }
+
     fn read_product_quantizer<R>(read: &mut R) -> Result<PQRead>
     where
         R: Read + Seek,
@@ -55,6 +63,8 @@ impl QuantizedArray {
             .read_u64::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read number of quantized embeddings", e))?
             as usize;
+
+        Self::check_quantizer_invariants(quantized_len, reconstructed_len)?;
 
         // Quantized storage type.
         u8::ensure_data_type(read)?;
