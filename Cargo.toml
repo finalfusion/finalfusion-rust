@@ -34,7 +34,7 @@ toml = "0.5"
 approx = "0.3"
 maplit = "1"
 lazy_static = "1"
-criterion = "0.2"
+criterion = "0.3"
 
 [[bench]]
 name = "subword"

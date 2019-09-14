@@ -18,7 +18,7 @@ fn subwords(string: &str, min_n: usize, max_n: usize, indexer: &impl Indexer) ->
 }
 
 fn ngrams_benchmark(c: &mut Criterion) {
-    let mut rng = thread_rng();
+    let rng = thread_rng();
     let string = rng
         .sample_iter(&Alphanumeric)
         .take(WORD_LENGTH)
