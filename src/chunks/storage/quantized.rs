@@ -36,6 +36,11 @@ impl QuantizedArray {
         Ok(())
     }
 
+    /// Get the quantizer.
+    pub fn quantizer(&self) -> &PQ<f32> {
+        &self.quantizer
+    }
+
     fn read_product_quantizer<R>(read: &mut R) -> Result<PQRead>
     where
         R: Read + Seek,
@@ -508,6 +513,11 @@ impl MmapQuantizedArray {
             .map_err(|e| ErrorKind::io_error("Cannot skip quantized embedding matrix", e))?;
 
         Ok(quantized)
+    }
+
+    /// Get the quantizer.
+    pub fn quantizer(&self) -> &PQ<f32> {
+        &self.quantizer
     }
 }
 
