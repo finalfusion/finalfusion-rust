@@ -610,5 +610,4 @@ mod tests {
             Err([true, true, false])
         );
     }
-
 }

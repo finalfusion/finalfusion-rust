@@ -480,5 +480,4 @@ mod tests {
             .0
             .all_close(&embeddings_check.storage().0, 1e-6));
     }
-
 }
