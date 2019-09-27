@@ -21,6 +21,7 @@ pub enum ChunkIdentifier {
     Metadata = 5,
     NdNorms = 6,
     FastTextSubwordVocab = 7,
+    FinalfusionNGramVocab = 8,
 }
 
 impl ChunkIdentifier {
@@ -35,6 +36,7 @@ impl ChunkIdentifier {
             5 => Some(Metadata),
             6 => Some(NdNorms),
             7 => Some(FastTextSubwordVocab),
+            8 => Some(FinalfusionNGramVocab),
             _ => None,
         }
     }
@@ -71,6 +73,7 @@ impl Display for ChunkIdentifier {
             SimpleVocab => write!(f, "SimpleVocab"),
             NdArray => write!(f, "NdArray"),
             FastTextSubwordVocab => write!(f, "FastTextSubwordVocab"),
+            FinalfusionNGramVocab => write!(f, "FinalfusionNGramVocab"),
             FinalfusionSubwordVocab => write!(f, "FinalfusionSubwordVocab"),
             QuantizedArray => write!(f, "QuantizedArray"),
             Metadata => write!(f, "Metadata"),

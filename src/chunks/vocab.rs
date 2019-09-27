@@ -10,7 +10,7 @@ use super::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::compat::fasttext::FastTextIndexer;
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{
-    BucketIndexer, FinalfusionHashIndexer, Indexer, NGramsIndices,
+    BucketIndexer, FinalfusionHashIndexer, Indexer, NGramIndexer, NGramsIndices,
     SubwordIndices as StrSubwordIndices,
 };
 
@@ -54,20 +54,8 @@ impl ReadChunk for SimpleVocab {
             .read_u64::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read vocabulary length", e))?
             as usize;
-        let mut words = Vec::with_capacity(vocab_len);
-        for _ in 0..vocab_len {
-            let word_len = read
-                .read_u32::<LittleEndian>()
-                .map_err(|e| ErrorKind::io_error("Cannot read token length", e))?
-                as usize;
-            let mut bytes = vec![0; word_len];
-            read.read_exact(&mut bytes)
-                .map_err(|e| ErrorKind::io_error("Cannot read token", e))?;
-            let word = String::from_utf8(bytes)
-                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
-                .map_err(Error::from)?;
-            words.push(word);
-        }
+
+        let words = read_vocab_items(read, vocab_len)?;
 
         Ok(SimpleVocab::new(words))
     }
@@ -101,14 +89,7 @@ impl WriteChunk for SimpleVocab {
             .write_u64::<LittleEndian>(self.words.len() as u64)
             .map_err(|e| ErrorKind::io_error("Cannot write vocabulary length", e))?;
 
-        for word in &self.words {
-            write
-                .write_u32::<LittleEndian>(word.len() as u32)
-                .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
-            write
-                .write_all(word.as_bytes())
-                .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
-        }
+        write_vocab_items(write, self.words())?;
 
         Ok(())
     }
@@ -119,6 +100,9 @@ pub type FastTextSubwordVocab = SubwordVocab<FastTextIndexer>;
 
 /// Native finalfusion subword vocabulary.
 pub type FinalfusionSubwordVocab = SubwordVocab<FinalfusionHashIndexer>;
+
+/// finalfusion NGram vocabulary.
+pub type FinalfusionNGramVocab = SubwordVocab<NGramIndexer>;
 
 /// Vocabulary with subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -178,6 +162,15 @@ impl ReadChunk for FinalfusionSubwordVocab {
     }
 }
 
+impl ReadChunk for FinalfusionNGramVocab {
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
+    where
+        R: Read + Seek,
+    {
+        Self::read_ngram_chunk(read, ChunkIdentifier::FinalfusionNGramVocab)
+    }
+}
+
 impl WriteChunk for FastTextSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::FastTextSubwordVocab
@@ -201,6 +194,19 @@ impl WriteChunk for FinalfusionSubwordVocab {
         W: Write + Seek,
     {
         self.write_bucketed_chunk(write, self.chunk_identifier())
+    }
+}
+
+impl WriteChunk for FinalfusionNGramVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::FinalfusionNGramVocab
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        self.write_ngram_chunk(write, self.chunk_identifier())
     }
 }
 
@@ -235,20 +241,7 @@ where
             .read_u32::<LittleEndian>()
             .map_err(|e| ErrorKind::io_error("Cannot read number of buckets", e))?;
 
-        let mut words = Vec::with_capacity(vocab_len);
-        for _ in 0..vocab_len {
-            let word_len = read
-                .read_u32::<LittleEndian>()
-                .map_err(|e| ErrorKind::io_error("Cannot read token length", e))?
-                as usize;
-            let mut bytes = vec![0; word_len];
-            read.read_exact(&mut bytes)
-                .map_err(|e| ErrorKind::io_error("Cannot read token", e))?;
-            let word = String::from_utf8(bytes)
-                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))
-                .map_err(Error::from)?;
-            words.push(word);
-        }
+        let words = read_vocab_items(read, vocab_len as usize)?;
 
         Ok(SubwordVocab::new(
             words,
@@ -301,14 +294,90 @@ where
             .write_u32::<LittleEndian>(self.indexer.buckets() as u32)
             .map_err(|e| ErrorKind::io_error("Cannot write number of buckets", e))?;
 
-        for word in self.words() {
-            write
-                .write_u32::<LittleEndian>(word.len() as u32)
-                .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
-            write
-                .write_all(word.as_bytes())
-                .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
-        }
+        write_vocab_items(write, self.words())?;
+
+        Ok(())
+    }
+}
+
+impl SubwordVocab<NGramIndexer> {
+    fn read_ngram_chunk<R>(
+        read: &mut R,
+        chunk_identifier: ChunkIdentifier,
+    ) -> Result<SubwordVocab<NGramIndexer>>
+    where
+        R: Read + Seek,
+    {
+        ChunkIdentifier::ensure_chunk_type(read, chunk_identifier)?;
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk length", e))?;
+        let words_len = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read number of words", e))?;
+        let ngrams_len = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read number of ngrams", e))?;
+        let min_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read minimum n-gram length", e))?;
+        let max_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read maximum n-gram length", e))?;
+
+        let words = read_vocab_items(read, words_len as usize)?;
+        let ngrams = read_vocab_items(read, ngrams_len as usize)?;
+        let indexer = NGramIndexer::new(ngrams);
+        Ok(SubwordVocab::new(words, min_n, max_n, indexer))
+    }
+
+    fn write_ngram_chunk<W>(&self, write: &mut W, chunk_identifier: ChunkIdentifier) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        // Chunk size: word vocab size (u64), ngram vocab size (u64)
+        // minimum n-gram length (u32), maximum n-gram length (u32),
+        // for each word and ngram:
+        // length in bytes (u32), number of bytes (variable-length).
+        let chunk_len = size_of::<u64>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self
+                .words()
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>()
+            + self
+                .indexer
+                .ngrams()
+                .iter()
+                .map(|ngram| ngram.len() + size_of::<u32>())
+                .sum::<usize>();
+
+        write
+            .write_u32::<LittleEndian>(chunk_identifier as u32)
+            .map_err(|e| {
+                ErrorKind::io_error("Cannot write subword vocabulary chunk identifier", e)
+            })?;
+        write
+            .write_u64::<LittleEndian>(chunk_len as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write subword vocabulary chunk length", e))?;
+        write
+            .write_u64::<LittleEndian>(self.words.len() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary length", e))?;
+        write
+            .write_u64::<LittleEndian>(self.indexer.ngrams().len() as u64)
+            .map_err(|e| ErrorKind::io_error("Cannot write ngram length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.min_n)
+            .map_err(|e| ErrorKind::io_error("Cannot write minimum n-gram length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.max_n)
+            .map_err(|e| ErrorKind::io_error("Cannot write maximum n-gram length", e))?;
+
+        write_vocab_items(write, self.words())?;
+        write_vocab_items(write, self.indexer.ngrams())?;
 
         Ok(())
     }
@@ -580,6 +649,42 @@ fn create_indices(words: &[String]) -> HashMap<String, usize> {
     indices
 }
 
+fn read_vocab_items<R>(read: &mut R, len: usize) -> Result<Vec<String>>
+where
+    R: Read + Seek,
+{
+    let mut items = Vec::with_capacity(len);
+    for _ in 0..len {
+        let item_len = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read item length", e))?
+            as usize;
+        let mut bytes = vec![0; item_len];
+        read.read_exact(&mut bytes)
+            .map_err(|e| ErrorKind::io_error("Cannot read item", e))?;
+        let item = String::from_utf8(bytes)
+            .map_err(|e| ErrorKind::Format(format!("Item contains invalid UTF-8: {}", e)))
+            .map_err(Error::from)?;
+        items.push(item);
+    }
+    Ok(items)
+}
+
+fn write_vocab_items<W>(write: &mut W, items: &[String]) -> Result<()>
+where
+    W: Write + Seek,
+{
+    for word in items {
+        write
+            .write_u32::<LittleEndian>(word.len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
+        write
+            .write_all(word.as_bytes())
+            .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Read, Seek, SeekFrom};
@@ -588,8 +693,9 @@ mod tests {
 
     use super::{FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, SubwordVocab};
     use crate::chunks::io::{ReadChunk, WriteChunk};
+    use crate::chunks::vocab::FinalfusionNGramVocab;
     use crate::compat::fasttext::FastTextIndexer;
-    use crate::subword::{BucketIndexer, FinalfusionHashIndexer};
+    use crate::subword::{BucketIndexer, FinalfusionHashIndexer, NGramIndexer};
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
         let words = vec![
@@ -622,6 +728,19 @@ mod tests {
         ];
         let indexer = FinalfusionHashIndexer::new(20);
         SubwordVocab::new(words, 3, 6, indexer)
+    }
+
+    fn test_ngram_vocab() -> FinalfusionNGramVocab {
+        let words = vec![
+            "this".to_owned(),
+            "is".to_owned(),
+            "a".to_owned(),
+            "test".to_owned(),
+        ];
+
+        let ngrams = vec!["is>".to_owned(), "is".to_owned(), "<t".to_owned()];
+
+        FinalfusionNGramVocab::new(words, 2, 3, NGramIndexer::new(ngrams))
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
@@ -688,5 +807,25 @@ mod tests {
             cursor.read_to_end(&mut Vec::new()).unwrap(),
             chunk_size as usize
         );
+    }
+
+    #[test]
+    fn ngram_vocab_write_read_roundtrip() {
+        let check_vocab = test_ngram_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let vocab = FinalfusionNGramVocab::read_chunk(&mut cursor).unwrap();
+        assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn ngram_vocab_correct_chunk_size() {
+        let check_vocab = test_ngram_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
+        assert_eq!(vocab, check_vocab);
     }
 }
