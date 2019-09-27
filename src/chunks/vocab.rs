@@ -515,19 +515,24 @@ impl Vocab for VocabWrap {
 pub trait NGramIndices {
     /// Return the subword ngrams and their indices of a word,
     /// in the subword vocabulary.
-    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, usize)>>;
+    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, Option<usize>)>>;
 }
 
 impl<I> NGramIndices for SubwordVocab<I>
 where
     I: Clone + Indexer,
 {
-    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, usize)>> {
+    fn ngram_indices(&self, word: &str) -> Option<Vec<(String, Option<usize>)>> {
         let indices = Self::bracket(word)
             .as_str()
             .ngrams_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
             .into_iter()
-            .map(|(ngram, idx)| (ngram.to_owned(), idx as usize + self.words_len()))
+            .map(|(ngram, idx)| {
+                (
+                    ngram.to_owned(),
+                    idx.map(|idx| idx as usize + self.words_len()),
+                )
+            })
             .collect::<Vec<_>>();
         if indices.is_empty() {
             None
