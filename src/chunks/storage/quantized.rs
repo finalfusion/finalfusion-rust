@@ -611,7 +611,7 @@ mod tests {
             r as f32 * N_COLS as f32 + c as f32
         });
 
-        NdArray(test_data)
+        NdArray::new(test_data)
     }
 
     fn test_quantized_array(norms: bool) -> QuantizedArray {
