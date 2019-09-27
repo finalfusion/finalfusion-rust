@@ -41,8 +41,8 @@ impl BucketIndexer for FastTextIndexer {
 }
 
 impl Indexer for FastTextIndexer {
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> u64 {
-        u64::from(fasttext_hash(ngram.as_str()) % self.buckets)
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
+        Some(u64::from(fasttext_hash(ngram.as_str()) % self.buckets))
     }
 
     fn upper_bound(&self) -> u64 {

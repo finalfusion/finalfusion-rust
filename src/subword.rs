@@ -1,7 +1,7 @@
 //! Utilities for subword units.
 
 use std::cmp;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -17,7 +17,7 @@ use crate::util::CollectWithCapacity;
 /// matrix.
 pub trait Indexer {
     /// Map an n-gram to an index in the subword embedding matrix.
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> u64;
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64>;
 
     /// Return the (exclusive) upper bound of this indexer.
     fn upper_bound(&self) -> u64;
@@ -106,10 +106,10 @@ impl<H> Indexer for HashIndexer<H>
 where
     H: Default + Hasher,
 {
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> u64 {
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
         let mut hasher = H::default();
         ngram.hash(&mut hasher);
-        hasher.finish() & self.mask
+        Some(hasher.finish() & self.mask)
     }
 
     fn upper_bound(&self) -> u64 {
@@ -126,6 +126,45 @@ impl<H> PartialEq for HashIndexer<H> {
 
 /// Standard hash-based indexer in finalfusion.
 pub type FinalfusionHashIndexer = HashIndexer<FnvHasher>;
+
+/// Indexer for explicitly stored NGrams.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NGramIndexer {
+    ngrams: Vec<String>,
+    index: HashMap<String, u64>,
+}
+
+impl NGramIndexer {
+    pub fn ngrams(&self) -> &[String] {
+        &self.ngrams
+    }
+}
+
+impl NGramIndexer {
+    pub fn new<V>(ngrams: V) -> Self
+    where
+        V: Into<Vec<String>>,
+    {
+        let ngrams = ngrams.into();
+        let index = ngrams
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(idx, ngram)| (ngram, idx as u64))
+            .collect::<HashMap<String, u64>>();
+        NGramIndexer { ngrams, index }
+    }
+}
+
+impl Indexer for NGramIndexer {
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
+        self.index.get(ngram.inner).cloned()
+    }
+
+    fn upper_bound(&self) -> u64 {
+        self.index.len() as u64
+    }
+}
 
 /// A string reference with its length in characters.
 pub struct StrWithCharLen<'a> {
@@ -269,7 +308,7 @@ impl SubwordIndices for str {
         I: Indexer,
     {
         NGramsIndicesIter::new(self, min_n, max_n, indexer)
-            .map(|(_, idx)| idx)
+            .filter_map(|(_, idx)| idx)
             .collect()
     }
 }
@@ -301,7 +340,7 @@ impl<'a, 'b, I> Iterator for NGramsIndicesIter<'a, 'b, I>
 where
     I: Indexer,
 {
-    type Item = (&'a str, u64);
+    type Item = (&'a str, Option<u64>);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -326,13 +365,18 @@ pub trait NGramsIndices {
     /// mapped to indices into *2^buckets_exp* buckets.
     ///
     /// The largest possible bucket exponent is 64.
-    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, u64)>
+    fn ngrams_indices<I>(
+        &self,
+        min_n: usize,
+        max_n: usize,
+        indexer: &I,
+    ) -> Vec<(&str, Option<u64>)>
     where
         I: Indexer;
 }
 
 impl NGramsIndices for str {
-    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, u64)>
+    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, Option<u64>)>
     where
         I: Indexer,
     {
