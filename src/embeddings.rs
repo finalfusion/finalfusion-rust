@@ -553,7 +553,7 @@ mod tests {
     #[test]
     fn norms() {
         let vocab = SimpleVocab::new(vec!["norms".to_string(), "test".to_string()]);
-        let storage = NdArray(array![[1f32], [-1f32]]);
+        let storage = NdArray::new(array![[1f32], [-1f32]]);
         let norms = NdNorms(array![2f32, 3f32]);
         let check = Embeddings::new(None, vocab, storage, norms);
 

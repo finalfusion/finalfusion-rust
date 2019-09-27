@@ -115,7 +115,7 @@ where
         Ok(Embeddings::new_without_norms(
             None,
             SimpleVocab::new(words),
-            NdArray(matrix),
+            NdArray::new(matrix),
         ))
     }
 }
@@ -182,6 +182,7 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
+    use crate::chunks::storage::StorageView;
     use crate::chunks::vocab::Vocab;
     use crate::compat::word2vec::{ReadWord2Vec, ReadWord2VecRaw, WriteWord2Vec};
     use crate::embeddings::Embeddings;
@@ -250,7 +251,7 @@ mod tests {
 
         assert!(embeddings
             .storage()
-            .0
-            .all_close(&embeddings_check.storage().0, 1e-6));
+            .view()
+            .all_close(&embeddings_check.storage().view(), 1e-6));
     }
 }

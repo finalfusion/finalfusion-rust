@@ -294,7 +294,7 @@ where
 
     let data = Array2::from_shape_vec((m as usize, n as usize), data).map_err(Error::Shape)?;
 
-    Ok(NdArray(data))
+    Ok(NdArray::new(data))
 }
 
 /// Read the vocabulary.

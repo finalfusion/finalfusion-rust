@@ -270,7 +270,7 @@ where
     Ok(Embeddings::new_without_norms(
         None,
         SimpleVocab::new(words),
-        NdArray(matrix),
+        NdArray::new(matrix),
     ))
 }
 
@@ -477,7 +477,7 @@ mod tests {
 
         assert!(embeddings
             .storage()
-            .0
-            .all_close(&embeddings_check.storage().0, 1e-6));
+            .view()
+            .all_close(&embeddings_check.storage().view(), 1e-6));
     }
 }

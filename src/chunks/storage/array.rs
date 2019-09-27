@@ -47,7 +47,7 @@ impl StorageView for MmapArray {
 
 impl StorageViewMut for NdArray {
     fn view_mut(&mut self) -> ArrayViewMut2<f32> {
-        self.0.view_mut()
+        self.inner.view_mut()
     }
 }
 
@@ -116,9 +116,15 @@ impl WriteChunk for MmapArray {
 
 /// In-memory `ndarray` matrix.
 #[derive(Debug)]
-pub struct NdArray(pub Array2<f32>);
+pub struct NdArray {
+    inner: Array2<f32>,
+}
 
 impl NdArray {
+    pub fn new(arr: Array2<f32>) -> Self {
+        NdArray { inner: arr }
+    }
+
     fn write_ndarray_chunk<W>(data: ArrayView2<f32>, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -183,19 +189,25 @@ impl NdArray {
     }
 }
 
+impl From<Array2<f32>> for NdArray {
+    fn from(arr: Array2<f32>) -> Self {
+        NdArray::new(arr)
+    }
+}
+
 impl Storage for NdArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        CowArray::Borrowed(self.0.row(idx))
+        CowArray::Borrowed(self.inner.row(idx))
     }
 
     fn shape(&self) -> (usize, usize) {
-        self.0.dim()
+        self.inner.dim()
     }
 }
 
 impl StorageView for NdArray {
     fn view(&self) -> ArrayView2<f32> {
-        self.0.view()
+        self.inner.view()
     }
 }
 
@@ -230,9 +242,9 @@ impl ReadChunk for NdArray {
         read.read_f32_into::<LittleEndian>(&mut data)
             .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix", e))?;
 
-        Ok(NdArray(
-            Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
-        ))
+        Ok(NdArray {
+            inner: Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
+        })
     }
 }
 
@@ -245,7 +257,7 @@ impl WriteChunk for NdArray {
     where
         W: Write + Seek,
     {
-        Self::write_ndarray_chunk(self.0.view(), write)
+        Self::write_ndarray_chunk(self.inner.view(), write)
     }
 }
 
@@ -267,7 +279,7 @@ mod tests {
             r as f32 * N_COLS as f32 + c as f32
         });
 
-        NdArray(test_data)
+        NdArray::new(test_data)
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
