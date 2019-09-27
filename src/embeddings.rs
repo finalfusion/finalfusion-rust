@@ -516,6 +516,7 @@ mod tests {
     use toml::toml;
 
     use super::Embeddings;
+    use crate::align::{AlignedArray2, DefaultAlignment, WithCapacityAligned};
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
     use crate::chunks::storage::{MmapArray, NdArray, StorageView};
@@ -553,7 +554,9 @@ mod tests {
     #[test]
     fn norms() {
         let vocab = SimpleVocab::new(vec!["norms".to_string(), "test".to_string()]);
-        let storage = NdArray::new(array![[1f32], [-1f32]]);
+        let mut data = Vec::with_capacity_aligned::<DefaultAlignment>(2);
+        data.extend(&[1f32, -1f32]);
+        let storage = NdArray::new(AlignedArray2::from_shape_vec((2, 1), data).unwrap());
         let norms = NdNorms(array![2f32, 3f32]);
         let check = Embeddings::new(None, vocab, storage, norms);
 

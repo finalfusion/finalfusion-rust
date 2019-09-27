@@ -24,8 +24,9 @@ use std::mem;
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use ndarray::{Array2, Axis};
+use ndarray::Axis;
 
+use crate::align::AlignedArray2;
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
@@ -92,7 +93,7 @@ where
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
-        let mut matrix = Array2::zeros((n_words, embed_len));
+        let mut matrix = AlignedArray2::zeros((n_words, embed_len));
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {

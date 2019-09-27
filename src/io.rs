@@ -13,12 +13,17 @@ use std::io::{BufReader, Read, Seek, Write};
 
 use ndarray::ShapeError;
 
+use crate::align::AlignedArrayError;
+
 /// `Result` type alias for operations that can lead to I/O errors.
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 /// I/O errors in reading or writing embeddings.
 #[derive(Debug)]
 pub enum Error {
+    /// Aligned array error error.
+    AlignedArray(AlignedArrayError),
+
     /// finalfusion errors.
     FinalFusion(ErrorKind),
 
@@ -31,6 +36,7 @@ impl fmt::Display for Error {
         use self::Error::*;
         match *self {
             FinalFusion(ref kind) => kind.fmt(f),
+            AlignedArray(ref err) => err.fmt(f),
             Shape(ref err) => err.fmt(f),
         }
     }
@@ -43,6 +49,7 @@ impl std::error::Error for Error {
         match *self {
             FinalFusion(ErrorKind::Format(ref desc)) => desc,
             FinalFusion(ErrorKind::Io { ref desc, .. }) => desc,
+            AlignedArray(ref err) => err.description(),
             Shape(ref err) => err.description(),
         }
     }

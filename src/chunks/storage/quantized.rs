@@ -597,9 +597,9 @@ mod tests {
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
-    use ndarray::Array2;
     use reductive::pq::PQ;
 
+    use crate::align::AlignedArray2;
     use crate::chunks::io::{MmapChunk, ReadChunk, WriteChunk};
     use crate::chunks::storage::{MmapQuantizedArray, NdArray, Quantize, QuantizedArray, Storage};
 
@@ -607,11 +607,14 @@ mod tests {
     const N_COLS: usize = 100;
 
     fn test_ndarray() -> NdArray {
-        let test_data = Array2::from_shape_fn((N_ROWS, N_COLS), |(r, c)| {
-            r as f32 * N_COLS as f32 + c as f32
-        });
+        let mut matrix = AlignedArray2::zeros((N_ROWS, N_COLS));
+        for r in 0..N_ROWS {
+            for c in 0..N_COLS {
+                matrix[[r, c]] = r as f32 * N_COLS as f32 + c as f32;
+            }
+        }
 
-        NdArray::new(test_data)
+        NdArray::new(matrix)
     }
 
     fn test_quantized_array(norms: bool) -> QuantizedArray {
