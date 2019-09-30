@@ -396,6 +396,7 @@ impl SubwordVocab<NGramIndexer> {
 #[derive(Clone, Debug)]
 pub enum VocabWrap {
     SimpleVocab(SimpleVocab),
+    FinalfusionNGramVocab(FinalfusionNGramVocab),
     FastTextSubwordVocab(FastTextSubwordVocab),
     FinalfusionSubwordVocab(FinalfusionSubwordVocab),
 }
@@ -415,6 +416,12 @@ impl From<FastTextSubwordVocab> for VocabWrap {
 impl From<FinalfusionSubwordVocab> for VocabWrap {
     fn from(v: FinalfusionSubwordVocab) -> Self {
         VocabWrap::FinalfusionSubwordVocab(v)
+    }
+}
+
+impl From<FinalfusionNGramVocab> for VocabWrap {
+    fn from(v: FinalfusionNGramVocab) -> Self {
+        VocabWrap::FinalfusionNGramVocab(v)
     }
 }
 
@@ -447,9 +454,13 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::FinalfusionSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::FinalfusionSubwordVocab)
             }
+            ChunkIdentifier::FinalfusionNGramVocab => {
+                SubwordVocab::read_chunk(read).map(VocabWrap::FinalfusionNGramVocab)
+            }
             _ => Err(ErrorKind::Format(format!(
-                "Invalid chunk identifier, expected one of: {}, {} or {}, got: {}",
+                "Invalid chunk identifier, expected one of: {}, {}, {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
+                ChunkIdentifier::FinalfusionNGramVocab,
                 ChunkIdentifier::FastTextSubwordVocab,
                 ChunkIdentifier::FinalfusionSubwordVocab,
                 chunk_id
@@ -463,6 +474,7 @@ impl WriteChunk for VocabWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.chunk_identifier(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.chunk_identifier(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.chunk_identifier(),
         }
@@ -474,6 +486,7 @@ impl WriteChunk for VocabWrap {
     {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.write_chunk(write),
             VocabWrap::FastTextSubwordVocab(inner) => inner.write_chunk(write),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.write_chunk(write),
         }
@@ -545,6 +558,7 @@ impl Vocab for VocabWrap {
     fn idx(&self, word: &str) -> Option<WordIndex> {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.idx(word),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.idx(word),
             VocabWrap::FastTextSubwordVocab(inner) => inner.idx(word),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.idx(word),
         }
@@ -554,6 +568,7 @@ impl Vocab for VocabWrap {
     fn words_len(&self) -> usize {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.words_len(),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.words_len(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.words_len(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.words_len(),
         }
@@ -562,6 +577,7 @@ impl Vocab for VocabWrap {
     fn vocab_len(&self) -> usize {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.vocab_len(),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.vocab_len(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.vocab_len(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.vocab_len(),
         }
@@ -571,6 +587,7 @@ impl Vocab for VocabWrap {
     fn words(&self) -> &[String] {
         match self {
             VocabWrap::SimpleVocab(inner) => inner.words(),
+            VocabWrap::FinalfusionNGramVocab(inner) => inner.words(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.words(),
             VocabWrap::FinalfusionSubwordVocab(inner) => inner.words(),
         }

@@ -207,7 +207,7 @@ impl<'a> Hash for StrWithCharLen<'a> {
 ///
 /// **Warning:** no guarantee is provided with regard to the iteration
 /// order. The iterator only guarantees that all n-grams are produced.
-struct NGrams<'a> {
+pub struct NGrams<'a> {
     max_n: usize,
     min_n: usize,
     string: &'a str,
