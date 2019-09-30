@@ -68,4 +68,6 @@ pub mod similarity;
 
 pub mod subword;
 
+pub(crate) mod align;
+
 pub(crate) mod util;

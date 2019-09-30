@@ -4,11 +4,12 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, Dimension, Ix2};
+use ndarray::{s, ArrayView2, ArrayViewMut2, Dimension, Ix2};
 
 use super::{CowArray, CowArray1, Storage, StorageView, StorageViewMut};
+use crate::align::{AlignedMatrix, DefaultAlignment, MatrixLayout};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
-use crate::io::{Error, ErrorKind, Result};
+use crate::io::{ErrorKind, Result};
 use crate::util::padding;
 
 /// Memory-mapped matrix.
@@ -47,7 +48,9 @@ impl StorageView for MmapArray {
 
 impl StorageViewMut for NdArray {
     fn view_mut(&mut self) -> ArrayViewMut2<f32> {
-        self.inner.view_mut()
+        let shape = self.layout.shape_without_padding();
+        #[allow(clippy::deref_addrof)]
+        self.inner.slice_mut(s![.., ..shape[1]])
     }
 }
 
@@ -117,12 +120,17 @@ impl WriteChunk for MmapArray {
 /// In-memory `ndarray` matrix.
 #[derive(Debug)]
 pub struct NdArray {
-    inner: Array2<f32>,
+    layout: MatrixLayout<DefaultAlignment, f32>,
+    inner: AlignedMatrix<DefaultAlignment, f32>,
 }
 
 impl NdArray {
-    pub fn new(arr: Array2<f32>) -> Self {
-        NdArray { inner: arr }
+    pub fn new(
+        layout: MatrixLayout<DefaultAlignment, f32>,
+        arr: AlignedMatrix<DefaultAlignment, f32>,
+    ) -> Self {
+        assert_eq!(arr.shape(), layout.shape_with_padding());
+        NdArray { layout, inner: arr }
     }
 
     fn write_ndarray_chunk<W>(data: ArrayView2<f32>, write: &mut W) -> Result<()>
@@ -189,25 +197,26 @@ impl NdArray {
     }
 }
 
-impl From<Array2<f32>> for NdArray {
-    fn from(arr: Array2<f32>) -> Self {
-        NdArray::new(arr)
-    }
-}
-
 impl Storage for NdArray {
     fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        CowArray::Borrowed(self.inner.row(idx))
+        #[allow(clippy::deref_addrof)]
+        CowArray::Borrowed(
+            self.inner
+                .slice(s![idx, ..self.layout.shape_without_padding()[1]]),
+        )
     }
 
     fn shape(&self) -> (usize, usize) {
-        self.inner.dim()
+        let shape = self.layout.shape_without_padding();
+        (shape[0], shape[1])
     }
 }
 
 impl StorageView for NdArray {
     fn view(&self) -> ArrayView2<f32> {
-        self.inner.view()
+        let shape = self.layout.shape_without_padding();
+        #[allow(clippy::deref_addrof)]
+        self.inner.slice(s![.., ..shape[1]])
     }
 }
 
@@ -238,13 +247,21 @@ impl ReadChunk for NdArray {
         read.seek(SeekFrom::Current(n_padding as i64))
             .map_err(|e| ErrorKind::io_error("Cannot skip padding", e))?;
 
-        let mut data = vec![0f32; rows * cols];
-        read.read_f32_into::<LittleEndian>(&mut data)
-            .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix", e))?;
+        let layout = MatrixLayout::new(rows, cols);
+        let mut matrix = AlignedMatrix::zeros(layout);
 
-        Ok(NdArray {
-            inner: Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
-        })
+        for row in 0..rows {
+            #[allow(clippy::deref_addrof)]
+            let mut embedding = matrix.slice_mut(s![row, ..cols]);
+            read.read_f32_into::<LittleEndian>(
+                embedding
+                    .as_slice_mut()
+                    .expect("Non-contiguous memory in embedding matrix"),
+            )
+            .map_err(|e| ErrorKind::io_error("Cannot read embedding matrix", e))?;
+        }
+
+        Ok(NdArray::new(layout, matrix))
     }
 }
 
@@ -257,7 +274,7 @@ impl WriteChunk for NdArray {
     where
         W: Write + Seek,
     {
-        Self::write_ndarray_chunk(self.inner.view(), write)
+        Self::write_ndarray_chunk(self.view(), write)
     }
 }
 
@@ -266,8 +283,8 @@ mod tests {
     use std::io::{Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
-    use ndarray::Array2;
 
+    use crate::align::{AlignedMatrix, MatrixLayout};
     use crate::chunks::io::{ReadChunk, WriteChunk};
     use crate::chunks::storage::{NdArray, StorageView};
 
@@ -275,11 +292,16 @@ mod tests {
     const N_COLS: usize = 100;
 
     fn test_ndarray() -> NdArray {
-        let test_data = Array2::from_shape_fn((N_ROWS, N_COLS), |(r, c)| {
-            r as f32 * N_COLS as f32 + c as f32
-        });
+        let layout = MatrixLayout::new(N_ROWS, N_COLS);
+        let mut matrix = AlignedMatrix::zeros(layout);
 
-        NdArray::new(test_data)
+        for r in 0..N_ROWS {
+            for c in 0..N_COLS {
+                matrix[[r, c]] = r as f32 * N_COLS as f32 + c as f32;
+            }
+        }
+
+        NdArray::new(layout, matrix)
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {

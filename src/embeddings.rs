@@ -516,6 +516,7 @@ mod tests {
     use toml::toml;
 
     use super::Embeddings;
+    use crate::align::{AlignedMatrix, MatrixLayout};
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
     use crate::chunks::storage::{MmapArray, NdArray, StorageView};
@@ -553,7 +554,11 @@ mod tests {
     #[test]
     fn norms() {
         let vocab = SimpleVocab::new(vec!["norms".to_string(), "test".to_string()]);
-        let storage = NdArray::new(array![[1f32], [-1f32]]);
+        let layout = MatrixLayout::new(2, 1);
+        let mut matrix = AlignedMatrix::zeros(layout);
+        matrix[[0, 0]] = 1f32;
+        matrix[[1, 0]] = -1f32;
+        let storage = NdArray::new(layout, matrix);
         let norms = NdNorms(array![2f32, 3f32]);
         let check = Embeddings::new(None, vocab, storage, norms);
 

@@ -24,8 +24,9 @@ use std::mem;
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use ndarray::{Array2, Axis};
+use ndarray::s;
 
+use crate::align::{AlignedMatrix, MatrixLayout};
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
@@ -92,7 +93,8 @@ where
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
-        let mut matrix = Array2::zeros((n_words, embed_len));
+        let layout = MatrixLayout::new(n_words, embed_len);
+        let mut matrix = AlignedMatrix::zeros(layout);
         let mut words = Vec::with_capacity(n_words);
 
         for idx in 0..n_words {
@@ -100,7 +102,8 @@ where
             let word = word.trim();
             words.push(word.to_owned());
 
-            let mut embedding = matrix.index_axis_mut(Axis(0), idx);
+            #[allow(clippy::deref_addrof)]
+            let mut embedding = matrix.slice_mut(s![idx, ..embed_len]);
 
             {
                 let mut embedding_raw = unsafe {
@@ -115,7 +118,7 @@ where
         Ok(Embeddings::new_without_norms(
             None,
             SimpleVocab::new(words),
-            NdArray::new(matrix),
+            NdArray::new(layout, matrix),
         ))
     }
 }

@@ -30,16 +30,16 @@
 //! let embedding = embeddings.embedding("Berlin");
 //! ```
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Seek, SeekFrom, Write};
 
 use itertools::Itertools;
-use ndarray::Array2;
 
+use crate::align::{AlignedMatrix, MatrixLayout};
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
-use crate::io::{Error, ErrorKind, Result};
+use crate::io::{ErrorKind, Result};
 use crate::util::{l2_normalize_array, read_number};
 
 /// Method to construct `Embeddings` from a text file.
@@ -68,7 +68,7 @@ where
 
 impl<R> ReadText<R> for Embeddings<SimpleVocab, NdArray>
 where
-    R: BufRead,
+    R: BufRead + Seek,
 {
     fn read_text(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_raw(reader, false)?.into_parts();
@@ -96,11 +96,30 @@ where
 
 impl<R> ReadTextRaw<R> for Embeddings<SimpleVocab, NdArray>
 where
-    R: BufRead,
+    R: BufRead + Seek,
 {
     fn read_text_raw(reader: &mut R, lossy: bool) -> Result<Self> {
-        read_embeds(reader, None, lossy)
+        let (vocab_len, embed_len) = text_embeds_dims(reader)?;
+        reader.seek(SeekFrom::Start(0)).map_err(|e| {
+            ErrorKind::io_error("Cannot seek to the start of the embedding file", e)
+        })?;
+        read_embeds_dims(reader, (vocab_len, embed_len), lossy)
     }
+}
+
+pub fn text_embeds_dims<R>(reader: &mut R) -> Result<(usize, usize)>
+where
+    R: BufRead + Seek,
+{
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?;
+    let embed_size = line.split_whitespace().count() - 1;
+
+    let n_words = 1 + reader.lines().count();
+
+    Ok((n_words, embed_size))
 }
 
 /// Method to construct `Embeddings` from a text file with dimensions.
@@ -174,33 +193,30 @@ where
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
-        read_embeds(reader, Some((n_words, embed_len)), false)
+        read_embeds_dims(reader, (n_words, embed_len), false)
     }
 
     fn read_text_dims_raw_lossy(reader: &mut R) -> Result<Self> {
         let n_words = read_number(reader, b' ')?;
         let embed_len = read_number(reader, b'\n')?;
 
-        read_embeds(reader, Some((n_words, embed_len)), true)
+        read_embeds_dims(reader, (n_words, embed_len), true)
     }
 }
 
-fn read_embeds<R>(
+fn read_embeds_dims<R>(
     reader: &mut R,
-    shape: Option<(usize, usize)>,
+    shape: (usize, usize),
     lossy: bool,
 ) -> Result<Embeddings<SimpleVocab, NdArray>>
 where
     R: BufRead,
 {
-    let (mut words, mut data) = if let Some((n_words, dims)) = shape {
-        (
-            Vec::with_capacity(n_words),
-            Vec::with_capacity(n_words * dims),
-        )
-    } else {
-        (Vec::new(), Vec::new())
-    };
+    let (n_words, dims) = shape;
+
+    let mut words = Vec::with_capacity(n_words);
+    let layout = MatrixLayout::new(n_words, dims);
+    let mut matrix = AlignedMatrix::zeros(layout);
 
     loop {
         let mut buf = Vec::new();
@@ -233,44 +249,27 @@ where
             .trim_matches(|c: char| c.is_ascii_whitespace());
         words.push(word.to_owned());
 
-        for part in parts {
-            data.push(part.parse().map_err(|e| {
+        for (component_idx, part) in parts.enumerate() {
+            let component = part.parse().map_err(|e| {
                 ErrorKind::Format(format!("Cannot parse vector component '{}': {}", part, e))
-            })?);
+            })?;
+            matrix[[words.len() - 1, component_idx]] = component;
         }
     }
 
-    let shape = if let Some((n_words, dims)) = shape {
-        if words.len() != n_words {
-            return Err(ErrorKind::Format(format!(
-                "Incorrect vocabulary size, expected: {}, got: {}",
-                n_words,
-                words.len()
-            ))
-            .into());
-        }
-
-        if data.len() / n_words != dims {
-            return Err(ErrorKind::Format(format!(
-                "Incorrect embedding dimensionality, expected: {}, got: {}",
-                dims,
-                data.len() / n_words,
-            ))
-            .into());
-        };
-
-        (n_words, dims)
-    } else {
-        let dims = data.len() / words.len();
-        (words.len(), dims)
-    };
-
-    let matrix = Array2::from_shape_vec(shape, data).map_err(Error::Shape)?;
+    if words.len() != n_words {
+        return Err(ErrorKind::Format(format!(
+            "Incorrect vocabulary size, expected: {}, got: {}",
+            n_words,
+            words.len()
+        ))
+        .into());
+    }
 
     Ok(Embeddings::new_without_norms(
         None,
         SimpleVocab::new(words),
-        NdArray::new(matrix),
+        NdArray::new(layout, matrix),
     ))
 }
 

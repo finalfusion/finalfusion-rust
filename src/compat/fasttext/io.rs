@@ -1,10 +1,11 @@
 use std::io::BufRead;
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use ndarray::{s, Array2, ErrorKind as ShapeErrorKind, ShapeError};
+use ndarray::{s, ErrorKind as ShapeErrorKind, ShapeError};
 use serde::Serialize;
 use toml::Value;
 
+use crate::align::{AlignedMatrix, MatrixLayout};
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
@@ -282,19 +283,28 @@ where
 {
     let m = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix rows", e))?;
+        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix rows", e))?
+        as usize;
     let n = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix columns", e))?;
+        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix columns", e))?
+        as usize;
 
-    let mut data = vec![0.0; (m * n) as usize];
-    reader
-        .read_f32_into::<LittleEndian>(&mut data)
-        .map_err(|e| ErrorKind::io_error("Cannot read embeddings", e))?;
+    let layout = MatrixLayout::new(m, n);
+    let mut matrix = AlignedMatrix::zeros(layout);
+    for row in 0..m {
+        #[allow(clippy::deref_addrof)]
+        let mut embedding = matrix.slice_mut(s![row, ..n]);
+        reader
+            .read_f32_into::<LittleEndian>(
+                embedding
+                    .as_slice_mut()
+                    .expect("Non-contiguous memory in embedding matrix"),
+            )
+            .map_err(|e| ErrorKind::io_error("Cannot read embeddings", e))?;
+    }
 
-    let data = Array2::from_shape_vec((m as usize, n as usize), data).map_err(Error::Shape)?;
-
-    Ok(NdArray::new(data))
+    Ok(NdArray::new(layout, matrix))
 }
 
 /// Read the vocabulary.
