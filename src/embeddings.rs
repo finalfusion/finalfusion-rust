@@ -19,7 +19,8 @@ use crate::chunks::storage::{
     StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
-    FastTextSubwordVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab, VocabWrap, WordIndex,
+    FastTextSubwordVocab, FinalfusionNGramVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab,
+    VocabWrap, WordIndex,
 };
 use crate::io::{ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings};
 use crate::util::l2_normalize;
@@ -250,6 +251,11 @@ impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(FinalfusionNGramVocab, NdArray, StorageWrap);
+impl_embeddings_from!(FinalfusionNGramVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(FinalfusionNGramVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(FinalfusionNGramVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(FinalfusionNGramVocab, QuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where
