@@ -40,3 +40,7 @@ criterion = "0.3"
 name = "subword"
 harness = false
 
+[[bench]]
+name = "quantized"
+harness = false
+

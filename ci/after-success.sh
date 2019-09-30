@@ -7,8 +7,8 @@ if [ "${TRAVIS_PULL_REQUEST_BRANCH:-$TRAVIS_BRANCH}" != "master" ] && [ "$TRAVIS
     cd  "${TRAVIS_REPO_SLUG}-bench" && \
     # Bench master
     git checkout master && \
-    cargo bench && \
+    cargo bench subword && \
     # Bench pull request
     git checkout ${TRAVIS_COMMIT} && \
-    cargo bench;
+    cargo bench subword ;
 fi
