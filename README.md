@@ -132,6 +132,35 @@ and unknown words.
 
 **Note:** two units are used: nanoseconds (ns) and microseconds (μs).
 
+## Using a BLAS or LAPACK library
+
+If you are using `finalfusion` in an application, you can choose to
+enable the use of a BLAS/LAPACK libraries in `reductive` using the
+features:
+
+* `reductive/netblas`: Use reference BLAS/LAPACK (slow, not recommended)
+* `reductive/openblas`: Use OpenBLAS
+* `reductive/intel-mkl`: Use Intel Math Kernel Library
+
+Compiling against a LAPACK library is required to quantize embedding
+matrices using an *optimized product quantizer*. You do **not** need
+such a library to use quantized embeddings.
+
+Embedding lookups in embedding matrices that were quantized using the
+optimized product quantizer can be speeded up using a good BLAS
+implementation. The following table compares lookup times on an
+Intel Core i5-8259U CPU, 2.30GHz with finalfusion compiled with and
+without MKL/OpenBLAS support:
+
+| Storage             | Lookup | Known lookup | Unknown lookup |
+|:--------------------|-------:|-------------:|---------------:|
+| opq                 |  40 μs |        21 μs |         962 μs |
+| opq mmap            |  41 μs |        21 μs |         960 μs |
+| opq (MKL)           |  14 μs |         7 μs |         309 μs |
+| opq mmap (MKL)      |  14 μs |         7 μs |         309 μs |
+| opq (OpenBLAS)      |  15 μs |         7 μs |         336 μs |
+| opq mmap (OpenBLAS) |  15 μs |         7 μs |         342 μs |
+
 
 ## Where to go from here
 
