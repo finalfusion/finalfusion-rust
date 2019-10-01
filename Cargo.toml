@@ -37,6 +37,10 @@ lazy_static = "1"
 criterion = "0.3"
 
 [[bench]]
+name = "array"
+harness = false
+
+[[bench]]
 name = "subword"
 harness = false
 
