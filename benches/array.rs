@@ -8,15 +8,15 @@ use finalfusion::prelude::*;
 mod data;
 use data::load_corpus;
 
-const OPQ_EMBEDDINGS: &str = "benches/de-structgram-20190426-opq.fifu";
+const EMBEDDINGS: &str = "benches/de-structgram-20190426.fifu";
 
 fn read_embeddings() -> Embeddings<VocabWrap, StorageWrap> {
-    let f = File::open(OPQ_EMBEDDINGS).expect("Embedding file missing, run fetch-data.sh");
+    let f = File::open(EMBEDDINGS).expect("Embedding file missing, run fetch-data.sh");
     Embeddings::read_embeddings(&mut BufReader::new(f)).unwrap()
 }
 
 fn mmap_embeddings() -> Embeddings<VocabWrap, StorageWrap> {
-    let f = File::open(OPQ_EMBEDDINGS).expect("Embedding file missing, run fetch-data.sh");
+    let f = File::open(EMBEDDINGS).expect("Embedding file missing, run fetch-data.sh");
     Embeddings::mmap_embeddings(&mut BufReader::new(f)).unwrap()
 }
 
@@ -43,41 +43,41 @@ fn unknown_iter<'a>(
     })
 }
 
-fn opq_benchmark(c: &mut Criterion) {
+fn ndarray_benchmark(c: &mut Criterion) {
     let embeds = read_embeddings();
     let mut allround_iter = allround_iter().cycle();
-    c.bench_function("opq-lookup-allround", |b| {
+    c.bench_function("ndarray-lookup-allround", |b| {
         b.iter(|| embeds.embedding(&allround_iter.next().unwrap()))
     });
 
     let mut known_iter = known_iter(&embeds).cycle();
-    c.bench_function("opq-lookup-known", |b| {
+    c.bench_function("ndarray-lookup-known", |b| {
         b.iter(|| embeds.embedding(&known_iter.next().unwrap()))
     });
 
     let mut unknown_iter = unknown_iter(&embeds).cycle();
-    c.bench_function("opq-lookup-unknown", |b| {
+    c.bench_function("ndarray-lookup-unknown", |b| {
         b.iter(|| embeds.embedding(&unknown_iter.next().unwrap()))
     });
 }
 
-fn opq_mmap_benchmark(c: &mut Criterion) {
+fn ndarray_mmap_benchmark(c: &mut Criterion) {
     let embeds = mmap_embeddings();
     let mut allround_iter = allround_iter().cycle();
-    c.bench_function("opq-mmap-lookup-allround", |b| {
+    c.bench_function("ndarray-mmap-lookup-allround", |b| {
         b.iter(|| embeds.embedding(&allround_iter.next().unwrap()))
     });
 
     let mut known_iter = known_iter(&embeds).cycle();
-    c.bench_function("opq-mmap-lookup-known", |b| {
+    c.bench_function("ndarray-mmap-lookup-known", |b| {
         b.iter(|| embeds.embedding(&known_iter.next().unwrap()))
     });
 
     let mut unknown_iter = unknown_iter(&embeds).cycle();
-    c.bench_function("opq-mmap-lookup-unknown", |b| {
+    c.bench_function("ndarray-mmap-lookup-unknown", |b| {
         b.iter(|| embeds.embedding(&unknown_iter.next().unwrap()))
     });
 }
 
-criterion_group!(opq_benches, opq_benchmark, opq_mmap_benchmark);
-criterion_main!(opq_benches);
+criterion_group!(ndarray_benches, ndarray_benchmark, ndarray_mmap_benchmark);
+criterion_main!(ndarray_benches);
