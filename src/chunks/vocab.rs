@@ -24,6 +24,26 @@ pub enum WordIndex {
     Subword(Vec<usize>),
 }
 
+impl WordIndex {
+    pub fn word(&self) -> Option<usize> {
+        use WordIndex::*;
+
+        match self {
+            Word(idx) => Some(*idx),
+            Subword(_) => None,
+        }
+    }
+
+    pub fn subword(&self) -> Option<&[usize]> {
+        use WordIndex::*;
+
+        match self {
+            Word(_) => None,
+            Subword(indices) => Some(indices),
+        }
+    }
+}
+
 /// Vocabulary without subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SimpleVocab {
