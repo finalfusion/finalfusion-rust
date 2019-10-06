@@ -154,6 +154,21 @@ where
         }
     }
 
+    /// Get the vocab's indexer.
+    pub fn indexer(&self) -> &I {
+        &self.indexer
+    }
+
+    /// Get the lower bound of the generated ngram lengths.
+    pub fn min_n(&self) -> u32 {
+        self.min_n
+    }
+
+    /// Get the upper bound of the generated ngram lengths.
+    pub fn max_n(&self) -> u32 {
+        self.max_n
+    }
+
     fn bracket(word: impl AsRef<str>) -> String {
         let mut bracketed = String::new();
         bracketed.push(Self::BOW);
