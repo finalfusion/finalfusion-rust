@@ -172,7 +172,21 @@ pub struct StrWithCharLen<'a> {
     char_len: usize,
 }
 
+impl<'a> From<&'a str> for StrWithCharLen<'a> {
+    fn from(s: &'a str) -> Self {
+        StrWithCharLen::new(s)
+    }
+}
+
 impl<'a> StrWithCharLen<'a> {
+    /// Construct `StrWithCharLen`.
+    ///
+    /// Counts the number of chars in a `&str` and constructs a `StrWithCharLen` from it.
+    pub fn new(s: &'a str) -> Self {
+        let char_len = s.chars().count();
+        StrWithCharLen { inner: s, char_len }
+    }
+
     pub fn as_str(&self) -> &str {
         self.inner
     }
