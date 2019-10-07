@@ -52,6 +52,9 @@ pub struct SimpleVocab {
 }
 
 impl SimpleVocab {
+    /// Construct a new simple vocabulary.
+    ///
+    /// Words are assigned indices in the given order.
     pub fn new(words: impl Into<Vec<String>>) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
@@ -141,6 +144,11 @@ where
     const BOW: char = '<';
     const EOW: char = '>';
 
+    /// Construct a new `SubwordVocab`.
+    ///
+    /// Words are assigned indices in the given order. NGrams in range `(min_n..max_n)` are
+    /// considered. The `indexer` is used to look up indices for the NGrams produced by this
+    /// `SubwordVocab`.
     pub fn new(words: impl Into<Vec<String>>, min_n: u32, max_n: u32, indexer: I) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
