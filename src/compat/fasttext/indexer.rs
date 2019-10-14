@@ -121,7 +121,7 @@ mod tests {
     fn subword_indices_test() {
         let indexer = FastTextIndexer::new(2_000_000);
         for (word, indices_check) in SUBWORD_TESTS.iter() {
-            let mut indices = word.subword_indices(3, 6, &indexer);
+            let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
             indices.sort();
             assert_eq!(indices_check, &indices);
         }
@@ -131,7 +131,7 @@ mod tests {
     fn subword_indices_test_5_5() {
         let indexer = FastTextIndexer::new(2_000_000);
         for (word, indices_check) in SUBWORD_TESTS_5_5.iter() {
-            let mut indices = word.subword_indices(5, 5, &indexer);
+            let mut indices = word.subword_indices(5, 5, &indexer).collect::<Vec<_>>();
             indices.sort();
             assert_eq!(indices_check, &indices);
         }

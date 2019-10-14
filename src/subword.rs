@@ -296,34 +296,60 @@ impl<'a> Iterator for NGrams<'a> {
     }
 }
 
-/// Extension trait for computing subword indices.
+/// Trait returning iterators over subwords and indices.
 ///
-/// Subword indexing assigns an identifier to each subword (n-gram) of a
-/// string. A subword is indexed by computing its hash and then mapping
-/// the hash to a bucket.
-///
-/// Since a non-perfect hash function is used, multiple subwords can
-/// map to the same index.
-pub trait SubwordIndices {
-    /// Return the subword indices of the subwords of a string.
+/// Defines methods to iterate over the subwords and
+/// their corresponding indices as assigned through the
+/// given `Indexer`. The `Indexer` can allow collisions.
+pub trait SubwordIndices<'a, 'b, I>
+where
+    I: Indexer + 'b,
+{
+    type Iter: Iterator<Item = (&'a str, Option<u64>)>;
+
+    /// Return an iterator over the subword indices of a string.
     ///
     /// The n-grams that are used are of length *[min_n, max_n]*, these are
     /// mapped to indices using the given indexer.
-    ///
-    /// The largest possible bucket exponent is 64.
-    fn subword_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<u64>
+    fn subword_indices(
+        &'a self,
+        min_n: usize,
+        max_n: usize,
+        indexer: &'b I,
+    ) -> Box<dyn Iterator<Item = u64> + 'a>
     where
-        I: Indexer;
+        'b: 'a,
+    {
+        Box::new(
+            self.subword_indices_with_ngrams(min_n, max_n, indexer)
+                .filter_map(|(_, idx)| idx),
+        )
+    }
+
+    /// Return an iterator over the subwords and subword indices of a string.
+    ///
+    /// The n-grams that are used are of length *[min_n, max_n]*, these are
+    /// mapped to indices using the given indexer.
+    fn subword_indices_with_ngrams(
+        &'a self,
+        min_n: usize,
+        max_n: usize,
+        indexer: &'b I,
+    ) -> Self::Iter;
 }
 
-impl SubwordIndices for str {
-    fn subword_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<u64>
-    where
-        I: Indexer,
-    {
+impl<'a, 'b, I> SubwordIndices<'a, 'b, I> for str
+where
+    I: Indexer + 'b,
+{
+    type Iter = NGramsIndicesIter<'a, 'b, I>;
+    fn subword_indices_with_ngrams(
+        &'a self,
+        min_n: usize,
+        max_n: usize,
+        indexer: &'b I,
+    ) -> Self::Iter {
         NGramsIndicesIter::new(self, min_n, max_n, indexer)
-            .filter_map(|(_, idx)| idx)
-            .collect()
     }
 }
 
@@ -334,7 +360,7 @@ impl SubwordIndices for str {
 ///
 /// **Warning:** no guarantee is provided with regard to the iteration
 /// order. The iterator only guarantees that all n-grams and their indices are produced.
-struct NGramsIndicesIter<'a, 'b, I> {
+pub struct NGramsIndicesIter<'a, 'b, I> {
     ngrams: NGrams<'a>,
     indexer: &'b I,
 }
@@ -364,47 +390,13 @@ where
     }
 }
 
-/// A trait for getting ngrams and their indices of a string.
-///
-/// N-gram indexing assigns an identifier to each subword (n-gram) of a
-/// string. A subword is indexed by computing its hash and then mapping
-/// the hash to a bucket.
-///
-/// Since a non-perfect hash function is used, multiple subwords can
-/// map to the same index.
-pub trait NGramsIndices {
-    /// Return the ngrams and their indices of a string.
-    ///
-    /// The n-grams that are used are of length *[min_n, max_n]*, these are
-    /// mapped to indices into *2^buckets_exp* buckets.
-    ///
-    /// The largest possible bucket exponent is 64.
-    fn ngrams_indices<I>(
-        &self,
-        min_n: usize,
-        max_n: usize,
-        indexer: &I,
-    ) -> Vec<(&str, Option<u64>)>
-    where
-        I: Indexer;
-}
-
-impl NGramsIndices for str {
-    fn ngrams_indices<I>(&self, min_n: usize, max_n: usize, indexer: &I) -> Vec<(&str, Option<u64>)>
-    where
-        I: Indexer,
-    {
-        NGramsIndicesIter::new(self, min_n, max_n, indexer).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use lazy_static::lazy_static;
     use maplit::hashmap;
     use std::collections::HashMap;
 
-    use super::{BucketIndexer, FinalfusionHashIndexer, NGrams, NGramsIndices, SubwordIndices};
+    use super::{BucketIndexer, FinalfusionHashIndexer, NGrams, SubwordIndices};
 
     #[test]
     fn ngrams_test() {
@@ -549,7 +541,7 @@ mod tests {
 
         let indexer = FinalfusionHashIndexer::new(2);
         for (word, indices_check) in SUBWORD_TESTS_2.iter() {
-            let mut indices = word.subword_indices(3, 6, &indexer);
+            let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
             indices.sort();
             assert_eq!(indices_check, &indices);
         }
@@ -563,7 +555,7 @@ mod tests {
 
         let indexer = FinalfusionHashIndexer::new(21);
         for (word, indices_check) in SUBWORD_TESTS_21.iter() {
-            let mut indices = word.subword_indices(3, 6, &indexer);
+            let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
             indices.sort();
             assert_eq!(indices_check, &indices);
         }
@@ -577,7 +569,9 @@ mod tests {
 
         let indexer = FinalfusionHashIndexer::new(21);
         for (word, ngrams_indices_check) in NGRAMS_INDICES_TESTS_36.iter() {
-            let mut ngrams_indices_test = word.ngrams_indices(3, 6, &indexer);
+            let mut ngrams_indices_test = word
+                .subword_indices_with_ngrams(3, 6, &indexer)
+                .collect::<Vec<_>>();
             ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1);
             for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)
             {
