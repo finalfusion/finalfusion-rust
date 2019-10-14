@@ -10,7 +10,7 @@ use super::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::compat::fasttext::FastTextIndexer;
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{
-    BucketIndexer, FinalfusionHashIndexer, Indexer, NGramIndexer, NGramsIndices,
+    BucketIndexer, FinalfusionHashIndexer, Indexer, NGramIndexer,
     SubwordIndices as StrSubwordIndices,
 };
 
@@ -654,8 +654,7 @@ where
     fn ngram_indices(&self, word: &str) -> Option<Vec<(String, Option<usize>)>> {
         let indices = Self::bracket(word)
             .as_str()
-            .ngrams_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
-            .into_iter()
+            .subword_indices_with_ngrams(self.min_n as usize, self.max_n as usize, &self.indexer)
             .map(|(ngram, idx)| {
                 (
                     ngram.to_owned(),
@@ -688,7 +687,6 @@ where
         let indices = Self::bracket(word)
             .as_str()
             .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
-            .into_iter()
             .map(|idx| idx as usize + self.words_len())
             .collect::<Vec<_>>();
         if indices.is_empty() {
