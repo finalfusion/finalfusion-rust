@@ -1,9 +1,6 @@
 //! Embedding matrix representations.
 
-use ndarray::{ArrayView2, ArrayViewMut2};
-
-mod cow;
-pub use self::cow::{CowArray, CowArray1};
+use ndarray::{ArrayView2, ArrayViewMut2, CowArray, Ix1};
 
 mod array;
 pub use self::array::{MmapArray, NdArray};
@@ -20,7 +17,7 @@ pub use self::wrappers::{StorageViewWrap, StorageWrap};
 /// regular *n x d* matrix or as quantized vectors), this trait
 /// abstracts over concrete storage types.
 pub trait Storage {
-    fn embedding(&self, idx: usize) -> CowArray1<f32>;
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1>;
 
     fn shape(&self) -> (usize, usize);
 }

@@ -3,10 +3,10 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 
-use ndarray::{s, Array1, ArrayView1, ArrayView2};
+use ndarray::{s, Array1, ArrayView1, ArrayView2, CowArray, Ix1};
 use ordered_float::NotNan;
 
-use crate::chunks::storage::{CowArray1, Storage, StorageView};
+use crate::chunks::storage::{Storage, StorageView};
 use crate::chunks::vocab::Vocab;
 use crate::embeddings::Embeddings;
 use crate::util::l2_normalize;
@@ -170,7 +170,7 @@ where
     {
         let [embedding1, embedding2, embedding3] = lookup_words3(self, query)?;
 
-        let mut embedding = (&embedding2.as_view() - &embedding1.as_view()) + embedding3.as_view();
+        let mut embedding = (&embedding2.view() - &embedding1.view()) + embedding3.view();
         l2_normalize(embedding.view_mut());
 
         let skip = query
@@ -232,7 +232,7 @@ where
         let mut skip = HashSet::new();
         skip.insert(word);
 
-        Some(self.similarity_(embed.as_view(), &skip, limit, similarity))
+        Some(self.similarity_(embed.view(), &skip, limit, similarity))
     }
 }
 
@@ -378,7 +378,7 @@ where
 fn lookup_words3<'a, V, S>(
     embeddings: &'a Embeddings<V, S>,
     query: [&str; 3],
-) -> Result<[CowArray1<'a, f32>; 3], [bool; 3]>
+) -> Result<[CowArray<'a, f32, Ix1>; 3], [bool; 3]>
 where
     V: Vocab,
     S: Storage,
@@ -546,7 +546,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
         let embedding = embeddings.embedding("Berlin").unwrap();
-        let result = embeddings.embedding_similarity(embedding.as_view(), 10);
+        let result = embeddings.embedding_similarity(embedding.view(), 10);
         assert!(result.is_some());
         let mut result = result.unwrap().into_iter();
         assert_eq!(10, result.len());

@@ -264,7 +264,7 @@ fn add_subword_embeddings(vocab: &FastTextSubwordVocab, embeds: &mut NdArray) {
             // Sum the embedding and its subword embeddings.
             let mut embed = embeds.embedding(idx).into_owned();
             for subword_idx in indices {
-                embed += &embeds.embedding(subword_idx).as_view();
+                embed += &embeds.embedding(subword_idx).view();
             }
 
             // Compute the average embedding.

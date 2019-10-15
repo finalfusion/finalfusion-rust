@@ -33,10 +33,10 @@
 use std::io::{BufRead, Write};
 
 use itertools::Itertools;
-use ndarray::Array2;
+use ndarray::{Array2, CowArray};
 
 use crate::chunks::norms::NdNorms;
-use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
+use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{Error, ErrorKind, Result};
@@ -301,12 +301,12 @@ where
     fn write_text(&self, write: &mut W, unnormalize: bool) -> Result<()> {
         for (word, embed_norm) in self.iter_with_norms() {
             let embed = if unnormalize {
-                CowArray::Owned(embed_norm.into_unnormalized())
+                CowArray::from(embed_norm.into_unnormalized())
             } else {
                 embed_norm.embedding
             };
 
-            let embed_str = embed.as_view().iter().map(ToString::to_string).join(" ");
+            let embed_str = embed.view().iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", word, embed_str)
                 .map_err(|e| ErrorKind::io_error("Cannot write word embedding", e))?;
         }
@@ -350,6 +350,8 @@ where
 mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+
+    use approx::AbsDiffEq;
 
     use crate::chunks::storage::{NdArray, StorageView};
     use crate::chunks::vocab::{SimpleVocab, Vocab};
@@ -478,6 +480,6 @@ mod tests {
         assert!(embeddings
             .storage()
             .view()
-            .all_close(&embeddings_check.storage().view(), 1e-6));
+            .abs_diff_eq(&embeddings_check.storage().view(), 1e-6));
     }
 }

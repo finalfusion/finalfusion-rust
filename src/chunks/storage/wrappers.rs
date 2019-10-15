@@ -2,11 +2,9 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use ndarray::ArrayView2;
+use ndarray::{ArrayView2, CowArray, Ix1};
 
-use super::{
-    CowArray1, MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StorageView,
-};
+use super::{MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StorageView};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 
@@ -30,7 +28,7 @@ pub enum StorageWrap {
 }
 
 impl Storage for StorageWrap {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         match self {
             StorageWrap::MmapArray(inner) => inner.embedding(idx),
             StorageWrap::MmapQuantizedArray(inner) => inner.embedding(idx),
@@ -172,7 +170,7 @@ pub enum StorageViewWrap {
 }
 
 impl Storage for StorageViewWrap {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         match self {
             StorageViewWrap::MmapArray(inner) => inner.embedding(idx),
             StorageViewWrap::NdArray(inner) => inner.embedding(idx),
