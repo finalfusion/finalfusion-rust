@@ -24,10 +24,10 @@ use std::mem;
 use std::slice::from_raw_parts_mut;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use ndarray::{Array2, Axis};
+use ndarray::{Array2, Axis, CowArray};
 
 use crate::chunks::norms::NdNorms;
-use crate::chunks::storage::{CowArray, NdArray, Storage, StorageViewMut};
+use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
 use crate::io::{ErrorKind, Result};
@@ -159,12 +159,12 @@ where
             write!(w, "{} ", word).map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
 
             let embed = if unnormalize {
-                CowArray::Owned(embed_norm.into_unnormalized())
+                CowArray::from(embed_norm.into_unnormalized())
             } else {
                 embed_norm.embedding
             };
 
-            for v in embed.as_view() {
+            for v in embed.view() {
                 w.write_f32::<LittleEndian>(*v)
                     .map_err(|e| ErrorKind::io_error("Cannot write embedding component", e))?;
             }
@@ -181,6 +181,8 @@ where
 mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+
+    use approx::AbsDiffEq;
 
     use crate::chunks::storage::StorageView;
     use crate::chunks::vocab::Vocab;
@@ -252,6 +254,6 @@ mod tests {
         assert!(embeddings
             .storage()
             .view()
-            .all_close(&embeddings_check.storage().view(), 1e-6));
+            .abs_diff_eq(&embeddings_check.storage().view(), 1e-6));
     }
 }

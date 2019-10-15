@@ -4,9 +4,9 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, Dimension, Ix2};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Dimension, Ix1, Ix2};
 
-use super::{CowArray, CowArray1, Storage, StorageView, StorageViewMut};
+use super::{Storage, StorageView, StorageViewMut};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
@@ -18,8 +18,8 @@ pub struct MmapArray {
 }
 
 impl Storage for MmapArray {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        CowArray::Owned(
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
+        CowArray::from(
             // Alignment is ok, padding guarantees that the pointer is at
             // a multiple of 4.
             #[allow(clippy::cast_ptr_alignment)]
@@ -143,17 +143,17 @@ impl NdArray {
             + size_of::<u32>()
             + size_of::<u32>()
             + n_padding as usize
-            + (data.rows() * data.cols() * size_of::<f32>());
+            + (data.nrows() * data.ncols() * size_of::<f32>());
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
             .map_err(|e| ErrorKind::io_error("Cannot write embedding matrix chunk length", e))?;
         write
-            .write_u64::<LittleEndian>(data.rows() as u64)
+            .write_u64::<LittleEndian>(data.nrows() as u64)
             .map_err(|e| {
                 ErrorKind::io_error("Cannot write number of rows of the embedding matrix", e)
             })?;
         write
-            .write_u32::<LittleEndian>(data.cols() as u32)
+            .write_u32::<LittleEndian>(data.ncols() as u32)
             .map_err(|e| {
                 ErrorKind::io_error("Cannot write number of columns of the embedding matrix", e)
             })?;
@@ -196,8 +196,8 @@ impl From<Array2<f32>> for NdArray {
 }
 
 impl Storage for NdArray {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
-        CowArray::Borrowed(self.inner.row(idx))
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
+        CowArray::from(self.inner.row(idx))
     }
 
     fn shape(&self) -> (usize, usize) {

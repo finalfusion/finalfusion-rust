@@ -6,7 +6,7 @@ use std::iter::Enumerate;
 use std::mem;
 use std::slice;
 
-use ndarray::Array1;
+use ndarray::{Array1, CowArray, Ix1};
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
@@ -15,8 +15,8 @@ use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChun
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::{NdNorms, Norms};
 use crate::chunks::storage::{
-    CowArray, CowArray1, MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
-    StorageView, StorageViewWrap, StorageWrap,
+    MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView,
+    StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
     FastTextSubwordVocab, FinalfusionNGramVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab,
@@ -131,18 +131,18 @@ where
     }
 
     /// Get the embedding of a word.
-    pub fn embedding(&self, word: &str) -> Option<CowArray1<f32>> {
+    pub fn embedding(&self, word: &str) -> Option<CowArray<f32, Ix1>> {
         match self.vocab.idx(word)? {
             WordIndex::Word(idx) => Some(self.storage.embedding(idx)),
             WordIndex::Subword(indices) => {
                 let mut embed = Array1::zeros((self.storage.shape().1,));
                 for idx in indices {
-                    embed += &self.storage.embedding(idx).as_view();
+                    embed += &self.storage.embedding(idx).view();
                 }
 
                 l2_normalize(embed.view_mut());
 
-                Some(CowArray::Owned(embed))
+                Some(CowArray::from(embed))
             }
         }
     }
@@ -168,13 +168,13 @@ where
             WordIndex::Subword(indices) => {
                 let mut embed = Array1::zeros((self.storage.shape().1,));
                 for idx in indices {
-                    embed += &self.storage.embedding(idx).as_view();
+                    embed += &self.storage.embedding(idx).view();
                 }
 
                 let norm = l2_normalize(embed.view_mut());
 
                 Some(EmbeddingWithNorm {
-                    embedding: CowArray::Owned(embed),
+                    embedding: CowArray::from(embed),
                     norm,
                 })
             }
@@ -262,7 +262,7 @@ where
     V: Vocab,
     S: Storage,
 {
-    type Item = (&'a str, CowArray1<'a, f32>);
+    type Item = (&'a str, CowArray<'a, f32, Ix1>);
     type IntoIter = Iter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -461,7 +461,7 @@ where
 
 /// An embedding with its (pre-normalization) l2 norm.
 pub struct EmbeddingWithNorm<'a> {
-    pub embedding: CowArray1<'a, f32>,
+    pub embedding: CowArray<'a, f32, Ix1>,
     pub norm: f32,
 }
 
@@ -481,7 +481,7 @@ pub struct Iter<'a> {
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = (&'a str, CowArray1<'a, f32>);
+    type Item = (&'a str, CowArray<'a, f32, Ix1>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner
@@ -518,6 +518,7 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Seek, SeekFrom};
 
+    use approx::AbsDiffEq;
     use ndarray::array;
     use toml::toml;
 
@@ -574,7 +575,7 @@ mod tests {
             .norms()
             .unwrap()
             .0
-            .all_close(&embeddings.norms().unwrap().0, 1e-8),);
+            .abs_diff_eq(&embeddings.norms().unwrap().0, 1e-8),);
     }
 
     #[test]

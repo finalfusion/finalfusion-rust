@@ -60,7 +60,7 @@ impl ReadChunk for NdNorms {
         read.read_f32_into::<LittleEndian>(&mut data)
             .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
 
-        Ok(NdNorms(Array1::from_vec(data)))
+        Ok(NdNorms(Array1::from(data)))
     }
 }
 

@@ -4,12 +4,14 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Dimension, IntoDimension};
+use ndarray::{
+    Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, Dimension, IntoDimension, Ix1,
+};
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
-use super::{CowArray, CowArray1, Storage, StorageView};
+use super::{Storage, StorageView};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
@@ -157,8 +159,8 @@ impl QuantizedArray {
                 * quantizer.n_quantizer_centroids()
                 * (quantizer.reconstructed_len() / quantizer.quantized_len())
                 * size_of::<f32>()
-            + norms.is_some() as usize * quantized.rows() * size_of::<f32>()
-            + quantized.rows() * quantizer.quantized_len();
+            + norms.is_some() as usize * quantized.nrows() * size_of::<f32>()
+            + quantized.nrows() * quantizer.quantized_len();
 
         write
             .write_u64::<LittleEndian>(chunk_size as u64)
@@ -184,7 +186,7 @@ impl QuantizedArray {
             .write_u32::<LittleEndian>(quantizer.n_quantizer_centroids() as u32)
             .map_err(|e| ErrorKind::io_error("Cannot write number of subquantizers", e))?;
         write
-            .write_u64::<LittleEndian>(quantized.rows() as u64)
+            .write_u64::<LittleEndian>(quantized.nrows() as u64)
             .map_err(|e| ErrorKind::io_error("Cannot write number of quantized embeddings", e))?;
 
         // Quantized and reconstruction types.
@@ -251,7 +253,7 @@ impl QuantizedArray {
 }
 
 impl Storage for QuantizedArray {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         let mut reconstructed = self
             .quantizer
             .reconstruct_vector(self.quantized_embeddings.row(idx));
@@ -259,12 +261,12 @@ impl Storage for QuantizedArray {
             reconstructed *= norms[idx];
         }
 
-        CowArray::Owned(reconstructed)
+        CowArray::from(reconstructed)
     }
 
     fn shape(&self) -> (usize, usize) {
         (
-            self.quantized_embeddings.rows(),
+            self.quantized_embeddings.nrows(),
             self.quantizer.reconstructed_len(),
         )
     }
@@ -292,7 +294,7 @@ impl ReadChunk for QuantizedArray {
             let mut norms_vec = vec![0f32; n_embeddings];
             read.read_f32_into::<LittleEndian>(&mut norms_vec)
                 .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
-            Some(Array1::from_vec(norms_vec))
+            Some(Array1::from(norms_vec))
         } else {
             None
         };
@@ -407,9 +409,9 @@ where
             for (mut embedding, &norm) in normalized.outer_iter_mut().zip(&norms) {
                 embedding /= norm;
             }
-            (CowArray::Owned(normalized), Some(norms))
+            (CowArray::from(normalized), Some(norms))
         } else {
-            (CowArray::Borrowed(self.view()), None)
+            (CowArray::from(self.view()), None)
         };
 
         let quantizer = T::train_pq_using(
@@ -417,11 +419,11 @@ where
             n_subquantizer_bits,
             n_iterations,
             n_attempts,
-            embeds.as_view(),
+            embeds.view(),
             rng,
         );
 
-        let quantized_embeddings = quantizer.quantize_batch(embeds.as_view());
+        let quantized_embeddings = quantizer.quantize_batch(embeds.view());
 
         QuantizedArray {
             quantizer,
@@ -522,7 +524,7 @@ impl MmapQuantizedArray {
 }
 
 impl Storage for MmapQuantizedArray {
-    fn embedding(&self, idx: usize) -> CowArray1<f32> {
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         let quantized = unsafe { self.quantized_embeddings() };
 
         let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
@@ -530,7 +532,7 @@ impl Storage for MmapQuantizedArray {
             reconstructed *= norms[idx];
         }
 
-        CowArray::Owned(reconstructed)
+        CowArray::from(reconstructed)
     }
 
     fn shape(&self) -> (usize, usize) {
@@ -631,10 +633,7 @@ mod tests {
     fn storage_eq(arr: &impl Storage, check_arr: &impl Storage) {
         assert_eq!(arr.shape(), check_arr.shape());
         for idx in 0..check_arr.shape().0 {
-            assert_eq!(
-                arr.embedding(idx).as_view(),
-                check_arr.embedding(idx).as_view()
-            );
+            assert_eq!(arr.embedding(idx).view(), check_arr.embedding(idx).view());
         }
     }
 
