@@ -193,7 +193,10 @@ pub trait WordSimilarity {
     /// calling `normalize`), this is the cosine similarity. At most, `limit`
     /// results are returned.
     fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>>;
+}
 
+/// Trait for word similarity queries with a custom similarity function.
+pub trait WordSimilarityBy {
     /// Find words that are similar to the query word using the given similarity
     /// function.
     ///
@@ -218,7 +221,13 @@ where
     fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>> {
         self.word_similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
     }
+}
 
+impl<V, S> WordSimilarityBy for Embeddings<V, S>
+where
+    V: Vocab,
+    S: StorageView,
+{
     fn word_similarity_by<F>(
         &self,
         word: &str,
@@ -265,7 +274,9 @@ pub trait EmbeddingSimilarity {
         limit: usize,
         skips: &HashSet<&str>,
     ) -> Option<Vec<WordSimilarityResult>>;
-
+}
+/// Trait for embedding similarity queries with a custom similarity function.
+pub trait EmbeddingSimilarityBy {
     /// Find words that are similar to the query embedding using the given
     /// similarity function.
     ///
@@ -296,7 +307,13 @@ where
     ) -> Option<Vec<WordSimilarityResult>> {
         self.embedding_similarity_by(query, limit, skip, |embeds, embed| embeds.dot(&embed))
     }
+}
 
+impl<V, S> EmbeddingSimilarityBy for Embeddings<V, S>
+where
+    V: Vocab,
+    S: StorageView,
+{
     fn embedding_similarity_by<F>(
         &self,
         query: ArrayView1<f32>,
