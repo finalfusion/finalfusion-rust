@@ -118,13 +118,13 @@ impl WriteChunk for SimpleVocab {
     }
 }
 
-/// fastText subword vocabulary.
+/// fastText vocabulary with hashed n-grams.
 pub type FastTextSubwordVocab = SubwordVocab<FastTextIndexer>;
 
-/// Native finalfusion subword vocabulary.
+/// finalfusion vocabulary with hashed n-grams.
 pub type FinalfusionSubwordVocab = SubwordVocab<FinalfusionHashIndexer>;
 
-/// finalfusion NGram vocabulary.
+/// finalfusion vocabulary with explicit n-grams.
 pub type FinalfusionNGramVocab = SubwordVocab<NGramIndexer>;
 
 /// Vocabulary with subword units.
