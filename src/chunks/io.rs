@@ -82,12 +82,14 @@ impl Display for ChunkIdentifier {
     }
 }
 
+/// Trait defining identifiers for data types.
 pub trait TypeId {
     /// Read and ensure that the data type is equal to `Self`.
     fn ensure_data_type<R>(read: &mut R) -> Result<()>
     where
         R: Read;
 
+    /// Get this data type's identifier.
     fn type_id() -> u32;
 }
 
@@ -120,6 +122,7 @@ macro_rules! typeid_impl {
     };
 }
 
+// floats starting at 10 to leave room for other integer types.
 typeid_impl!(f32, 10);
 typeid_impl!(u8, 1);
 
