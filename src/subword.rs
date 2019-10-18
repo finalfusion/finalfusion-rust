@@ -132,6 +132,7 @@ pub type FinalfusionHashIndexer = HashIndexer<FnvHasher>;
 pub struct ExplicitIndexer {
     ngrams: Vec<String>,
     index: HashMap<String, u64>,
+    bound: usize,
 }
 
 impl ExplicitIndexer {
@@ -144,10 +145,7 @@ impl ExplicitIndexer {
     /// Construct a new explicit indexer.
     ///
     /// Panics when there are duplicate ngrams.
-    pub fn new<V>(ngrams: V) -> Self
-    where
-        V: Into<Vec<String>>,
-    {
+    pub fn new(ngrams: impl Into<Vec<String>>) -> Self {
         let ngrams = ngrams.into();
         let index = ngrams
             .iter()
@@ -160,7 +158,46 @@ impl ExplicitIndexer {
             ngrams.len(),
             "ngrams contained duplicate entries."
         );
-        ExplicitIndexer { ngrams, index }
+        let bound = index.len();
+        ExplicitIndexer {
+            ngrams,
+            index,
+            bound,
+        }
+    }
+
+    /// Construct a new explicit indexer with given indices.
+    ///
+    /// The `(String, u64)` tuples resemble the original `subword -> index` mapping. This mapping
+    /// does not need to be perfect, i.e. multiple subwords can map to the same index as it is
+    /// common with bucketed indexing.
+    ///
+    /// This constructor numbers the original indices as they appear and assigns a new index
+    /// accordingly. After construction, subwords that originally had the same index will still be
+    /// indexed by a common number. It is guaranteed that the new indices cover
+    /// `(0..n_original_indices)` where `n_original_indices` is the number of unique indices in the
+    /// `subword -> index` mapping.
+    ///
+    /// Panics when there are duplicate ngrams.
+    pub fn new_with_indices(ngram_tuples: Vec<(String, u64)>) -> Self {
+        let mut old_to_new_indices = HashMap::new();
+        let mut index = HashMap::with_capacity(ngram_tuples.len());
+        let mut ngrams = Vec::with_capacity(ngram_tuples.len());
+        for (ngram, bucket) in ngram_tuples {
+            let cur_idx = old_to_new_indices.len();
+            let new_idx = *old_to_new_indices.entry(bucket).or_insert(cur_idx);
+            assert!(
+                index.insert(ngram.clone(), new_idx as u64).is_none(),
+                "ngrams contains duplicate entries."
+            );
+            ngrams.push(ngram);
+        }
+        let bound = old_to_new_indices.len();
+        ExplicitIndexer {
+            ngrams,
+            index,
+            bound,
+        }
     }
 }
 
@@ -170,7 +207,7 @@ impl Indexer for ExplicitIndexer {
     }
 
     fn upper_bound(&self) -> u64 {
-        self.index.len() as u64
+        self.bound as u64
     }
 }
 
