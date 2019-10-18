@@ -536,7 +536,7 @@ mod tests {
     }
 
     fn test_metadata() -> Metadata {
-        Metadata(toml! {
+        Metadata::new(toml! {
             [hyperparameters]
             dims = 300
             ns = 5
