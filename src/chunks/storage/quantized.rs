@@ -252,6 +252,21 @@ impl QuantizedArray {
     }
 }
 
+/// Reconstructable embedding matrix.
+pub trait Reconstruct {
+    /// Reconstruct the embedding matrix.
+    ///
+    /// This method reconstruct an embedding storage into type `Array2`.
+    fn reconstruct(&self) -> Array2<f32>;
+}
+
+impl Reconstruct for QuantizedArray {
+    fn reconstruct(&self) -> Array2<f32> {
+        self.quantizer()
+            .reconstruct_batch(self.quantized_embeddings.view())
+    }
+}
+
 impl Storage for QuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         let mut reconstructed = self

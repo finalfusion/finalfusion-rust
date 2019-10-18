@@ -15,8 +15,8 @@ use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChun
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::{NdNorms, Norms};
 use crate::chunks::storage::{
-    MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView,
-    StorageViewWrap, StorageWrap,
+    MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray,
+    Reconstruct as ReconstructStorage, Storage, StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
@@ -510,6 +510,29 @@ impl<'a> Iterator for IterWithNorms<'a> {
                 },
             )
         })
+    }
+}
+
+/// Reconstructable embedding matrix
+pub trait Reconstruct<V> {
+    /// Reconstruct the embedding matrix.
+    ///
+    /// This method reconstruct an embedding storage and construct a new
+    /// `Embeddings` struct with storage type of `NdArray`.
+    fn reconstruct(&self) -> Embeddings<V, NdArray>;
+}
+
+impl<V> Reconstruct<V> for Embeddings<V, QuantizedArray>
+where
+    V: Vocab + Clone,
+{
+    fn reconstruct(&self) -> Embeddings<V, NdArray> {
+        Embeddings {
+            metadata: self.metadata().cloned(),
+            vocab: self.vocab.clone(),
+            storage: self.storage().reconstruct().into(),
+            norms: self.norms().cloned(),
+        }
     }
 }
 
