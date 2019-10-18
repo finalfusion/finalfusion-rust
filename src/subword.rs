@@ -129,18 +129,18 @@ pub type FinalfusionHashIndexer = HashIndexer<FnvHasher>;
 
 /// Indexer for explicitly stored NGrams.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NGramIndexer {
+pub struct ExplicitIndexer {
     ngrams: Vec<String>,
     index: HashMap<String, u64>,
 }
 
-impl NGramIndexer {
+impl ExplicitIndexer {
     pub fn ngrams(&self) -> &[String] {
         &self.ngrams
     }
 }
 
-impl NGramIndexer {
+impl ExplicitIndexer {
     pub fn new<V>(ngrams: V) -> Self
     where
         V: Into<Vec<String>>,
@@ -152,11 +152,11 @@ impl NGramIndexer {
             .enumerate()
             .map(|(idx, ngram)| (ngram, idx as u64))
             .collect::<HashMap<String, u64>>();
-        NGramIndexer { ngrams, index }
+        ExplicitIndexer { ngrams, index }
     }
 }
 
-impl Indexer for NGramIndexer {
+impl Indexer for ExplicitIndexer {
     fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
         self.index.get(ngram.inner).cloned()
     }
