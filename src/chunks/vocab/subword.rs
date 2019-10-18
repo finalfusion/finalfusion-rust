@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 use std::io::{Read, Seek, Write};
 use std::mem::size_of;
 
@@ -7,7 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::chunks::vocab::{create_indices, read_vocab_items, write_vocab_items, Vocab, WordIndex};
 use crate::compat::fasttext::FastTextIndexer;
-use crate::io::{ErrorKind, Result};
+use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{
     BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer,
     SubwordIndices as StrSubwordIndices,
@@ -128,7 +129,7 @@ pub trait NGramIndices {
 
 impl<I> NGramIndices for SubwordVocab<I>
 where
-    I: Clone + Indexer,
+    I: Indexer,
 {
     fn ngram_indices(&self, word: &str) -> Option<Vec<(String, Option<usize>)>> {
         let indices = Self::bracket(word)
@@ -358,8 +359,8 @@ impl SubwordVocab<ExplicitIndexer> {
             .map_err(|e| ErrorKind::io_error("Cannot read maximum n-gram length", e))?;
 
         let words = read_vocab_items(read, words_len as usize)?;
-        let ngrams = read_vocab_items(read, ngrams_len as usize)?;
-        let indexer = ExplicitIndexer::new(ngrams);
+        let ngrams = read_ngrams_with_indices(read, ngrams_len as usize)?;
+        let indexer = ExplicitIndexer::new_with_indices(ngrams);
         Ok(SubwordVocab::new(words, min_n, max_n, indexer))
     }
 
@@ -371,6 +372,7 @@ impl SubwordVocab<ExplicitIndexer> {
         // minimum n-gram length (u32), maximum n-gram length (u32),
         // for each word and ngram:
         // length in bytes (u32), number of bytes (variable-length).
+        // each ngram is followed by its index (u64)
         let chunk_len = size_of::<u64>()
             + size_of::<u64>()
             + size_of::<u32>()
@@ -384,7 +386,7 @@ impl SubwordVocab<ExplicitIndexer> {
                 .indexer
                 .ngrams()
                 .iter()
-                .map(|ngram| ngram.len() + size_of::<u32>())
+                .map(|ngram| ngram.len() + size_of::<u32>() + size_of::<u64>())
                 .sum::<usize>();
 
         write
@@ -409,10 +411,61 @@ impl SubwordVocab<ExplicitIndexer> {
             .map_err(|e| ErrorKind::io_error("Cannot write maximum n-gram length", e))?;
 
         write_vocab_items(write, self.words())?;
-        write_vocab_items(write, self.indexer.ngrams())?;
+        write_ngrams_with_indices(write, self.indexer())?;
 
         Ok(())
     }
+}
+
+fn read_ngrams_with_indices<R>(read: &mut R, len: usize) -> Result<Vec<(String, u64)>>
+where
+    R: Read + Seek,
+{
+    let mut ngrams = Vec::with_capacity(len);
+    for _ in 0..len {
+        let ngram_len = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read item length", e))?
+            as usize;
+        let mut bytes = vec![0; ngram_len];
+        read.read_exact(&mut bytes)
+            .map_err(|e| ErrorKind::io_error("Cannot read item", e))?;
+        let item = String::from_utf8(bytes)
+            .map_err(|e| ErrorKind::Format(format!("Item contains invalid UTF-8: {}", e)))
+            .map_err(Error::from)?;
+        let idx = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read ngram index.", e))?;
+        ngrams.push((item, idx));
+    }
+    Ok(ngrams)
+}
+
+fn write_ngrams_with_indices<W>(write: &mut W, indexer: &ExplicitIndexer) -> Result<()>
+where
+    W: Write + Seek,
+{
+    for ngram in indexer.ngrams() {
+        let idx = indexer.index_ngram(&ngram.as_str().into()).ok_or_else(|| {
+            ErrorKind::io_error(
+                format!(
+                    "Indexer could not index n-gram during serialization: {}",
+                    ngram
+                ),
+                io::ErrorKind::Other.into(),
+            )
+        })?;
+        write
+            .write_u32::<LittleEndian>(ngram.len() as u32)
+            .map_err(|e| ErrorKind::io_error("Cannot write ngram length", e))?;
+        write
+            .write_all(ngram.as_bytes())
+            .map_err(|e| ErrorKind::io_error("Cannot write ngram", e))?;
+        write
+            .write_u64::<LittleEndian>(idx)
+            .map_err(|e| ErrorKind::io_error("Cannot write ngram idx", e))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -455,9 +508,13 @@ mod tests {
             "test".to_owned(),
         ];
 
-        let ngrams = vec!["is>".to_owned(), "is".to_owned(), "<t".to_owned()];
+        let ngrams = vec![
+            ("is>".to_owned(), 0),
+            ("is".to_owned(), 1),
+            ("<t".to_owned(), 2),
+        ];
 
-        ExplicitSubwordVocab::new(words, 2, 3, ExplicitIndexer::new(ngrams))
+        ExplicitSubwordVocab::new(words, 2, 3, ExplicitIndexer::new_with_indices(ngrams))
     }
 
     #[test]
