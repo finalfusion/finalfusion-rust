@@ -12,6 +12,7 @@ use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
 /// Memory-mapped matrix.
+#[derive(Debug)]
 pub struct MmapArray {
     map: Mmap,
     shape: Ix2,
@@ -115,7 +116,7 @@ impl WriteChunk for MmapArray {
 }
 
 /// In-memory `ndarray` matrix.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NdArray {
     inner: Array2<f32>,
 }
