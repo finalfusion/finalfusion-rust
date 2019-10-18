@@ -19,8 +19,8 @@ use crate::chunks::storage::{
     StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
-    FastTextSubwordVocab, FinalfusionNGramVocab, FinalfusionSubwordVocab, SimpleVocab, Vocab,
-    VocabWrap, WordIndex,
+    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
+    WordIndex,
 };
 use crate::io::{ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings};
 use crate::util::l2_normalize;
@@ -241,21 +241,21 @@ impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
-impl_embeddings_from!(FinalfusionSubwordVocab, NdArray, StorageWrap);
-impl_embeddings_from!(FinalfusionSubwordVocab, NdArray, StorageViewWrap);
-impl_embeddings_from!(FinalfusionSubwordVocab, MmapArray, StorageWrap);
-impl_embeddings_from!(FinalfusionSubwordVocab, MmapArray, StorageViewWrap);
-impl_embeddings_from!(FinalfusionSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(BucketSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
-impl_embeddings_from!(FinalfusionNGramVocab, NdArray, StorageWrap);
-impl_embeddings_from!(FinalfusionNGramVocab, NdArray, StorageViewWrap);
-impl_embeddings_from!(FinalfusionNGramVocab, MmapArray, StorageWrap);
-impl_embeddings_from!(FinalfusionNGramVocab, MmapArray, StorageViewWrap);
-impl_embeddings_from!(FinalfusionNGramVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where
@@ -425,7 +425,7 @@ pub trait Quantize<V> {
 
 impl<V, S> Quantize<V> for Embeddings<V, S>
 where
-    V: Vocab,
+    V: Vocab + Clone,
     S: StorageView,
 {
     fn quantize_using<T, R>(
