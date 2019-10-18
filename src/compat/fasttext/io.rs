@@ -112,7 +112,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
         })?;
 
         Ok(Embeddings::new(
-            Some(Metadata(metadata)),
+            Some(Metadata::new(metadata)),
             vocab,
             storage,
             norms,

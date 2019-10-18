@@ -1,6 +1,7 @@
 //! Metadata chunks
 
 use std::io::{Read, Seek, Write};
+use std::ops::{Deref, DerefMut};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use toml::Value;
@@ -12,7 +13,36 @@ use crate::io::{Error, ErrorKind, ReadMetadata, Result};
 ///
 /// finalfusion metadata in TOML format.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Metadata(pub Value);
+pub struct Metadata {
+    inner: Value,
+}
+
+impl Metadata {
+    /// Construct new `Metadata`.
+    pub fn new(data: Value) -> Self {
+        Metadata { inner: data }
+    }
+}
+
+impl Deref for Metadata {
+    type Target = Value;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Metadata {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl From<Value> for Metadata {
+    fn from(value: Value) -> Self {
+        Metadata { inner: value }
+    }
+}
 
 impl ReadChunk for Metadata {
     fn read_chunk<R>(read: &mut R) -> Result<Self>
@@ -35,7 +65,7 @@ impl ReadChunk for Metadata {
             .map_err(|e| ErrorKind::Format(format!("TOML metadata contains invalid UTF-8: {}", e)))
             .map_err(Error::from)?;
 
-        Ok(Metadata(
+        Ok(Metadata::new(
             buf_str
                 .parse::<Value>()
                 .map_err(|e| ErrorKind::Format(format!("Cannot deserialize TOML metadata: {}", e)))
@@ -53,7 +83,7 @@ impl WriteChunk for Metadata {
     where
         W: Write + Seek,
     {
-        let metadata_str = self.0.to_string();
+        let metadata_str = self.to_string();
 
         write
             .write_u32::<LittleEndian>(self.chunk_identifier() as u32)
@@ -110,7 +140,7 @@ mod tests {
     }
 
     fn test_metadata() -> Metadata {
-        Metadata(toml! {
+        Metadata::new(toml! {
             [hyperparameters]
             dims = 300
             ns = 5
