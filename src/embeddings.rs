@@ -13,7 +13,7 @@ use reductive::pq::TrainPQ;
 
 use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
-use crate::chunks::norms::{NdNorms, Norms};
+use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{
     MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView,
     StorageViewWrap, StorageWrap,
@@ -51,7 +51,7 @@ where
     pub fn new(metadata: Option<Metadata>, vocab: V, storage: S, norms: NdNorms) -> Self {
         assert_eq!(
             vocab.words_len(),
-            norms.0.len(),
+            norms.len(),
             "Vocab and norms do not have the same length"
         );
         assert_eq!(
@@ -163,7 +163,7 @@ where
         match self.vocab.idx(word)? {
             WordIndex::Word(idx) => Some(EmbeddingWithNorm {
                 embedding: self.storage.embedding(idx),
-                norm: self.norms().map(|n| n.norm(idx)).unwrap_or(1.),
+                norm: self.norms().map(|n| n[idx]).unwrap_or(1.),
             }),
             WordIndex::Subword(indices) => {
                 let mut embed = Array1::zeros((self.storage.shape().1,));
@@ -506,7 +506,7 @@ impl<'a> Iterator for IterWithNorms<'a> {
                 word.as_str(),
                 EmbeddingWithNorm {
                     embedding: self.storage.embedding(idx),
-                    norm: self.norms.map(|n| n.0[idx]).unwrap_or(1.),
+                    norm: self.norms.map(|n| n[idx]).unwrap_or(1.),
                 },
             )
         })
@@ -561,7 +561,7 @@ mod tests {
     fn norms() {
         let vocab = SimpleVocab::new(vec!["norms".to_string(), "test".to_string()]);
         let storage = NdArray::new(array![[1f32], [-1f32]]);
-        let norms = NdNorms(array![2f32, 3f32]);
+        let norms = NdNorms::new(array![2f32, 3f32]);
         let check = Embeddings::new(None, vocab, storage, norms);
 
         let mut serialized = Cursor::new(Vec::new());
@@ -574,8 +574,8 @@ mod tests {
         assert!(check
             .norms()
             .unwrap()
-            .0
-            .abs_diff_eq(&embeddings.norms().unwrap().0, 1e-8),);
+            .view()
+            .abs_diff_eq(&embeddings.norms().unwrap().view(), 1e-8),);
     }
 
     #[test]

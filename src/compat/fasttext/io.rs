@@ -96,7 +96,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
         let mut storage = read_embeddings(&mut reader)?;
         add_subword_embeddings(&vocab, &mut storage);
         #[allow(clippy::deref_addrof)]
-        let norms = NdNorms(l2_normalize_array(
+        let norms = NdNorms::new(l2_normalize_array(
             storage.view_mut().slice_mut(s![0..vocab.words_len(), ..]),
         ));
 

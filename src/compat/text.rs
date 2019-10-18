@@ -74,14 +74,14 @@ where
         let (_, vocab, mut storage, _) = Self::read_text_raw(reader, false)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 
     fn read_text_lossy(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_raw(reader, true)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 }
 
@@ -140,14 +140,14 @@ where
         let (_, vocab, mut storage, _) = Self::read_text_dims_raw(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 
     fn read_text_dims_lossy(reader: &mut R) -> Result<Self> {
         let (_, vocab, mut storage, _) = Self::read_text_dims_raw_lossy(reader)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 }
 

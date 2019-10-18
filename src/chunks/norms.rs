@@ -2,6 +2,7 @@
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
+use std::ops::Deref;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::Array1;
@@ -9,12 +10,6 @@ use ndarray::Array1;
 use super::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::io::{ErrorKind, Result};
 use crate::util::padding;
-
-/// Trait for norm chunks.
-pub trait Norms {
-    /// Return the norm for the word at the given index.
-    fn norm(&self, idx: usize) -> f32;
-}
 
 /// Chunk for storing embedding l2 norms.
 ///
@@ -24,11 +19,33 @@ pub trait Norms {
 /// The unnormalized embedding can be reconstructed by multiplying the
 /// normalized embedding by its orginal l2 norm.
 #[derive(Clone, Debug)]
-pub struct NdNorms(pub Array1<f32>);
+pub struct NdNorms {
+    inner: Array1<f32>,
+}
 
-impl Norms for NdNorms {
-    fn norm(&self, idx: usize) -> f32 {
-        self.0[idx]
+impl NdNorms {
+    /// Construct new `NdNorms`.
+    pub fn new(norms: impl Into<Array1<f32>>) -> Self {
+        NdNorms {
+            inner: norms.into(),
+        }
+    }
+}
+
+impl Deref for NdNorms {
+    type Target = Array1<f32>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<V> From<V> for NdNorms
+where
+    V: Into<Array1<f32>>,
+{
+    fn from(array: V) -> NdNorms {
+        NdNorms::new(array)
     }
 }
 
@@ -60,7 +77,7 @@ impl ReadChunk for NdNorms {
         read.read_f32_into::<LittleEndian>(&mut data)
             .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
 
-        Ok(NdNorms(Array1::from(data)))
+        Ok(NdNorms::new(data))
     }
 }
 
@@ -84,12 +101,12 @@ impl WriteChunk for NdNorms {
         let chunk_len = size_of::<u64>()
             + size_of::<u32>()
             + n_padding as usize
-            + (self.0.len() * size_of::<f32>());
+            + (self.len() * size_of::<f32>());
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
             .map_err(|e| ErrorKind::io_error("Cannot write norms chunk length", e))?;
         write
-            .write_u64::<LittleEndian>(self.0.len() as u64)
+            .write_u64::<LittleEndian>(self.len() as u64)
             .map_err(|e| ErrorKind::io_error("Cannot write norms vector length", e))?;
         write
             .write_u32::<LittleEndian>(f32::type_id())
@@ -100,7 +117,7 @@ impl WriteChunk for NdNorms {
             .write_all(&padding)
             .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
 
-        for &val in self.0.iter() {
+        for &val in self.iter() {
             write
                 .write_f32::<LittleEndian>(val)
                 .map_err(|e| ErrorKind::io_error("Cannot write norm", e))?;
@@ -123,7 +140,7 @@ mod tests {
     const LEN: usize = 100;
 
     fn test_ndnorms() -> NdNorms {
-        NdNorms(Array1::range(0., LEN as f32, 1.))
+        NdNorms::new(Array1::range(0., LEN as f32, 1.))
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
@@ -155,6 +172,6 @@ mod tests {
         check_arr.write_chunk(&mut cursor).unwrap();
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let arr = NdNorms::read_chunk(&mut cursor).unwrap();
-        assert_eq!(arr.0, check_arr.0);
+        assert_eq!(arr.view(), check_arr.view());
     }
 }

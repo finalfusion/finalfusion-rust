@@ -62,7 +62,7 @@ where
             Embeddings::read_word2vec_binary_raw(reader, false)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 
     fn read_word2vec_binary_lossy(reader: &mut R) -> Result<Self> {
@@ -70,7 +70,7 @@ where
             Embeddings::read_word2vec_binary_raw(reader, true)?.into_parts();
         let norms = l2_normalize_array(storage.view_mut());
 
-        Ok(Embeddings::new(None, vocab, storage, NdNorms(norms)))
+        Ok(Embeddings::new(None, vocab, storage, NdNorms::new(norms)))
     }
 }
 
