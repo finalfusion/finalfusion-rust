@@ -117,18 +117,18 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::FastTextSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::FastTextSubwordVocab)
             }
-            ChunkIdentifier::FinalfusionSubwordVocab => {
+            ChunkIdentifier::BucketSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::BucketSubwordVocab)
             }
-            ChunkIdentifier::FinalfusionNGramVocab => {
+            ChunkIdentifier::ExplicitSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::ExplicitSubwordVocab)
             }
             _ => Err(ErrorKind::Format(format!(
                 "Invalid chunk identifier, expected one of: {}, {}, {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
-                ChunkIdentifier::FinalfusionNGramVocab,
+                ChunkIdentifier::ExplicitSubwordVocab,
                 ChunkIdentifier::FastTextSubwordVocab,
-                ChunkIdentifier::FinalfusionSubwordVocab,
+                ChunkIdentifier::BucketSubwordVocab,
                 chunk_id
             ))
             .into()),
