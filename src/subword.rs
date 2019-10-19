@@ -141,6 +141,9 @@ impl ExplicitIndexer {
 }
 
 impl ExplicitIndexer {
+    /// Construct a new explicit indexer.
+    ///
+    /// Panics when there are duplicate ngrams.
     pub fn new<V>(ngrams: V) -> Self
     where
         V: Into<Vec<String>>,
@@ -152,6 +155,11 @@ impl ExplicitIndexer {
             .enumerate()
             .map(|(idx, ngram)| (ngram, idx as u64))
             .collect::<HashMap<String, u64>>();
+        assert_eq!(
+            index.len(),
+            ngrams.len(),
+            "ngrams contained duplicate entries."
+        );
         ExplicitIndexer { ngrams, index }
     }
 }
