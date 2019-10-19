@@ -44,9 +44,16 @@ where
     /// Words are assigned indices in the given order. NGrams in range `(min_n..max_n)` are
     /// considered. The `indexer` is used to look up indices for the NGrams produced by this
     /// `SubwordVocab`.
+    ///
+    /// Panics when there are duplicate words.
     pub fn new(words: impl Into<Vec<String>>, min_n: u32, max_n: u32, indexer: I) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
+        assert_eq!(
+            words.len(),
+            indices.len(),
+            "words contained duplicate entries."
+        );
 
         SubwordVocab {
             indices,

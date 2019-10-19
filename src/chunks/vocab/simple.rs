@@ -19,9 +19,16 @@ impl SimpleVocab {
     /// Construct a new simple vocabulary.
     ///
     /// Words are assigned indices in the given order.
+    ///
+    /// Panics when there are duplicate words.
     pub fn new(words: impl Into<Vec<String>>) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
+        assert_eq!(
+            words.len(),
+            indices.len(),
+            "words contained duplicate entries."
+        );
         SimpleVocab { words, indices }
     }
 }
