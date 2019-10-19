@@ -190,7 +190,7 @@ impl ReadChunk for BucketSubwordVocab {
     where
         R: Read + Seek,
     {
-        Self::read_bucketed_chunk(read, ChunkIdentifier::FinalfusionSubwordVocab)
+        Self::read_bucketed_chunk(read, ChunkIdentifier::BucketSubwordVocab)
     }
 }
 
@@ -199,7 +199,7 @@ impl ReadChunk for ExplicitSubwordVocab {
     where
         R: Read + Seek,
     {
-        Self::read_ngram_chunk(read, ChunkIdentifier::FinalfusionNGramVocab)
+        Self::read_ngram_chunk(read, ChunkIdentifier::ExplicitSubwordVocab)
     }
 }
 
@@ -218,7 +218,7 @@ impl WriteChunk for FastTextSubwordVocab {
 
 impl WriteChunk for BucketSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
-        ChunkIdentifier::FinalfusionSubwordVocab
+        ChunkIdentifier::BucketSubwordVocab
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
@@ -231,7 +231,7 @@ impl WriteChunk for BucketSubwordVocab {
 
 impl WriteChunk for ExplicitSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
-        ChunkIdentifier::FinalfusionNGramVocab
+        ChunkIdentifier::ExplicitSubwordVocab
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>

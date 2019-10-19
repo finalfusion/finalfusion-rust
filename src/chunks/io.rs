@@ -16,12 +16,12 @@ pub enum ChunkIdentifier {
     Header = 0,
     SimpleVocab = 1,
     NdArray = 2,
-    FinalfusionSubwordVocab = 3,
+    BucketSubwordVocab = 3,
     QuantizedArray = 4,
     Metadata = 5,
     NdNorms = 6,
     FastTextSubwordVocab = 7,
-    FinalfusionNGramVocab = 8,
+    ExplicitSubwordVocab = 8,
 }
 
 impl ChunkIdentifier {
@@ -31,12 +31,12 @@ impl ChunkIdentifier {
         match identifier {
             1 => Some(SimpleVocab),
             2 => Some(NdArray),
-            3 => Some(FinalfusionSubwordVocab),
+            3 => Some(BucketSubwordVocab),
             4 => Some(QuantizedArray),
             5 => Some(Metadata),
             6 => Some(NdNorms),
             7 => Some(FastTextSubwordVocab),
-            8 => Some(FinalfusionNGramVocab),
+            8 => Some(ExplicitSubwordVocab),
             _ => None,
         }
     }
@@ -73,8 +73,8 @@ impl Display for ChunkIdentifier {
             SimpleVocab => write!(f, "SimpleVocab"),
             NdArray => write!(f, "NdArray"),
             FastTextSubwordVocab => write!(f, "FastTextSubwordVocab"),
-            FinalfusionNGramVocab => write!(f, "FinalfusionNGramVocab"),
-            FinalfusionSubwordVocab => write!(f, "FinalfusionSubwordVocab"),
+            ExplicitSubwordVocab => write!(f, "ExplicitSubwordVocab"),
+            BucketSubwordVocab => write!(f, "BucketSubwordVocab"),
             QuantizedArray => write!(f, "QuantizedArray"),
             Metadata => write!(f, "Metadata"),
             NdNorms => write!(f, "NdNorms"),
