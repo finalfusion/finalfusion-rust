@@ -217,8 +217,10 @@ impl<'a> Hash for StrWithCharLen<'a> {
     where
         H: Hasher,
     {
-        self.char_len.hash(hasher);
-        self.inner.chars().for_each(|ch| ch.hash(hasher));
+        hasher.write(&(self.char_len as u64).to_le_bytes());
+        self.inner
+            .chars()
+            .for_each(|ch| hasher.write(&(ch as u32).to_le_bytes()));
     }
 }
 
