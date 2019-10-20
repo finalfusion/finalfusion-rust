@@ -363,6 +363,10 @@ where
             self.storage.chunk_identifier(),
         ]);
 
+        if let Some(ref norms) = self.norms {
+            chunks.push(norms.chunk_identifier());
+        }
+
         Header::new(chunks).write_chunk(write)?;
         if let Some(ref metadata) = self.metadata {
             metadata.write_chunk(write)?;
