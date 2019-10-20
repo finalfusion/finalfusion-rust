@@ -20,10 +20,8 @@
 //! ```
 
 use std::io::{BufRead, Write};
-use std::mem;
-use std::slice::from_raw_parts_mut;
 
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{Array2, Axis, CowArray};
 
 use crate::chunks::norms::NdNorms;
@@ -102,14 +100,11 @@ where
 
             let mut embedding = matrix.index_axis_mut(Axis(0), idx);
 
-            {
-                let mut embedding_raw = unsafe {
-                    typed_to_bytes(embedding.as_slice_mut().expect("Matrix not contiguous"))
-                };
-                reader
-                    .read_exact(&mut embedding_raw)
-                    .map_err(|e| ErrorKind::io_error("Cannot read word embedding", e))?;
-            }
+            reader
+                .read_f32_into::<LittleEndian>(
+                    embedding.as_slice_mut().expect("Matrix not contiguous"),
+                )
+                .map_err(|e| ErrorKind::io_error("Cannot read word embedding", e))?;
         }
 
         Ok(Embeddings::new_without_norms(
@@ -118,13 +113,6 @@ where
             NdArray::new(matrix),
         ))
     }
-}
-
-unsafe fn typed_to_bytes<T>(slice: &mut [T]) -> &mut [u8] {
-    from_raw_parts_mut(
-        slice.as_mut_ptr() as *mut u8,
-        slice.len() * mem::size_of::<T>(),
-    )
 }
 
 /// Method to write `Embeddings` to a word2vec binary file.
