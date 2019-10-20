@@ -1,14 +1,16 @@
 language: rust
-rust:
-  - 1.37.0
-  - stable
+matrix:
+  include:
+    - rust: 1.37.0
+    - rust: stable
+    - env: CROSS_TARGET=mips64-unknown-linux-gnuabi64
+      rust: stable
+      services: docker
+      sudo: required
 before_script:
   - rustup component add clippy
   - rustup component add rustfmt
 script: ci/script.sh
-matrix:
-  allow_failures:
-    - rust: nightly
 sudo: required
 dist: trusty
 addons:
