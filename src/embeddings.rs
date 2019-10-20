@@ -239,21 +239,25 @@ macro_rules! impl_embeddings_from(
 impl_embeddings_from!(SimpleVocab, NdArray, StorageWrap);
 impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
+#[cfg(target_endian = "little")]
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
+#[cfg(target_endian = "little")]
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
+#[cfg(target_endian = "little")]
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
+#[cfg(target_endian = "little")]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
 
@@ -554,6 +558,8 @@ mod tests {
         let embeds: Embeddings<SimpleVocab, MmapArray> =
             Embeddings::mmap_embeddings(&mut reader).unwrap();
         assert_eq!(embeds.vocab(), check_embeds.vocab());
+
+        #[cfg(target_endian = "little")]
         assert_eq!(embeds.storage().view(), check_embeds.storage().view());
     }
 
