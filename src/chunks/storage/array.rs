@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
+#[cfg(target_endian = "big")]
+use byteorder::ByteOrder;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
 use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Dimension, Ix1, Ix2};
@@ -20,14 +22,22 @@ pub struct MmapArray {
 
 impl Storage for MmapArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
-        CowArray::from(
+        #[allow(clippy::cast_ptr_alignment,unused_mut)]
+        let mut embedding =
             // Alignment is ok, padding guarantees that the pointer is at
             // a multiple of 4.
-            #[allow(clippy::cast_ptr_alignment)]
             unsafe { ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32) }
                 .row(idx)
-                .to_owned(),
-        )
+                .to_owned();
+
+        #[cfg(target_endian = "big")]
+        LittleEndian::from_slice_f32(
+            embedding
+                .as_slice_mut()
+                .expect("Cannot borrow vector as mutable slice"),
+        );
+
+        CowArray::from(embedding)
     }
 
     fn shape(&self) -> (usize, usize) {
@@ -35,6 +45,7 @@ impl Storage for MmapArray {
     }
 }
 
+#[cfg(target_endian = "little")]
 impl StorageView for MmapArray {
     fn view(&self) -> ArrayView2<f32> {
         // Alignment is ok, padding guarantees that the pointer is at
@@ -102,6 +113,7 @@ impl MmapChunk for MmapArray {
     }
 }
 
+#[cfg(target_endian = "little")]
 impl WriteChunk for MmapArray {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::NdArray

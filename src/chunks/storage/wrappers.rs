@@ -140,7 +140,10 @@ impl MmapChunk for StorageWrap {
 impl WriteChunk for StorageWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
+            #[cfg(target_endian = "little")]
             StorageWrap::MmapArray(inner) => inner.chunk_identifier(),
+            #[cfg(target_endian = "big")]
+            StorageWrap::MmapArray(_inner) => unimplemented!(),
             StorageWrap::MmapQuantizedArray(inner) => inner.chunk_identifier(),
             StorageWrap::NdArray(inner) => inner.chunk_identifier(),
             StorageWrap::QuantizedArray(inner) => inner.chunk_identifier(),
@@ -152,7 +155,10 @@ impl WriteChunk for StorageWrap {
         W: Write + Seek,
     {
         match self {
+            #[cfg(target_endian = "little")]
             StorageWrap::MmapArray(inner) => inner.write_chunk(write),
+            #[cfg(target_endian = "big")]
+            StorageWrap::MmapArray(_inner) => unimplemented!(),
             StorageWrap::MmapQuantizedArray(inner) => inner.write_chunk(write),
             StorageWrap::NdArray(inner) => inner.write_chunk(write),
             StorageWrap::QuantizedArray(inner) => inner.write_chunk(write),
@@ -165,6 +171,7 @@ impl WriteChunk for StorageWrap {
 /// This type covers the subset of storage types that implement
 /// `StorageView`. See the `StorageWrap` type for more information.
 pub enum StorageViewWrap {
+    #[cfg(target_endian = "little")]
     MmapArray(MmapArray),
     NdArray(NdArray),
 }
@@ -172,6 +179,7 @@ pub enum StorageViewWrap {
 impl Storage for StorageViewWrap {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         match self {
+            #[cfg(target_endian = "little")]
             StorageViewWrap::MmapArray(inner) => inner.embedding(idx),
             StorageViewWrap::NdArray(inner) => inner.embedding(idx),
         }
@@ -179,6 +187,7 @@ impl Storage for StorageViewWrap {
 
     fn shape(&self) -> (usize, usize) {
         match self {
+            #[cfg(target_endian = "little")]
             StorageViewWrap::MmapArray(inner) => inner.shape(),
             StorageViewWrap::NdArray(inner) => inner.shape(),
         }
@@ -188,12 +197,14 @@ impl Storage for StorageViewWrap {
 impl StorageView for StorageViewWrap {
     fn view(&self) -> ArrayView2<f32> {
         match self {
+            #[cfg(target_endian = "little")]
             StorageViewWrap::MmapArray(inner) => inner.view(),
             StorageViewWrap::NdArray(inner) => inner.view(),
         }
     }
 }
 
+#[cfg(target_endian = "little")]
 impl From<MmapArray> for StorageViewWrap {
     fn from(s: MmapArray) -> Self {
         StorageViewWrap::MmapArray(s)
@@ -240,6 +251,7 @@ impl ReadChunk for StorageViewWrap {
 impl WriteChunk for StorageViewWrap {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         match self {
+            #[cfg(target_endian = "little")]
             StorageViewWrap::MmapArray(inner) => inner.chunk_identifier(),
             StorageViewWrap::NdArray(inner) => inner.chunk_identifier(),
         }
@@ -250,6 +262,7 @@ impl WriteChunk for StorageViewWrap {
         W: Write + Seek,
     {
         match self {
+            #[cfg(target_endian = "little")]
             StorageViewWrap::MmapArray(inner) => inner.write_chunk(write),
             StorageViewWrap::NdArray(inner) => inner.write_chunk(write),
         }
@@ -273,6 +286,7 @@ impl MmapChunk for StorageViewWrap {
             .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
+            #[cfg(target_endian = "little")]
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageViewWrap::MmapArray),
             _ => Err(ErrorKind::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
