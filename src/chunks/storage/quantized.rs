@@ -437,20 +437,10 @@ where
 pub struct MmapQuantizedArray {
     quantizer: PQ<f32>,
     quantized_embeddings: Mmap,
-    norms: Option<Mmap>,
+    norms: Option<Array1<f32>>,
 }
 
 impl MmapQuantizedArray {
-    unsafe fn norms(&self) -> Option<ArrayView1<f32>> {
-        let n_embeddings = self.shape().0;
-
-        #[allow(clippy::cast_ptr_alignment)]
-        self.norms.as_ref().map(|norms|
-            // Alignment is ok, padding guarantees that the pointer is at
-            // a multiple of 4.
-                ArrayView1::from_shape_ptr((n_embeddings,), norms.as_ptr() as *const f32))
-    }
-
     unsafe fn quantized_embeddings(&self) -> ArrayView2<u8> {
         let n_embeddings = self.shape().0;
 
@@ -462,31 +452,6 @@ impl MmapQuantizedArray {
 }
 
 impl MmapQuantizedArray {
-    fn mmap_norms(read: &mut BufReader<File>, n_embeddings: usize) -> Result<Mmap> {
-        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
-            ErrorKind::io_error(
-                "Cannot get file position for memory mapping the norms vector",
-                e,
-            )
-        })?;
-
-        let norms_len = n_embeddings * size_of::<f32>();
-        let mut mmap_opts = MmapOptions::new();
-        let norms = unsafe {
-            mmap_opts
-                .offset(offset)
-                .len(norms_len)
-                .map(&read.get_ref())
-                .map_err(|e| ErrorKind::io_error("Cannot memory map norms vector", e))?
-        };
-
-        // Position the reader after the vector.
-        read.seek(SeekFrom::Current(norms_len as i64))
-            .map_err(|e| ErrorKind::io_error("Cannot skip norms vector", e))?;
-
-        Ok(norms)
-    }
-
     fn mmap_quantized_embeddings(
         read: &mut BufReader<File>,
         n_embeddings: usize,
@@ -528,7 +493,7 @@ impl Storage for MmapQuantizedArray {
         let quantized = unsafe { self.quantized_embeddings() };
 
         let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
-        if let Some(norms) = unsafe { self.norms() } {
+        if let Some(norms) = &self.norms {
             reconstructed *= norms[idx];
         }
 
@@ -559,7 +524,10 @@ impl MmapChunk for MmapQuantizedArray {
         } = QuantizedArray::read_product_quantizer(read)?;
 
         let norms = if read_norms {
-            Some(Self::mmap_norms(read, n_embeddings)?)
+            let mut norms_vec = vec![0f32; n_embeddings];
+            read.read_f32_into::<LittleEndian>(&mut norms_vec)
+                .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
+            Some(Array1::from(norms_vec))
         } else {
             None
         };
@@ -588,7 +556,7 @@ impl WriteChunk for MmapQuantizedArray {
             write,
             &self.quantizer,
             unsafe { self.quantized_embeddings() },
-            unsafe { self.norms() },
+            self.norms.as_ref().map(|n| n.view()),
         )
     }
 }
