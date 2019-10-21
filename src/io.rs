@@ -97,7 +97,7 @@ impl From<ErrorKind> for Error {
 /// use finalfusion::prelude::*;
 ///
 /// let mut f = File::open("testdata/similarity.fifu").unwrap();
-/// let embeddings: Embeddings<SimpleVocab, NdArray> =
+/// let embeddings: Embeddings<VocabWrap, StorageWrap> =
 ///     Embeddings::read_embeddings(&mut f).unwrap();
 /// ```
 pub trait ReadEmbeddings
@@ -120,6 +120,8 @@ where
 /// use std::fs::File;
 ///
 /// use finalfusion::prelude::*;
+/// use finalfusion::chunks::metadata::Metadata;
+/// use finalfusion::io::ReadMetadata;
 ///
 /// let mut f = File::open("testdata/similarity.fifu").unwrap();
 /// let metadata: Option<Metadata> =
