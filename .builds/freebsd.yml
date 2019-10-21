@@ -1,0 +1,10 @@
+image: freebsd/latest
+packages:
+  - rust
+sources:
+  - https://github.com/finalfusion/finalfusion-rust
+tasks:
+  - build: |
+      cd finalfusion-rust
+      cargo build --verbose
+      cargo test --verbose
