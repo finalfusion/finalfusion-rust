@@ -54,7 +54,8 @@
 //! `word2vec` modules for information on how to read fastText,
 //! GloVe, and word2vec embeddings.
 
-pub mod chunks;
+mod chunks;
+pub use chunks::{metadata, norms, storage, vocab};
 
 pub mod compat;
 

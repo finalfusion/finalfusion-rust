@@ -120,7 +120,7 @@ where
 /// use std::fs::File;
 ///
 /// use finalfusion::prelude::*;
-/// use finalfusion::chunks::metadata::Metadata;
+/// use finalfusion::metadata::Metadata;
 /// use finalfusion::io::ReadMetadata;
 ///
 /// let mut f = File::open("testdata/similarity.fifu").unwrap();
