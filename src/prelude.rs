@@ -3,10 +3,15 @@
 pub use crate::chunks::metadata::Metadata;
 
 pub use crate::chunks::storage::{
-    MmapArray, NdArray, QuantizedArray, Storage, StorageView, StorageViewWrap, StorageWrap,
+    MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StorageView, StorageViewWrap,
+    StorageWrap,
 };
 
-pub use crate::chunks::vocab::{SimpleVocab, SubwordVocab, Vocab, VocabWrap};
+pub use crate::chunks::norms::NdNorms;
+
+pub use crate::chunks::vocab::{
+    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
+};
 
 pub use crate::compat::fasttext::ReadFastText;
 
