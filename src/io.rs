@@ -143,9 +143,6 @@ where
 /// mapping](https://en.wikipedia.org/wiki/Mmap) the embedding matrix.
 /// This leads to considerable memory savings, since the operating
 /// system will load the relevant pages from disk on demand.
-///
-/// Memory mapping is currently not implemented for quantized
-/// matrices.
 pub trait MmapEmbeddings
 where
     Self: Sized,
