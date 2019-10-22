@@ -15,8 +15,8 @@ use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChun
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{
-    MmapArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView,
-    StorageViewWrap, StorageWrap,
+    MmapArray, MmapQuantizedArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
+    StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
@@ -242,21 +242,25 @@ impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
 #[cfg(target_endian = "little")]
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(SimpleVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
 #[cfg(target_endian = "little")]
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(BucketSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
 #[cfg(target_endian = "little")]
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(FastTextSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
+impl_embeddings_from!(ExplicitSubwordVocab, MmapQuantizedArray, StorageWrap);
 #[cfg(target_endian = "little")]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
