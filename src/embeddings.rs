@@ -6,7 +6,7 @@ use std::iter::Enumerate;
 use std::mem;
 use std::slice;
 
-use ndarray::{Array1, CowArray, Ix1};
+use ndarray::{Array1, ArrayViewMut1, CowArray, Ix1};
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
@@ -145,6 +145,47 @@ where
                 Some(CowArray::from(embed))
             }
         }
+    }
+
+    /// Realize the embedding of a word into the given vector.
+    ///
+    /// This variant of `embedding` realizes the embedding into the
+    /// given vector. This makes it possible to look up embeddings
+    /// without any additional allocations. This method returns
+    /// `false` and does not modify the vector if no embedding could
+    /// be found.
+    ///
+    /// Panics when then the vector does not have the same
+    /// dimensionality as the word embeddings.
+    pub fn embedding_into(&self, word: &str, mut target: ArrayViewMut1<f32>) -> bool {
+        assert_eq!(
+            target.len(),
+            self.dims(),
+            "Embeddings have {} dimensions, whereas target array has {}",
+            self.dims(),
+            target.len()
+        );
+
+        let index = if let Some(idx) = self.vocab.idx(word) {
+            idx
+        } else {
+            return false;
+        };
+
+        match index {
+            WordIndex::Word(idx) => target.assign(&self.storage.embedding(idx)),
+            WordIndex::Subword(indices) => {
+                target.fill(0.);
+
+                for idx in indices {
+                    target += &self.storage.embedding(idx).view();
+                }
+
+                l2_normalize(target.view_mut());
+            }
+        }
+
+        true
     }
 
     /// Get the embedding and original norm of a word.
@@ -531,7 +572,7 @@ mod tests {
     use std::io::{BufReader, Cursor, Seek, SeekFrom};
 
     use approx::AbsDiffEq;
-    use ndarray::array;
+    use ndarray::{array, Array1};
     use toml::toml;
 
     use super::Embeddings;
@@ -539,6 +580,7 @@ mod tests {
     use crate::chunks::norms::NdNorms;
     use crate::chunks::storage::{MmapArray, NdArray, StorageView};
     use crate::chunks::vocab::SimpleVocab;
+    use crate::compat::fasttext::ReadFastText;
     use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};
 
@@ -557,6 +599,26 @@ mod tests {
             description = "Test model"
             language = "de"
         })
+    }
+
+    #[test]
+    fn embedding_into_equal_to_embedding() {
+        let mut reader = BufReader::new(File::open("testdata/fasttext.bin").unwrap());
+        let embeds = Embeddings::read_fasttext(&mut reader).unwrap();
+
+        // Known word
+        let mut target = Array1::zeros(embeds.dims());
+        assert!(embeds.embedding_into("ganz", target.view_mut()));
+        assert_eq!(target, embeds.embedding("ganz").unwrap());
+
+        // Unknown word
+        let mut target = Array1::zeros(embeds.dims());
+        assert!(embeds.embedding_into("iddqd", target.view_mut()));
+        assert_eq!(target, embeds.embedding("iddqd").unwrap());
+
+        // Unknown word, non-zero vector
+        assert!(embeds.embedding_into("idspispopd", target.view_mut()));
+        assert_eq!(target, embeds.embedding("idspispopd").unwrap());
     }
 
     #[test]
