@@ -10,6 +10,12 @@ Rust. `finalfusion` primarily works with
 variety of features. Additionally, the fastText, word2vec and GloVe file
 formats are also supported.
 
+`finalfusion` is API stable since 0.11.0. However, we cannot tag
+version 1 yet, because several dependencies that are exposed through
+the API have not reached version 1 (particularly `ndarray` and
+`rand`). Future 0.x releases of `finalfusion` will be used to accomodate
+updates of these dependencies.
+
 ## Usage
 
 To make `finalfusion` available in your crate, simply place the following
