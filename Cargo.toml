@@ -1,11 +1,11 @@
 [package]
 name = "finalfusion"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2018"
-authors = ["Daniël de Kok <me@danieldk.eu>"]
+authors = ["Daniël de Kok <me@danieldk.eu>", "Sebastian Pütz <sebastian.puetz@student.uni-tuebingen.de>"]
 description = "Reader and writer for common word embedding formats"
 documentation = "https://docs.rs/finalfusion/"
-keywords = ["embeddings", "word2vec", "glove", "finalfusion", "subword"]
+keywords = ["embeddings", "word2vec", "glove", "finalfusion", "subword", "fasttext"]
 homepage = "https://github.com/finalfusion/finalfusion-rust"
 repository = "https://github.com/finalfusion/finalfusion-rust"
 # Use after SPDX list is updated
