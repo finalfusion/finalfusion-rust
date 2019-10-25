@@ -30,7 +30,7 @@ use crate::util::l2_normalize;
 /// This data structure stores word embeddings (also known as *word vectors*)
 /// and provides some useful methods on the embeddings, such as similarity
 /// and analogy queries.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Embeddings<V, S> {
     metadata: Option<Metadata>,
     storage: S,

@@ -19,7 +19,7 @@ use crate::io::{Error, ErrorKind, Result};
 /// all the vocabularies and storage types known to this crate such
 /// that the type `Embeddings<VocabWrap, StorageWrap>` covers all
 /// variations.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VocabWrap {
     SimpleVocab(SimpleVocab),
     ExplicitSubwordVocab(ExplicitSubwordVocab),
