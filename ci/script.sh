@@ -2,6 +2,14 @@
 
 set -ex
 
+if [ "$TRAVIS_RUST_VERSION" = "nightly" ] && [ -z "$CROSS_TARGET" ]; then
+  cargo install semverver
+  eval "current_version=$(grep -e '^version = .*$' Cargo.toml | cut -d ' ' -f 3)"
+  cargo semver | tee semver_out
+  (head -n 1 semver_out | grep "\-> $current_version") || (echo "versioning mismatch" && return 1)
+  exit 0
+fi
+
 if [ ! -z "$CROSS_TARGET" ]; then
   rustup target add "$CROSS_TARGET"
   cargo install cross --force

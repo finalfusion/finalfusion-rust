@@ -3,6 +3,7 @@ matrix:
   include:
     - rust: 1.37.0
     - rust: stable
+    - rust: nightly
     - env: CROSS_TARGET=mips64-unknown-linux-gnuabi64
       rust: stable
       services: docker
