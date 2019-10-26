@@ -157,7 +157,7 @@ where
     ///
     /// Panics when then the vector does not have the same
     /// dimensionality as the word embeddings.
-    pub fn embedding_into(&self, word: &str, mut target: ArrayViewMut1<f32>) -> bool {
+    pub fn embedding_into(&self, word: &str, mut target: ArrayViewMut1<f32>, _foo: usize) -> bool {
         assert_eq!(
             target.len(),
             self.dims(),
@@ -608,16 +608,16 @@ mod tests {
 
         // Known word
         let mut target = Array1::zeros(embeds.dims());
-        assert!(embeds.embedding_into("ganz", target.view_mut()));
+        assert!(embeds.embedding_into("ganz", target.view_mut(), 0));
         assert_eq!(target, embeds.embedding("ganz").unwrap());
 
         // Unknown word
         let mut target = Array1::zeros(embeds.dims());
-        assert!(embeds.embedding_into("iddqd", target.view_mut()));
+        assert!(embeds.embedding_into("iddqd", target.view_mut(), 0));
         assert_eq!(target, embeds.embedding("iddqd").unwrap());
 
         // Unknown word, non-zero vector
-        assert!(embeds.embedding_into("idspispopd", target.view_mut()));
+        assert!(embeds.embedding_into("idspispopd", target.view_mut(), 0));
         assert_eq!(target, embeds.embedding("idspispopd").unwrap());
     }
 
