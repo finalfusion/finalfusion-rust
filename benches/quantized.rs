@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::BufReader;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use finalfusion::chunks::vocab::WordIndex;
 use finalfusion::prelude::*;
+use finalfusion::vocab::{Vocab, WordIndex};
 
 mod data;
 use data::load_corpus;
