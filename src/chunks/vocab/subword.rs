@@ -13,6 +13,7 @@ use crate::subword::{
     BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer,
     SubwordIndices as StrSubwordIndices,
 };
+use crate::util::CollectWithCapacity;
 
 /// fastText vocabulary with hashed n-grams.
 pub type FastTextSubwordVocab = SubwordVocab<FastTextIndexer>;
@@ -81,7 +82,7 @@ where
     }
 
     fn bracket(word: impl AsRef<str>) -> String {
-        let mut bracketed = String::new();
+        let mut bracketed = String::with_capacity(word.as_ref().len() + 2);
         bracketed.push(Self::BOW);
         bracketed.push_str(word.as_ref());
         bracketed.push(Self::EOW);
@@ -164,11 +165,16 @@ where
     I: Indexer,
 {
     fn subword_indices(&self, word: &str) -> Option<Vec<usize>> {
-        let indices = Self::bracket(word)
+        let word = Self::bracket(word);
+        let indices = word
             .as_str()
             .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
-            .map(|idx| idx as usize + self.words_len())
-            .collect::<Vec<_>>();
+            .map(|idx| idx as usize + self.words_len());
+        if I::infallible() {
+            let size = indices.size_hint().1.unwrap();
+            return Some(indices.collect_with_capacity(size));
+        }
+        let indices = indices.collect::<Vec<_>>();
         if indices.is_empty() {
             None
         } else {

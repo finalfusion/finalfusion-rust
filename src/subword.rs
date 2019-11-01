@@ -21,6 +21,9 @@ pub trait Indexer {
 
     /// Return the (exclusive) upper bound of this indexer.
     fn upper_bound(&self) -> u64;
+
+    /// Indicates whether this Indexer never fails to produce an index.
+    fn infallible() -> bool;
 }
 
 /// N-Gram indexer with bucketing.
@@ -116,6 +119,10 @@ where
         // max val is <= 64
         2u64.pow(self.buckets_exp as u32)
     }
+
+    fn infallible() -> bool {
+        true
+    }
 }
 
 impl<H> PartialEq for HashIndexer<H> {
@@ -208,6 +215,10 @@ impl Indexer for ExplicitIndexer {
 
     fn upper_bound(&self) -> u64 {
         self.bound as u64
+    }
+
+    fn infallible() -> bool {
+        false
     }
 }
 
@@ -341,6 +352,12 @@ impl<'a> Iterator for NGrams<'a> {
 
         Some(ngram_with_len)
     }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let cap_approx = (self.max_n - self.min_n + 1) * self.char_offsets.len();
+        (cap_approx, Some(cap_approx))
+    }
 }
 
 /// Trait returning iterators over subwords and indices.
@@ -434,6 +451,11 @@ where
         self.ngrams
             .next()
             .map(|ngram| (ngram.inner, self.indexer.index_ngram(&ngram)))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ngrams.size_hint()
     }
 }
 
