@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Seek, Write};
+use std::slice;
+use std::str;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -65,13 +67,15 @@ impl WordIndex {
     }
 }
 
-pub(crate) fn create_indices(words: &[String]) -> HashMap<String, usize> {
-    let mut indices = HashMap::new();
-
+pub(crate) fn create_indices<'a, 'b>(words: &'b [String]) -> HashMap<&'a str, usize> {
+    let mut indices = HashMap::with_capacity(words.len());
     for (idx, word) in words.iter().enumerate() {
-        indices.insert(word.to_owned(), idx);
+        unsafe {
+            let bytes = slice::from_raw_parts(word.as_ptr(), word.as_bytes().len());
+            let word = str::from_utf8_unchecked(bytes);
+            indices.insert(word, idx);
+        }
     }
-
     indices
 }
 

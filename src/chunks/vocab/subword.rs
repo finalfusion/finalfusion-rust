@@ -28,7 +28,7 @@ pub type ExplicitSubwordVocab = SubwordVocab<ExplicitIndexer>;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubwordVocab<I> {
     indexer: I,
-    indices: HashMap<String, usize>,
+    indices: HashMap<&'static str, usize>,
     words: Vec<String>,
     min_n: u32,
     max_n: u32,

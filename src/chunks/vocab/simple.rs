@@ -11,7 +11,7 @@ use crate::io::{ErrorKind, Result};
 /// Vocabulary without subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SimpleVocab {
-    indices: HashMap<String, usize>,
+    indices: HashMap<&'static str, usize>,
     words: Vec<String>,
 }
 
@@ -24,6 +24,7 @@ impl SimpleVocab {
     pub fn new(words: impl Into<Vec<String>>) -> Self {
         let words = words.into();
         let indices = create_indices(&words);
+
         assert_eq!(
             words.len(),
             indices.len(),
