@@ -48,6 +48,10 @@ impl Indexer for FastTextIndexer {
     fn upper_bound(&self) -> u64 {
         u64::from(self.buckets)
     }
+
+    fn infallible() -> bool {
+        true
+    }
 }
 
 /// fastText FNV-1a implementation.
