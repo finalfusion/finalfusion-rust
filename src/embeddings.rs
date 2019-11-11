@@ -13,14 +13,14 @@ use reductive::pq::TrainPQ;
 
 use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
-use crate::chunks::norms::NdNorms;
+use crate::chunks::norms::{NdNorms, PruneNorms};
 use crate::chunks::storage::{
     MmapArray, MmapQuantizedArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
-    StorageView, StorageViewWrap, StorageWrap,
+    StoragePrune, StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
-    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
-    WordIndex,
+    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabPrune,
+    VocabPruneIndices, VocabWrap, WordIndex,
 };
 use crate::io::{ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings};
 use crate::util::l2_normalize;
@@ -563,6 +563,49 @@ impl<'a> Iterator for IterWithNorms<'a> {
                 },
             )
         })
+    }
+}
+
+/// Prune embeddings.
+pub trait Prune<V, S> {
+    /// Prune embeddings.
+    ///
+    /// This method prunes the embeddings. Given the size of vocab that
+    /// need to be kept, a word with embedding that need to be discarded
+    /// will be remapped to its closest embedding among those remaining.
+    fn prune(&self, n_keep: usize, batch_size: usize) -> Embeddings<VocabWrap, StorageWrap>;
+}
+
+impl<V, S> Prune<V, S> for Embeddings<V, S>
+where
+    V: VocabPrune + VocabPruneIndices,
+    S: StoragePrune,
+{
+    fn prune(&self, n_keep: usize, batch_size: usize) -> Embeddings<VocabWrap, StorageWrap> {
+        assert!(
+            n_keep > 0 && n_keep <= self.vocab().words_len(),
+            "Number of vectors to be kept should at least be 1 and at most be {}.",
+            self.vocab().words_len()
+        );
+        let (keep_indices, toss_indices) = self.vocab().part_indices(n_keep);
+        let most_similar_indices =
+            self.storage()
+                .most_similar(&keep_indices, &toss_indices, batch_size);
+        let new_indices = self.vocab().create_remapped_indices(&most_similar_indices);
+        Embeddings {
+            metadata: self.metadata().cloned(),
+            storage: self.storage().prune_storage(&toss_indices),
+            vocab: self.vocab().prune_vocab(new_indices),
+            norms: if self.norms.is_some() {
+                Some(
+                    self.norms()
+                        .unwrap()
+                        .prune_norms(&toss_indices, &most_similar_indices),
+                )
+            } else {
+                None
+            },
+        }
     }
 }
 
