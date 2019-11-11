@@ -305,6 +305,8 @@ impl_embeddings_from!(ExplicitSubwordVocab, MmapQuantizedArray, StorageWrap);
 #[cfg(target_endian = "little")]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(VocabWrap, QuantizedArray, StorageWrap);
+impl_embeddings_from!(VocabWrap, MmapQuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where
