@@ -1,17 +1,20 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::iter::FromIterator;
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memmap::{Mmap, MmapOptions};
 use ndarray::{
-    Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, Dimension, IntoDimension, Ix1,
+    Array, Array1, Array2, ArrayView1, ArrayView2, Axis, CowArray, Dimension, IntoDimension, Ix1,
 };
+use ordered_float::OrderedFloat;
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
-use super::{Storage, StorageView};
+use super::{Storage, StoragePrune, StorageView, StorageWrap};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
@@ -561,17 +564,88 @@ impl WriteChunk for MmapQuantizedArray {
     }
 }
 
+impl StoragePrune for QuantizedArray {
+    fn prune_storage(&self, toss_indices: &[usize]) -> StorageWrap {
+        let mut keep_indices_all = Vec::new();
+        let toss_indices: HashSet<usize> = HashSet::from_iter(toss_indices.iter().cloned());
+        for idx in 0..self.quantized_embeddings.shape()[0] - 1 {
+            if !toss_indices.contains(&idx) {
+                keep_indices_all.push(idx);
+            }
+        }
+        let norms = if self.norms.is_some() {
+            Some(
+                self.norms
+                    .as_ref()
+                    .unwrap()
+                    .select(Axis(0), &keep_indices_all),
+            )
+        } else {
+            None
+        };
+        let new_storage = QuantizedArray {
+            quantizer: self.quantizer.clone(),
+            quantized_embeddings: self
+                .quantized_embeddings
+                .select(Axis(0), &keep_indices_all)
+                .to_owned(),
+            norms,
+        };
+        new_storage.into()
+    }
+
+    fn most_similar(
+        &self,
+        keep_indices: &[usize],
+        toss_indices: &[usize],
+        _batch_size: usize,
+    ) -> Array1<usize> {
+        let dists: Vec<Array2<f32>> = self
+            .quantizer
+            .subquantizers()
+            .axis_iter(Axis(0))
+            .map(|quantizer| quantizer.dot(&quantizer.t()))
+            .collect();
+        let keep_quantized_embeddings = self.quantized_embeddings.select(Axis(0), keep_indices);
+        let toss_quantized_embeddings = self.quantized_embeddings.select(Axis(0), toss_indices);
+        let mut remap_indices = Array1::zeros((toss_quantized_embeddings.shape()[0],));
+        for (i, toss_row) in toss_quantized_embeddings.axis_iter(Axis(0)).enumerate() {
+            let mut row_dist = vec![0f32; keep_quantized_embeddings.shape()[0]];
+            for (n, keep_row) in keep_quantized_embeddings.axis_iter(Axis(0)).enumerate() {
+                row_dist[n] = toss_row
+                    .iter()
+                    .zip(keep_row.iter())
+                    .enumerate()
+                    .map(|(id, (&toss_id, &keep_id))| {
+                        dists[id][(toss_id as usize, keep_id as usize)]
+                    })
+                    .sum();
+            }
+
+            remap_indices[i] = row_dist
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, &v)| OrderedFloat(v))
+                .unwrap()
+                .0;
+        }
+        remap_indices
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
-    use ndarray::Array2;
+    use ndarray::{arr1, arr2, Array2};
     use reductive::pq::PQ;
 
     use crate::chunks::io::{MmapChunk, ReadChunk, WriteChunk};
-    use crate::chunks::storage::{MmapQuantizedArray, NdArray, Quantize, QuantizedArray, Storage};
+    use crate::chunks::storage::{
+        MmapQuantizedArray, NdArray, Quantize, QuantizedArray, Storage, StoragePrune,
+    };
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -675,5 +749,46 @@ mod tests {
 
         // Check
         storage_eq(&arr, &check_arr);
+    }
+
+    fn test_ndarray_for_pruning() -> NdArray {
+        let test_storage: Array2<f32> = arr2(&[
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.6, 0.0, 0.0],
+            [0.8, 0.6, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.8, 0.6, 0.0, 0.0, 0.0],
+        ]);
+        NdArray::new(test_storage)
+    }
+
+    #[test]
+    fn test_most_similar() {
+        let ndarray = test_ndarray_for_pruning();
+        let quantized_storage = ndarray.quantize::<PQ<f32>>(3, 2, 5, 1, true);
+        let keep_indices = &[0, 1, 2];
+        let toss_indices = &[3, 4, 5];
+        let test_remap_indices = quantized_storage.most_similar(keep_indices, toss_indices, 1);
+        assert_eq!(arr1(&[2, 0, 1]), test_remap_indices);
+    }
+
+    #[test]
+    fn test_prune_storage() {
+        let ndarray = test_ndarray_for_pruning();
+        let quantized_storage = ndarray.quantize::<PQ<f32>>(3, 2, 5, 1, true);
+        let keep_indices = &[0, 1, 2];
+        let toss_indices = &[3, 4, 5];
+        let test_pruned_storage = quantized_storage.prune_storage(toss_indices);
+        assert_eq!(
+            (ndarray.shape().0 - toss_indices.len(), ndarray.shape().1),
+            test_pruned_storage.shape()
+        );
+        for idx in keep_indices.iter() {
+            assert_eq!(
+                quantized_storage.embedding(*idx),
+                test_pruned_storage.embedding(*idx)
+            );
+        }
     }
 }

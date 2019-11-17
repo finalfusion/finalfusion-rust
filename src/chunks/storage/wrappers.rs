@@ -2,9 +2,11 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use ndarray::{ArrayView2, CowArray, Ix1};
+use ndarray::{Array1, ArrayView2, CowArray, Ix1};
 
-use super::{MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StorageView};
+use super::{
+    MmapArray, MmapQuantizedArray, NdArray, QuantizedArray, Storage, StoragePrune, StorageView,
+};
 use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 
@@ -294,6 +296,117 @@ impl MmapChunk for StorageViewWrap {
                 chunk_id
             ))
             .into()),
+        }
+    }
+}
+
+pub enum StoragePruneWrap {
+    NdArray(NdArray),
+    QuantizedArray(QuantizedArray),
+}
+
+impl Storage for StoragePruneWrap {
+    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
+        match self {
+            StoragePruneWrap::QuantizedArray(inner) => inner.embedding(idx),
+            StoragePruneWrap::NdArray(inner) => inner.embedding(idx),
+        }
+    }
+
+    fn shape(&self) -> (usize, usize) {
+        match self {
+            StoragePruneWrap::QuantizedArray(inner) => inner.shape(),
+            StoragePruneWrap::NdArray(inner) => inner.shape(),
+        }
+    }
+}
+
+impl From<NdArray> for StoragePruneWrap {
+    fn from(s: NdArray) -> Self {
+        StoragePruneWrap::NdArray(s)
+    }
+}
+
+impl From<QuantizedArray> for StoragePruneWrap {
+    fn from(s: QuantizedArray) -> Self {
+        StoragePruneWrap::QuantizedArray(s)
+    }
+}
+
+impl ReadChunk for StoragePruneWrap {
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
+    where
+        R: Read + Seek,
+    {
+        let chunk_start_pos = read
+            .seek(SeekFrom::Current(0))
+            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
+
+        let chunk_id = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)
+            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
+            .map_err(Error::from)?;
+
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
+
+        match chunk_id {
+            ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StoragePruneWrap::NdArray),
+            ChunkIdentifier::QuantizedArray => {
+                QuantizedArray::read_chunk(read).map(StoragePruneWrap::QuantizedArray)
+            }
+            _ => Err(ErrorKind::Format(format!(
+                "Invalid chunk identifier, expected one of: {} or {}, got: {}",
+                ChunkIdentifier::NdArray,
+                ChunkIdentifier::QuantizedArray,
+                chunk_id
+            ))
+            .into()),
+        }
+    }
+}
+
+impl WriteChunk for StoragePruneWrap {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        match self {
+            StoragePruneWrap::QuantizedArray(inner) => inner.chunk_identifier(),
+            StoragePruneWrap::NdArray(inner) => inner.chunk_identifier(),
+        }
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        match self {
+            StoragePruneWrap::QuantizedArray(inner) => inner.write_chunk(write),
+            StoragePruneWrap::NdArray(inner) => inner.write_chunk(write),
+        }
+    }
+}
+
+impl StoragePrune for StoragePruneWrap {
+    fn prune_storage(&self, toss_indices: &[usize]) -> StorageWrap {
+        match self {
+            StoragePruneWrap::NdArray(inner) => inner.prune_storage(toss_indices),
+            StoragePruneWrap::QuantizedArray(inner) => inner.prune_storage(toss_indices),
+        }
+    }
+    fn most_similar(
+        &self,
+        keep_indices: &[usize],
+        toss_indices: &[usize],
+        batch_size: usize,
+    ) -> Array1<usize> {
+        match self {
+            StoragePruneWrap::NdArray(inner) => {
+                inner.most_similar(keep_indices, toss_indices, batch_size)
+            }
+            StoragePruneWrap::QuantizedArray(inner) => {
+                inner.most_similar(keep_indices, toss_indices, batch_size)
+            }
         }
     }
 }

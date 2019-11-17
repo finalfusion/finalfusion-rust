@@ -4,9 +4,13 @@ use std::io::{Read, Seek, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use ndarray::Array1;
 
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
-use crate::chunks::vocab::{create_indices, read_vocab_items, write_vocab_items, Vocab, WordIndex};
+use crate::chunks::vocab::{
+    create_indices, read_vocab_items, write_vocab_items, Vocab, VocabPrune, VocabPruneIndices,
+    VocabWrap, WordIndex,
+};
 use crate::compat::fasttext::FastTextIndexer;
 use crate::io::{Error, ErrorKind, Result};
 use crate::subword::{
@@ -474,13 +478,89 @@ where
     Ok(())
 }
 
+impl VocabPrune for FastTextSubwordVocab {
+    fn prune_vocab(&self, remapped_indices: HashMap<String, usize>) -> VocabWrap {
+        let new_vocab = SubwordVocab {
+            indexer: self.indexer,
+            indices: remapped_indices,
+            words: self.words.clone(),
+            min_n: self.min_n,
+            max_n: self.max_n,
+        };
+        new_vocab.into()
+    }
+}
+
+impl VocabPrune for BucketSubwordVocab {
+    fn prune_vocab(&self, remapped_indices: HashMap<String, usize>) -> VocabWrap {
+        let new_vocab = SubwordVocab {
+            indexer: self.indexer,
+            indices: remapped_indices,
+            words: self.words.clone(),
+            min_n: self.min_n,
+            max_n: self.max_n,
+        };
+        new_vocab.into()
+    }
+}
+
+impl VocabPrune for ExplicitSubwordVocab {
+    fn prune_vocab(&self, remapped_indices: HashMap<String, usize>) -> VocabWrap {
+        let new_vocab = SubwordVocab {
+            indexer: self.indexer.clone(),
+            indices: remapped_indices,
+            words: self.words.clone(),
+            min_n: self.min_n,
+            max_n: self.max_n,
+        };
+        new_vocab.into()
+    }
+}
+
+impl<I> VocabPruneIndices for SubwordVocab<I>
+where
+    I: Clone + Indexer,
+{
+    fn part_indices(&self, n_keep: usize) -> (Vec<usize>, Vec<usize>) {
+        let keep_indices = self
+            .words()
+            .iter()
+            .take(n_keep)
+            .map(|w| *self.indices.get(w).unwrap())
+            .collect();
+        let toss_indices = self.words()[n_keep..]
+            .iter()
+            .map(|w| *self.indices.get(w).unwrap())
+            .collect();
+        (keep_indices, toss_indices)
+    }
+
+    fn create_remapped_indices(
+        &self,
+        most_similar_indices: &Array1<usize>,
+    ) -> HashMap<String, usize> {
+        let mut remapped_indices = self.indices.clone();
+        for (toss_word, remapped_idx) in self.words()
+            [self.words_len() - most_similar_indices.len()..]
+            .iter()
+            .zip(most_similar_indices)
+        {
+            remapped_indices.insert(toss_word.to_owned(), *remapped_idx);
+        }
+        remapped_indices
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    use ndarray::arr1;
 
     use super::{BucketSubwordVocab, FastTextSubwordVocab, SubwordVocab};
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab};
+    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, VocabPruneIndices};
     use crate::compat::fasttext::FastTextIndexer;
     use crate::subword::{BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer};
 
@@ -575,5 +655,29 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn test_part_indices() {
+        let vocab = test_subword_vocab();
+        let (test_keep_indices, test_toss_indices) = vocab.part_indices(2);
+        assert_eq!(vec![0, 1], test_keep_indices);
+        assert_eq!(vec![2, 3], test_toss_indices);
+    }
+
+    #[test]
+    fn test_create_remapped_indices() {
+        let vocab = test_subword_vocab();
+        let test_remapped_indices = vocab.create_remapped_indices(&arr1(&[1, 0]));
+        let remapped_indices: HashMap<String, usize> = [
+            ("this".to_owned(), 0),
+            ("is".to_owned(), 1),
+            ("a".to_owned(), 1),
+            ("test".to_owned(), 0),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        assert_eq!(remapped_indices, test_remapped_indices);
     }
 }

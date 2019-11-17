@@ -1,6 +1,6 @@
 //! Embedding matrix representations.
 
-use ndarray::{ArrayView2, ArrayViewMut2, CowArray, Ix1};
+use ndarray::{Array1, ArrayView2, ArrayViewMut2, CowArray, Ix1};
 
 mod array;
 pub use self::array::{MmapArray, NdArray};
@@ -32,4 +32,18 @@ pub trait StorageView: Storage {
 pub(crate) trait StorageViewMut: Storage {
     /// Get a view of the embedding matrix.
     fn view_mut(&mut self) -> ArrayViewMut2<f32>;
+}
+
+/// Storage that can be pruned.
+pub trait StoragePrune: Storage {
+    /// Prune a storage. Discard the vectors which need to be pruned off based on their indices.
+    fn prune_storage(&self, toss_indices: &[usize]) -> StorageWrap;
+
+    /// Find a nearest vector for each vector that need to be tossed.
+    fn most_similar(
+        &self,
+        keep_indices: &[usize],
+        toss_indices: &[usize],
+        batch_size: usize,
+    ) -> Array1<usize>;
 }

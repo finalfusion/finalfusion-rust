@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use ndarray::Array1;
 
 use crate::io::{Error, ErrorKind, Result};
 
@@ -63,6 +64,26 @@ impl WordIndex {
             Subword(indices) => Some(indices),
         }
     }
+}
+
+/// Prune the embedding vocabularies.
+pub trait VocabPrune: Vocab {
+    /// Prune the vocabulary and get a new one.
+    fn prune_vocab(&self, remapped_indices: HashMap<String, usize>) -> VocabWrap;
+}
+
+/// Handle the indices changes during pruning.
+pub trait VocabPruneIndices: Vocab {
+    /// Seperate the indices of the words whose original vectors need to be tossed from the
+    /// ones whose vectors need to be kept.
+    fn part_indices(&self, n_keep: usize) -> (Vec<usize>, Vec<usize>);
+
+    /// Remap the indices of the words whose original vectors need to be tossed to their
+    /// closest remainings' indices.
+    fn create_remapped_indices(
+        &self,
+        most_similar_indices: &Array1<usize>,
+    ) -> HashMap<String, usize>;
 }
 
 pub(crate) fn create_indices(words: &[String]) -> HashMap<String, usize> {

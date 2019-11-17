@@ -3,9 +3,13 @@ use std::io::{Read, Seek, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use ndarray::Array1;
 
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
-use crate::chunks::vocab::{create_indices, read_vocab_items, write_vocab_items, Vocab, WordIndex};
+use crate::chunks::vocab::{
+    create_indices, read_vocab_items, write_vocab_items, Vocab, VocabPrune, VocabPruneIndices,
+    VocabWrap, WordIndex,
+};
 use crate::io::{ErrorKind, Result};
 
 /// Vocabulary without subword units.
@@ -107,13 +111,57 @@ impl WriteChunk for SimpleVocab {
     }
 }
 
+impl VocabPrune for SimpleVocab {
+    fn prune_vocab(&self, remapped_indices: HashMap<String, usize>) -> VocabWrap {
+        let new_vocab = SimpleVocab {
+            words: self.words.clone(),
+            indices: remapped_indices,
+        };
+        new_vocab.into()
+    }
+}
+
+impl VocabPruneIndices for SimpleVocab {
+    fn part_indices(&self, n_keep: usize) -> (Vec<usize>, Vec<usize>) {
+        let keep_indices = self
+            .words()
+            .iter()
+            .take(n_keep)
+            .map(|w| *self.indices.get(w).unwrap())
+            .collect();
+        let toss_indices = self.words()[n_keep..]
+            .iter()
+            .map(|w| *self.indices.get(w).unwrap())
+            .collect();
+        (keep_indices, toss_indices)
+    }
+
+    fn create_remapped_indices(
+        &self,
+        most_similar_indices: &Array1<usize>,
+    ) -> HashMap<String, usize> {
+        let mut remapped_indices = self.indices.clone();
+        for (toss_word, remapped_idx) in self.words()
+            [self.words_len() - most_similar_indices.len()..]
+            .iter()
+            .zip(most_similar_indices)
+        {
+            remapped_indices.insert(toss_word.to_owned(), *remapped_idx);
+        }
+        remapped_indices
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    use ndarray::arr1;
 
     use super::SimpleVocab;
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::read_chunk_size;
+    use crate::chunks::vocab::{read_chunk_size, VocabPruneIndices};
 
     fn test_simple_vocab() -> SimpleVocab {
         let words = vec![
@@ -148,5 +196,29 @@ mod tests {
             cursor.read_to_end(&mut Vec::new()).unwrap(),
             chunk_size as usize
         );
+    }
+
+    #[test]
+    fn test_part_indices() {
+        let vocab = test_simple_vocab();
+        let (test_keep_indices, test_toss_indices) = vocab.part_indices(2);
+        assert_eq!(vec![0, 1], test_keep_indices);
+        assert_eq!(vec![2, 3], test_toss_indices);
+    }
+
+    #[test]
+    fn test_create_remapped_indices() {
+        let vocab = test_simple_vocab();
+        let test_remapped_indices = vocab.create_remapped_indices(&arr1(&[1, 0]));
+        let remapped_indices: HashMap<String, usize> = [
+            ("this".to_owned(), 0),
+            ("is".to_owned(), 1),
+            ("a".to_owned(), 1),
+            ("test".to_owned(), 0),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+        assert_eq!(remapped_indices, test_remapped_indices);
     }
 }

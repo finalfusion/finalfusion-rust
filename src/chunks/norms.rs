@@ -127,14 +127,32 @@ impl WriteChunk for NdNorms {
     }
 }
 
+/// Prune the embedding norms.
+pub trait PruneNorms {
+    /// Prune the embedding norms. Remap the norms of the words whose original vectors need to be
+    /// tossed to their nearest remaining vectors' norms.
+    fn prune_norms(&self, toss_indices: &[usize], most_similar_indices: &Array1<usize>) -> NdNorms;
+}
+
+impl PruneNorms for NdNorms {
+    fn prune_norms(&self, toss_indices: &[usize], most_similar_indices: &Array1<usize>) -> NdNorms {
+        let mut pruned_norms = self.inner.clone();
+        for (toss_idx, remapped_idx) in toss_indices.iter().zip(most_similar_indices) {
+            pruned_norms[*toss_idx] = pruned_norms[*remapped_idx];
+        }
+        NdNorms::new(pruned_norms)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::ops::Deref;
 
     use byteorder::{LittleEndian, ReadBytesExt};
-    use ndarray::Array1;
+    use ndarray::{arr1, Array1};
 
-    use super::NdNorms;
+    use super::{NdNorms, PruneNorms};
     use crate::chunks::io::{ReadChunk, WriteChunk};
 
     const LEN: usize = 100;
@@ -173,5 +191,23 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let arr = NdNorms::read_chunk(&mut cursor).unwrap();
         assert_eq!(arr.view(), check_arr.view());
+    }
+
+    #[test]
+    fn test_prune_norms() {
+        let original_norms = test_ndnorms();
+        let toss_indices = &[1, 5, 7];
+        let most_similar_indices = arr1(&[2, 6, 8]);
+        let test_ndnorms = original_norms.prune_norms(toss_indices, &most_similar_indices);
+        for (toss_idx, remap_idx) in toss_indices.iter().zip(most_similar_indices.iter()) {
+            assert_eq!(
+                test_ndnorms.deref()[*toss_idx],
+                test_ndnorms.deref()[*remap_idx]
+            );
+            assert_eq!(
+                original_norms.deref()[*remap_idx],
+                test_ndnorms.deref()[*toss_idx]
+            );
+        }
     }
 }
