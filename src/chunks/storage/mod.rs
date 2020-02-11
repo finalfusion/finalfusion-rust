@@ -3,10 +3,14 @@
 use ndarray::{ArrayView2, ArrayViewMut2, CowArray, Ix1};
 
 mod array;
-pub use self::array::{MmapArray, NdArray};
+#[cfg(feature = "memmap")]
+pub use self::array::MmapArray;
+pub use self::array::NdArray;
 
 mod quantized;
-pub use self::quantized::{MmapQuantizedArray, Quantize, QuantizedArray};
+#[cfg(feature = "memmap")]
+pub use self::quantized::MmapQuantizedArray;
+pub use self::quantized::{Quantize, QuantizedArray};
 
 mod wrappers;
 pub use self::wrappers::{StorageViewWrap, StorageWrap};

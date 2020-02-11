@@ -42,6 +42,26 @@ jobs:
           command: test
           args: --target=${{ matrix.target }}
 
+  test-no-default:
+    name: Test no-default-features
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - 1.37.0
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest

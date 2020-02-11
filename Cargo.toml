@@ -21,7 +21,6 @@ exclude = [
 byteorder = "1"
 fnv = "1"
 itertools = "0.8"
-memmap = "0.7"
 ndarray = "0.13"
 ordered-float = "1"
 rand = "0.7"
@@ -29,6 +28,13 @@ rand_xorshift = "0.2"
 reductive = "0.4"
 serde = { version = "1", features = ["derive"] }
 toml = "0.5"
+
+[dependencies.memmap]
+version = "0.7"
+optional = true
+
+[features]
+default = ["memmap"]
 
 [dev-dependencies]
 approx = "0.3"
