@@ -39,6 +39,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "memmap")]
     fn prelude_allows_embedding_mmap_lookups() {
         let mut reader = BufReader::new(File::open("testdata/similarity.fifu").unwrap());
         let embeds_view: Embeddings<VocabWrap, StorageWrap> =
@@ -46,7 +47,7 @@ mod tests {
         assert!(embeds_view.embedding("Berlin").is_some());
     }
 
-    #[cfg(target_endian = "little")]
+    #[cfg(all(feature = "memmap", target_endian = "little"))]
     #[test]
     fn prelude_allows_embedding_mmap_view_lookups() {
         let mut reader = BufReader::new(File::open("testdata/similarity.fifu").unwrap());

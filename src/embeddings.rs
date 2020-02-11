@@ -1,7 +1,10 @@
 //! Word embeddings.
 
+#[cfg(feature = "memmap")]
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, Write};
+#[cfg(feature = "memmap")]
+use std::io::BufReader;
+use std::io::{Read, Seek, Write};
 use std::iter::Enumerate;
 use std::mem;
 use std::slice;
@@ -11,18 +14,24 @@ use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
 
-use crate::chunks::io::{ChunkIdentifier, Header, MmapChunk, ReadChunk, WriteChunk};
+#[cfg(feature = "memmap")]
+use crate::chunks::io::MmapChunk;
+use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
+#[cfg(feature = "memmap")]
+use crate::chunks::storage::{MmapArray, MmapQuantizedArray};
 use crate::chunks::storage::{
-    MmapArray, MmapQuantizedArray, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
-    StorageView, StorageViewWrap, StorageWrap,
+    NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView, StorageViewWrap,
+    StorageWrap,
 };
 use crate::chunks::vocab::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
     WordIndex,
 };
-use crate::io::{ErrorKind, MmapEmbeddings, ReadEmbeddings, Result, WriteEmbeddings};
+#[cfg(feature = "memmap")]
+use crate::io::MmapEmbeddings;
+use crate::io::{ErrorKind, ReadEmbeddings, Result, WriteEmbeddings};
 use crate::util::l2_normalize;
 
 /// Word embeddings.
@@ -279,33 +288,42 @@ macro_rules! impl_embeddings_from(
 // specialization to generalize this.
 impl_embeddings_from!(SimpleVocab, NdArray, StorageWrap);
 impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
-#[cfg(target_endian = "little")]
+#[cfg(all(target_endian = "little", feature = "memmap"))]
 impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(SimpleVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageViewWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
-#[cfg(target_endian = "little")]
+#[cfg(all(target_endian = "little", feature = "memmap"))]
 impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, QuantizedArray, StorageWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(BucketSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
-#[cfg(target_endian = "little")]
+#[cfg(all(target_endian = "little", feature = "memmap"))]
 impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(FastTextSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapQuantizedArray, StorageWrap);
-#[cfg(target_endian = "little")]
+#[cfg(all(target_endian = "little", feature = "memmap"))]
 impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(VocabWrap, QuantizedArray, StorageWrap);
+#[cfg(feature = "memmap")]
 impl_embeddings_from!(VocabWrap, MmapQuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
@@ -321,6 +339,7 @@ where
     }
 }
 
+#[cfg(feature = "memmap")]
 impl<V, S> MmapEmbeddings for Embeddings<V, S>
 where
     Self: Sized,
@@ -580,11 +599,11 @@ mod tests {
     use super::Embeddings;
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
-    use crate::chunks::storage::{MmapArray, NdArray, StorageView};
+    use crate::chunks::storage::{NdArray, StorageView};
     use crate::chunks::vocab::SimpleVocab;
     use crate::compat::fasttext::ReadFastText;
     use crate::compat::word2vec::ReadWord2VecRaw;
-    use crate::io::{MmapEmbeddings, ReadEmbeddings, WriteEmbeddings};
+    use crate::io::{ReadEmbeddings, WriteEmbeddings};
 
     fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
@@ -624,7 +643,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "memmap")]
     fn mmap() {
+        use crate::chunks::storage::MmapArray;
+        use crate::io::MmapEmbeddings;
         let check_embeds = test_embeddings();
         let mut reader = BufReader::new(File::open("testdata/similarity.fifu").unwrap());
         let embeds: Embeddings<SimpleVocab, MmapArray> =

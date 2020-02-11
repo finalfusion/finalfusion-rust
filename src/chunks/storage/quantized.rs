@@ -1,8 +1,12 @@
+#[cfg(feature = "memmap")]
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+#[cfg(feature = "memmap")]
+use std::io::BufReader;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+#[cfg(feature = "memmap")]
 use memmap::{Mmap, MmapOptions};
 use ndarray::{
     Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, Dimension, IntoDimension, Ix1,
@@ -12,7 +16,9 @@ use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use super::{Storage, StorageView};
-use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+#[cfg(feature = "memmap")]
+use crate::chunks::io::MmapChunk;
+use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
@@ -434,12 +440,14 @@ where
 }
 
 /// Memory-mapped quantized embedding matrix.
+#[cfg(feature = "memmap")]
 pub struct MmapQuantizedArray {
     quantizer: PQ<f32>,
     quantized_embeddings: Mmap,
     norms: Option<Array1<f32>>,
 }
 
+#[cfg(feature = "memmap")]
 impl MmapQuantizedArray {
     unsafe fn quantized_embeddings(&self) -> ArrayView2<u8> {
         let n_embeddings = self.shape().0;
@@ -451,6 +459,7 @@ impl MmapQuantizedArray {
     }
 }
 
+#[cfg(feature = "memmap")]
 impl MmapQuantizedArray {
     fn mmap_quantized_embeddings(
         read: &mut BufReader<File>,
@@ -488,6 +497,7 @@ impl MmapQuantizedArray {
     }
 }
 
+#[cfg(feature = "memmap")]
 impl Storage for MmapQuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         let quantized = unsafe { self.quantized_embeddings() };
@@ -508,6 +518,7 @@ impl Storage for MmapQuantizedArray {
     }
 }
 
+#[cfg(feature = "memmap")]
 impl MmapChunk for MmapQuantizedArray {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
@@ -543,6 +554,7 @@ impl MmapChunk for MmapQuantizedArray {
     }
 }
 
+#[cfg(feature = "memmap")]
 impl WriteChunk for MmapQuantizedArray {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::QuantizedArray
@@ -563,15 +575,16 @@ impl WriteChunk for MmapQuantizedArray {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+    use std::io::{Cursor, Read, Seek, SeekFrom};
 
     use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
     use reductive::pq::PQ;
 
-    use crate::chunks::io::{MmapChunk, ReadChunk, WriteChunk};
-    use crate::chunks::storage::{MmapQuantizedArray, NdArray, Quantize, QuantizedArray, Storage};
+    use crate::chunks::io::{ReadChunk, WriteChunk};
+    #[cfg(feature = "memmap")]
+    use crate::chunks::storage::Storage;
+    use crate::chunks::storage::{NdArray, Quantize, QuantizedArray};
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -598,6 +611,7 @@ mod tests {
     }
 
     // Compare storage for which Eq is not implemented.
+    #[cfg(feature = "memmap")]
     fn storage_eq(arr: &impl Storage, check_arr: &impl Storage) {
         assert_eq!(arr.shape(), check_arr.shape());
         for idx in 0..check_arr.shape().0 {
@@ -645,7 +659,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "memmap")]
     fn mmap_quantized_array() {
+        use crate::chunks::io::MmapChunk;
+        use crate::chunks::storage::MmapQuantizedArray;
+        use std::fs::File;
+        use std::io::BufReader;
+
         let mut storage_read =
             BufReader::new(File::open("testdata/quantized_storage.bin").unwrap());
         let check_arr = QuantizedArray::read_chunk(&mut storage_read).unwrap();
@@ -659,7 +679,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "memmap")]
     fn write_mmap_quantized_array() {
+        use crate::chunks::io::MmapChunk;
+        use crate::chunks::storage::MmapQuantizedArray;
+        use std::fs::File;
+        use std::io::BufReader;
+
         // Memory map matrix.
         let mut storage_read =
             BufReader::new(File::open("testdata/quantized_storage.bin").unwrap());

@@ -1,25 +1,35 @@
+#[cfg(feature = "memmap")]
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+#[cfg(feature = "memmap")]
+use std::io::BufReader;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 #[cfg(target_endian = "big")]
 use byteorder::ByteOrder;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+#[cfg(feature = "memmap")]
 use memmap::{Mmap, MmapOptions};
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Dimension, Ix1, Ix2};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Ix1};
+#[cfg(feature = "memmap")]
+use ndarray::{Dimension, Ix2};
 
 use super::{Storage, StorageView, StorageViewMut};
-use crate::chunks::io::{ChunkIdentifier, MmapChunk, ReadChunk, TypeId, WriteChunk};
+#[cfg(feature = "memmap")]
+use crate::chunks::io::MmapChunk;
+use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::io::{Error, ErrorKind, Result};
 use crate::util::padding;
 
 /// Memory-mapped matrix.
 #[derive(Debug)]
+#[cfg(feature = "memmap")]
 pub struct MmapArray {
     map: Mmap,
     shape: Ix2,
 }
 
+#[cfg(feature = "memmap")]
 impl Storage for MmapArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         #[allow(clippy::cast_ptr_alignment,unused_mut)]
@@ -45,7 +55,7 @@ impl Storage for MmapArray {
     }
 }
 
-#[cfg(target_endian = "little")]
+#[cfg(all(target_endian = "little", feature = "memmap"))]
 impl StorageView for MmapArray {
     fn view(&self) -> ArrayView2<f32> {
         // Alignment is ok, padding guarantees that the pointer is at
@@ -63,6 +73,7 @@ impl StorageViewMut for NdArray {
     }
 }
 
+#[cfg(feature = "memmap")]
 impl MmapChunk for MmapArray {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
@@ -113,7 +124,7 @@ impl MmapChunk for MmapArray {
     }
 }
 
-#[cfg(target_endian = "little")]
+#[cfg(all(feature = "memmap", target_endian = "little"))]
 impl WriteChunk for MmapArray {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::NdArray
