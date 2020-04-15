@@ -61,6 +61,8 @@ pub mod compat;
 
 pub mod embeddings;
 
+pub mod error;
+
 pub mod io;
 
 pub mod prelude;

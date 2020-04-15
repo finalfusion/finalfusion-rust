@@ -5,7 +5,7 @@ use std::io::{Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 
 mod subword;
 pub use subword::{
@@ -81,15 +81,14 @@ where
 {
     let mut items = Vec::with_capacity(len);
     for _ in 0..len {
-        let item_len = read
-            .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read item length", e))?
-            as usize;
+        let item_len =
+            read.read_u32::<LittleEndian>()
+                .map_err(|e| Error::io_error("Cannot read item length", e))? as usize;
         let mut bytes = vec![0; item_len];
         read.read_exact(&mut bytes)
-            .map_err(|e| ErrorKind::io_error("Cannot read item", e))?;
+            .map_err(|e| Error::io_error("Cannot read item", e))?;
         let item = String::from_utf8(bytes)
-            .map_err(|e| ErrorKind::Format(format!("Item contains invalid UTF-8: {}", e)))
+            .map_err(|e| Error::Format(format!("Item contains invalid UTF-8: {}", e)))
             .map_err(Error::from)?;
         items.push(item);
     }
@@ -103,10 +102,10 @@ where
     for word in items {
         write
             .write_u32::<LittleEndian>(word.len() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write token length", e))?;
+            .map_err(|e| Error::io_error("Cannot write token length", e))?;
         write
             .write_all(word.as_bytes())
-            .map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
+            .map_err(|e| Error::io_error("Cannot write token", e))?;
     }
     Ok(())
 }

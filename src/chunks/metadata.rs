@@ -6,8 +6,9 @@ use std::ops::{Deref, DerefMut};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use toml::Value;
 
-use super::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
-use crate::io::{Error, ErrorKind, ReadMetadata, Result};
+use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
+use crate::error::{Error, Result};
+use crate::io::ReadMetadata;
 
 /// Embeddings metadata.
 ///
@@ -52,23 +53,22 @@ impl ReadChunk for Metadata {
         ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::Metadata)?;
 
         // Read chunk length.
-        let chunk_len = read
-            .read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read chunk length", e))?
-            as usize;
+        let chunk_len =
+            read.read_u64::<LittleEndian>()
+                .map_err(|e| Error::io_error("Cannot read chunk length", e))? as usize;
 
         // Read TOML data.
         let mut buf = vec![0; chunk_len];
         read.read_exact(&mut buf)
-            .map_err(|e| ErrorKind::io_error("Cannot read TOML metadata", e))?;
+            .map_err(|e| Error::io_error("Cannot read TOML metadata", e))?;
         let buf_str = String::from_utf8(buf)
-            .map_err(|e| ErrorKind::Format(format!("TOML metadata contains invalid UTF-8: {}", e)))
+            .map_err(|e| Error::Format(format!("TOML metadata contains invalid UTF-8: {}", e)))
             .map_err(Error::from)?;
 
         Ok(Metadata::new(
             buf_str
                 .parse::<Value>()
-                .map_err(|e| ErrorKind::Format(format!("Cannot deserialize TOML metadata: {}", e)))
+                .map_err(|e| Error::Format(format!("Cannot deserialize TOML metadata: {}", e)))
                 .map_err(Error::from)?,
         ))
     }
@@ -87,13 +87,13 @@ impl WriteChunk for Metadata {
 
         write
             .write_u32::<LittleEndian>(self.chunk_identifier() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write metadata chunk identifier", e))?;
+            .map_err(|e| Error::io_error("Cannot write metadata chunk identifier", e))?;
         write
             .write_u64::<LittleEndian>(metadata_str.len() as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write metadata length", e))?;
+            .map_err(|e| Error::io_error("Cannot write metadata length", e))?;
         write
             .write_all(metadata_str.as_bytes())
-            .map_err(|e| ErrorKind::io_error("Cannot write metadata", e))?;
+            .map_err(|e| Error::io_error("Cannot write metadata", e))?;
 
         Ok(())
     }
@@ -108,9 +108,9 @@ impl ReadMetadata for Option<Metadata> {
         let chunks = header.chunk_identifiers();
 
         if chunks.is_empty() {
-            return Err(
-                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
-            );
+            return Err(Error::Format(String::from(
+                "Embedding file does not contain chunks",
+            )));
         }
 
         if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {

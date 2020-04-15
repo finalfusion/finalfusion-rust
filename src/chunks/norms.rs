@@ -7,8 +7,8 @@ use std::ops::Deref;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::Array1;
 
-use super::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
-use crate::io::{ErrorKind, Result};
+use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
+use crate::error::{Error, Result};
 use crate::util::padding;
 
 /// Chunk for storing embedding l2 norms.
@@ -58,24 +58,25 @@ impl ReadChunk for NdNorms {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read norms chunk length", e))?;
+            .map_err(|e| Error::io_error("Cannot read norms chunk length", e))?;
 
         let len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read norms vector length", e))?
+            .map_err(|e| Error::io_error("Cannot read norms vector length", e))?
             as usize;
 
         f32::ensure_data_type(read)?;
 
-        let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
-            ErrorKind::io_error("Cannot get file position for computing padding", e)
-        })?);
+        let n_padding =
+            padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::io_error("Cannot get file position for computing padding", e)
+            })?);
         read.seek(SeekFrom::Current(n_padding as i64))
-            .map_err(|e| ErrorKind::io_error("Cannot skip padding", e))?;
+            .map_err(|e| Error::io_error("Cannot skip padding", e))?;
 
         let mut data = vec![0f32; len];
         read.read_f32_into::<LittleEndian>(&mut data)
-            .map_err(|e| ErrorKind::io_error("Cannot read norms", e))?;
+            .map_err(|e| Error::io_error("Cannot read norms", e))?;
 
         Ok(NdNorms::new(data))
     }
@@ -92,10 +93,11 @@ impl WriteChunk for NdNorms {
     {
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::NdNorms as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write norms chunk identifier", e))?;
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
-            ErrorKind::io_error("Cannot get file position for computing padding", e)
-        })?);
+            .map_err(|e| Error::io_error("Cannot write norms chunk identifier", e))?;
+        let n_padding =
+            padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::io_error("Cannot get file position for computing padding", e)
+            })?);
 
         // Chunk size: len (u64), type id (u32), padding ([0,4) bytes), vector.
         let chunk_len = size_of::<u64>()
@@ -104,23 +106,23 @@ impl WriteChunk for NdNorms {
             + (self.len() * size_of::<f32>());
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write norms chunk length", e))?;
+            .map_err(|e| Error::io_error("Cannot write norms chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.len() as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write norms vector length", e))?;
+            .map_err(|e| Error::io_error("Cannot write norms vector length", e))?;
         write
             .write_u32::<LittleEndian>(f32::type_id())
-            .map_err(|e| ErrorKind::io_error("Cannot write norms vector type identifier", e))?;
+            .map_err(|e| Error::io_error("Cannot write norms vector type identifier", e))?;
 
         let padding = vec![0; n_padding as usize];
         write
             .write_all(&padding)
-            .map_err(|e| ErrorKind::io_error("Cannot write padding", e))?;
+            .map_err(|e| Error::io_error("Cannot write padding", e))?;
 
         for &val in self.iter() {
             write
                 .write_f32::<LittleEndian>(val)
-                .map_err(|e| ErrorKind::io_error("Cannot write norm", e))?;
+                .map_err(|e| Error::io_error("Cannot write norm", e))?;
         }
 
         Ok(())

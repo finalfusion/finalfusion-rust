@@ -10,7 +10,7 @@ use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{FastTextSubwordVocab, SubwordIndices, Vocab};
 use crate::embeddings::Embeddings;
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 use crate::subword::BucketIndexer;
 use crate::util::{l2_normalize_array, read_string};
 
@@ -59,24 +59,22 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
     fn read_fasttext_private(mut reader: &mut impl BufRead, lossy: bool) -> Result<Self> {
         let magic = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot fastText read magic", e))?;
+            .map_err(|e| Error::io_error("Cannot fastText read magic", e))?;
         if magic != FASTTEXT_FILEFORMAT_MAGIC {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Expected {} as magic, got: {}",
                 FASTTEXT_FILEFORMAT_MAGIC, magic
-            ))
-            .into());
+            )));
         }
 
         let version = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read fastText version", e))?;
+            .map_err(|e| Error::io_error("Cannot read fastText version", e))?;
         if version > FASTTEXT_VERSION {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Expected {} as version, got: {}",
                 FASTTEXT_VERSION, version
-            ))
-            .into());
+            )));
         }
 
         let config = Config::read(&mut reader)?;
@@ -85,11 +83,11 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
 
         let is_quantized = reader
             .read_u8()
-            .map_err(|e| ErrorKind::io_error("Cannot read quantization information", e))?;
+            .map_err(|e| Error::io_error("Cannot read quantization information", e))?;
         if is_quantized == 1 {
-            return Err(
-                ErrorKind::Format("Quantized fastText models are not supported".into()).into(),
-            );
+            return Err(Error::Format(
+                "Quantized fastText models are not supported".into(),
+            ));
         }
 
         // Read and prepare storage.
@@ -108,7 +106,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
         }
 
         let metadata = Value::try_from(config).map_err(|e| {
-            ErrorKind::Format(format!("Cannot serialize model metadata to TOML: {}", e))
+            Error::Format(format!("Cannot serialize model metadata to TOML: {}", e))
         })?;
 
         Ok(Embeddings::new(
@@ -146,39 +144,39 @@ impl Config {
     {
         let dims = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read number of dimensions", e))?;
+            .map_err(|e| Error::io_error("Cannot read number of dimensions", e))?;
         let window_size = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read window size", e))?;
+            .map_err(|e| Error::io_error("Cannot read window size", e))?;
         let epoch = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read number of epochs", e))?;
+            .map_err(|e| Error::io_error("Cannot read number of epochs", e))?;
         let min_count = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read minimum count", e))?;
+            .map_err(|e| Error::io_error("Cannot read minimum count", e))?;
         let neg = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read negative samples", e))?;
+            .map_err(|e| Error::io_error("Cannot read negative samples", e))?;
         let word_ngrams = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read word n-gram length", e))?;
+            .map_err(|e| Error::io_error("Cannot read word n-gram length", e))?;
         let loss = Loss::read(reader)?;
         let model = Model::read(reader)?;
         let bucket = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read number of buckets", e))?;
+            .map_err(|e| Error::io_error("Cannot read number of buckets", e))?;
         let min_n = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read minimum subword length", e))?;
+            .map_err(|e| Error::io_error("Cannot read minimum subword length", e))?;
         let max_n = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read maximum subword length", e))?;
+            .map_err(|e| Error::io_error("Cannot read maximum subword length", e))?;
         let lr_update_rate = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read LR update rate", e))?;
+            .map_err(|e| Error::io_error("Cannot read LR update rate", e))?;
         let sampling_threshold = reader
             .read_f64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read sampling threshold", e))?;
+            .map_err(|e| Error::io_error("Cannot read sampling threshold", e))?;
 
         Ok(Config {
             dims,
@@ -213,14 +211,14 @@ impl Loss {
     {
         let loss = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read loss type", e))?;
+            .map_err(|e| Error::io_error("Cannot read loss type", e))?;
 
         use self::Loss::*;
         match loss {
             1 => Ok(HierarchicalSoftmax),
             2 => Ok(NegativeSampling),
             3 => Ok(Softmax),
-            l => Err(ErrorKind::Format(format!("Unknown loss: {}", l)).into()),
+            l => Err(Error::Format(format!("Unknown loss: {}", l))),
         }
     }
 }
@@ -240,14 +238,14 @@ impl Model {
     {
         let model = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read model type", e))?;
+            .map_err(|e| Error::io_error("Cannot read model type", e))?;
 
         use self::Model::*;
         match model {
             1 => Ok(CBOW),
             2 => Ok(SkipGram),
             3 => Ok(Supervised),
-            m => Err(ErrorKind::Format(format!("Unknown model: {}", m)).into()),
+            m => Err(Error::Format(format!("Unknown model: {}", m))),
         }
     }
 }
@@ -282,15 +280,15 @@ where
 {
     let m = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix rows", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of embedding matrix rows", e))?;
     let n = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of embedding matrix columns", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of embedding matrix columns", e))?;
 
     let mut data = vec![0.0; (m * n) as usize];
     reader
         .read_f32_into::<LittleEndian>(&mut data)
-        .map_err(|e| ErrorKind::io_error("Cannot read embeddings", e))?;
+        .map_err(|e| Error::io_error("Cannot read embeddings", e))?;
 
     let data = Array2::from_shape_vec((m as usize, n as usize), data).map_err(Error::Shape)?;
 
@@ -304,29 +302,31 @@ where
 {
     let size = reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read vocabulary size", e))?;
+        .map_err(|e| Error::io_error("Cannot read vocabulary size", e))?;
     reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of words", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of words", e))?;
 
     let n_labels = reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot number of labels", e))?;
+        .map_err(|e| Error::io_error("Cannot number of labels", e))?;
     if n_labels > 0 {
-        return Err(
-            ErrorKind::Format("fastText prediction models are not supported".into()).into(),
-        );
+        return Err(Error::Format(
+            "fastText prediction models are not supported".into(),
+        ));
     }
 
     reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read number of tokens", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of tokens", e))?;
 
     let prune_idx_size = reader
         .read_i64::<LittleEndian>()
-        .map_err(|e| ErrorKind::io_error("Cannot read pruned vocabulary size", e))?;
+        .map_err(|e| Error::io_error("Cannot read pruned vocabulary size", e))?;
     if prune_idx_size > 0 {
-        return Err(ErrorKind::Format("Pruned vocabularies are not supported".into()).into());
+        return Err(Error::Format(
+            "Pruned vocabularies are not supported".into(),
+        ));
     }
 
     let mut words = Vec::with_capacity(size as usize);
@@ -334,12 +334,12 @@ where
         let word = read_string(reader, 0, lossy)?;
         reader
             .read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read word frequency", e))?;
+            .map_err(|e| Error::io_error("Cannot read word frequency", e))?;
         let entry_type = reader
             .read_u8()
-            .map_err(|e| ErrorKind::io_error("Cannot read entry type", e))?;
+            .map_err(|e| Error::io_error("Cannot read entry type", e))?;
         if entry_type != 0 {
-            return Err(ErrorKind::Format("Non-word entry".into()).into());
+            return Err(Error::Format("Non-word entry".into()));
         }
 
         words.push(word)

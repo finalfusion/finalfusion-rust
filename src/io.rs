@@ -6,84 +6,10 @@
 //! provides the `Error`, `ErrorKind`, and `Result` types that are
 //! used for handling I/O errors throughout the crate.
 
-use std::fmt;
 use std::fs::File;
-use std::io;
 use std::io::{BufReader, Read, Seek, Write};
 
-use ndarray::ShapeError;
-
-/// `Result` type alias for operations that can lead to I/O errors.
-pub type Result<T> = ::std::result::Result<T, Error>;
-
-/// I/O errors in reading or writing embeddings.
-#[derive(Debug)]
-pub enum Error {
-    /// finalfusion errors.
-    FinalFusion(ErrorKind),
-
-    /// `ndarray` shape error.
-    Shape(ShapeError),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-        match *self {
-            FinalFusion(ref kind) => kind.fmt(f),
-            Shape(ref err) => err.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn description(&self) -> &str {
-        use self::Error::*;
-
-        match *self {
-            FinalFusion(ErrorKind::Format(ref desc)) => desc,
-            FinalFusion(ErrorKind::Io { ref desc, .. }) => desc,
-            Shape(ref err) => err.description(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ErrorKind {
-    /// Invalid file format.
-    Format(String),
-
-    /// I/O error.
-    Io { desc: String, error: io::Error },
-}
-
-impl ErrorKind {
-    pub fn io_error(desc: impl Into<String>, error: io::Error) -> Self {
-        ErrorKind::Io {
-            desc: desc.into(),
-            error,
-        }
-    }
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ErrorKind::*;
-        match *self {
-            Format(ref desc) => write!(f, "{}", desc),
-            Io {
-                ref desc,
-                ref error,
-            } => write!(f, "{}: {}", desc, error),
-        }
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
-        Error::FinalFusion(kind)
-    }
-}
+use crate::error::Result;
 
 /// Read finalfusion embeddings.
 ///

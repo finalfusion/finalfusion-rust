@@ -29,9 +29,10 @@ use crate::chunks::vocab::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
     WordIndex,
 };
+use crate::error::{Error, Result};
 #[cfg(feature = "memmap")]
 use crate::io::MmapEmbeddings;
-use crate::io::{ErrorKind, ReadEmbeddings, Result, WriteEmbeddings};
+use crate::io::{ReadEmbeddings, WriteEmbeddings};
 use crate::util::l2_normalize;
 
 /// Word embeddings.
@@ -350,9 +351,9 @@ where
         let header = Header::read_chunk(read)?;
         let chunks = header.chunk_identifiers();
         if chunks.is_empty() {
-            return Err(
-                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
-            );
+            return Err(Error::Format(String::from(
+                "Embedding file does not contain chunks",
+            )));
         }
 
         let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
@@ -386,9 +387,9 @@ where
         let header = Header::read_chunk(read)?;
         let chunks = header.chunk_identifiers();
         if chunks.is_empty() {
-            return Err(
-                ErrorKind::Format(String::from("Embedding file does not contain chunks")).into(),
-            );
+            return Err(Error::Format(String::from(
+                "Embedding file does not contain chunks",
+            )));
         }
 
         let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {

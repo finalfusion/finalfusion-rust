@@ -39,7 +39,7 @@ use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 use crate::util::{l2_normalize_array, read_number};
 
 /// Method to construct `Embeddings` from a text file.
@@ -206,7 +206,7 @@ where
         let mut buf = Vec::new();
         match reader
             .read_until(b'\n', &mut buf)
-            .map_err(|e| ErrorKind::io_error("Cannot read line from embedding file", e))?
+            .map_err(|e| Error::io_error("Cannot read line from embedding file", e))?
         {
             0 => break,
             n => {
@@ -220,7 +220,7 @@ where
             String::from_utf8_lossy(&buf).into_owned()
         } else {
             String::from_utf8(buf)
-                .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?
+                .map_err(|e| Error::Format(format!("Token contains invalid UTF-8: {}", e)))?
         };
 
         let mut parts = line
@@ -229,34 +229,32 @@ where
 
         let word = parts
             .next()
-            .ok_or_else(|| ErrorKind::Format(String::from("Spurious empty line")))?
+            .ok_or_else(|| Error::Format(String::from("Spurious empty line")))?
             .trim_matches(|c: char| c.is_ascii_whitespace());
         words.push(word.to_owned());
 
         for part in parts {
             data.push(part.parse().map_err(|e| {
-                ErrorKind::Format(format!("Cannot parse vector component '{}': {}", part, e))
+                Error::Format(format!("Cannot parse vector component '{}': {}", part, e))
             })?);
         }
     }
 
     let shape = if let Some((n_words, dims)) = shape {
         if words.len() != n_words {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Incorrect vocabulary size, expected: {}, got: {}",
                 n_words,
                 words.len()
-            ))
-            .into());
+            )));
         }
 
         if data.len() / n_words != dims {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Incorrect embedding dimensionality, expected: {}, got: {}",
                 dims,
                 data.len() / n_words,
-            ))
-            .into());
+            )));
         };
 
         (n_words, dims)
@@ -308,7 +306,7 @@ where
 
             let embed_str = embed.view().iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", word, embed_str)
-                .map_err(|e| ErrorKind::io_error("Cannot write word embedding", e))?;
+                .map_err(|e| Error::io_error("Cannot write word embedding", e))?;
         }
 
         Ok(())
@@ -341,7 +339,7 @@ where
 {
     fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<()> {
         writeln!(write, "{} {}", self.vocab().words_len(), self.dims())
-            .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
+            .map_err(|e| Error::io_error("Cannot write word embedding matrix shape", e))?;
         self.write_text(write, unnormalize)
     }
 }
