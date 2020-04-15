@@ -1,10 +1,11 @@
+use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 
 const MODEL_VERSION: u32 = 0;
 
@@ -25,22 +26,6 @@ pub enum ChunkIdentifier {
 }
 
 impl ChunkIdentifier {
-    pub fn try_from(identifier: u32) -> Option<Self> {
-        use self::ChunkIdentifier::*;
-
-        match identifier {
-            1 => Some(SimpleVocab),
-            2 => Some(NdArray),
-            3 => Some(BucketSubwordVocab),
-            4 => Some(QuantizedArray),
-            5 => Some(Metadata),
-            6 => Some(NdNorms),
-            7 => Some(FastTextSubwordVocab),
-            8 => Some(ExplicitSubwordVocab),
-            _ => None,
-        }
-    }
-
     /// Read and ensure that the chunk has the given identifier.
     pub fn ensure_chunk_type<R>(read: &mut R, identifier: ChunkIdentifier) -> Result<()>
     where
@@ -48,16 +33,13 @@ impl ChunkIdentifier {
     {
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
         if chunk_id != identifier {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
                 identifier, chunk_id
-            ))
-            .into());
+            )));
         }
 
         Ok(())
@@ -82,6 +64,26 @@ impl Display for ChunkIdentifier {
     }
 }
 
+impl TryFrom<u32> for ChunkIdentifier {
+    type Error = Error;
+
+    fn try_from(identifier: u32) -> Result<Self> {
+        use self::ChunkIdentifier::*;
+
+        match identifier {
+            1 => Ok(SimpleVocab),
+            2 => Ok(NdArray),
+            3 => Ok(BucketSubwordVocab),
+            4 => Ok(QuantizedArray),
+            5 => Ok(Metadata),
+            6 => Ok(NdNorms),
+            7 => Ok(FastTextSubwordVocab),
+            8 => Ok(ExplicitSubwordVocab),
+            unknown => Err(Error::UnknownChunkIdentifier(unknown)),
+        }
+    }
+}
+
 /// Trait defining identifiers for data types.
 pub trait TypeId {
     /// Read and ensure that the data type is equal to `Self`.
@@ -102,14 +104,13 @@ macro_rules! typeid_impl {
             {
                 let type_id = read
                     .read_u32::<LittleEndian>()
-                    .map_err(|e| ErrorKind::io_error("Cannot read type identifier", e))?;
+                    .map_err(|e| Error::io_error("Cannot read type identifier", e))?;
                 if type_id != Self::type_id() {
-                    return Err(ErrorKind::Format(format!(
+                    return Err(Error::Format(format!(
                         "Invalid type, expected: {}, got: {}",
                         Self::type_id(),
                         type_id
-                    ))
-                    .into());
+                    )));
                 }
 
                 Ok(())
@@ -183,18 +184,18 @@ impl WriteChunk for Header {
     {
         write
             .write_all(&MAGIC)
-            .map_err(|e| ErrorKind::io_error("Cannot write magic", e))?;
+            .map_err(|e| Error::io_error("Cannot write magic", e))?;
         write
             .write_u32::<LittleEndian>(MODEL_VERSION)
-            .map_err(|e| ErrorKind::io_error("Cannot write model version", e))?;
+            .map_err(|e| Error::io_error("Cannot write model version", e))?;
         write
             .write_u32::<LittleEndian>(self.chunk_identifiers.len() as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write chunk identifiers length", e))?;
+            .map_err(|e| Error::io_error("Cannot write chunk identifiers length", e))?;
 
         for &identifier in &self.chunk_identifiers {
             write
                 .write_u32::<LittleEndian>(identifier as u32)
-                .map_err(|e| ErrorKind::io_error("Cannot write chunk identifier", e))?;
+                .map_err(|e| Error::io_error("Cannot write chunk identifier", e))?;
         }
 
         Ok(())
@@ -209,40 +210,36 @@ impl ReadChunk for Header {
         // Magic and version ceremony.
         let mut magic = [0u8; 4];
         read.read_exact(&mut magic)
-            .map_err(|e| ErrorKind::io_error("Cannot read magic", e))?;
+            .map_err(|e| Error::io_error("Cannot read magic", e))?;
 
         if magic != MAGIC {
-            return Err(ErrorKind::Format(format!(
+            return Err(Error::Format(format!(
                 "Expected 'FiFu' as magic, got: {}",
                 String::from_utf8_lossy(&magic).into_owned()
-            ))
-            .into());
+            )));
         }
 
         let version = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read model version", e))?;
+            .map_err(|e| Error::io_error("Cannot read model version", e))?;
         if version != MODEL_VERSION {
-            return Err(
-                ErrorKind::Format(format!("Unknown finalfusion version: {}", version)).into(),
-            );
+            return Err(Error::Format(format!(
+                "Unknown finalfusion version: {}",
+                version
+            )));
         }
 
         // Read chunk identifiers.
         let chunk_identifiers_len = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read chunk identifiers length", e))?
+            .map_err(|e| Error::io_error("Cannot read chunk identifiers length", e))?
             as usize;
         let mut chunk_identifiers = Vec::with_capacity(chunk_identifiers_len);
         for _ in 0..chunk_identifiers_len {
             let identifier = read
                 .read_u32::<LittleEndian>()
-                .map_err(|e| ErrorKind::io_error("Cannot read chunk identifier", e))?;
-            let chunk_identifier = ChunkIdentifier::try_from(identifier)
-                .ok_or_else(|| {
-                    ErrorKind::Format(format!("Unknown chunk identifier: {}", identifier))
-                })
-                .map_err(Error::from)?;
+                .map_err(|e| Error::io_error("Cannot read chunk identifier", e))?;
+            let chunk_identifier = ChunkIdentifier::try_from(identifier)?;
             chunk_identifiers.push(chunk_identifier);
         }
 

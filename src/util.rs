@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io::BufRead;
 use std::mem::size_of;
 
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 use ndarray::{Array1, ArrayViewMut1, ArrayViewMut2};
 
 /// Conversion from an `Iterator` into a collection with a given
@@ -90,7 +90,7 @@ pub fn read_number(reader: &mut dyn BufRead, delim: u8) -> Result<usize> {
     field_str
         .parse()
         .map_err(|e| {
-            ErrorKind::Format(format!(
+            Error::Format(format!(
                 "Cannot parse shape component '{}': {}",
                 field_str, e
             ))
@@ -102,14 +102,14 @@ pub fn read_string(reader: &mut dyn BufRead, delim: u8, lossy: bool) -> Result<S
     let mut buf = Vec::new();
     reader
         .read_until(delim, &mut buf)
-        .map_err(|e| ErrorKind::io_error("Cannot read string", e))?;
+        .map_err(|e| Error::io_error("Cannot read string", e))?;
     buf.pop();
 
     let s = if lossy {
         String::from_utf8_lossy(&buf).into_owned()
     } else {
         String::from_utf8(buf)
-            .map_err(|e| ErrorKind::Format(format!("Token contains invalid UTF-8: {}", e)))?
+            .map_err(|e| Error::Format(format!("Token contains invalid UTF-8: {}", e)))?
     };
 
     Ok(s)

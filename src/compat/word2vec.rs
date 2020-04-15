@@ -28,7 +28,7 @@ use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{NdArray, Storage, StorageViewMut};
 use crate::chunks::vocab::{SimpleVocab, Vocab};
 use crate::embeddings::Embeddings;
-use crate::io::{ErrorKind, Result};
+use crate::error::{Error, Result};
 use crate::util::{l2_normalize_array, read_number, read_string};
 
 /// Method to construct `Embeddings` from a word2vec binary file.
@@ -104,7 +104,7 @@ where
                 .read_f32_into::<LittleEndian>(
                     embedding.as_slice_mut().expect("Matrix not contiguous"),
                 )
-                .map_err(|e| ErrorKind::io_error("Cannot read word embedding", e))?;
+                .map_err(|e| Error::io_error("Cannot read word embedding", e))?;
         }
 
         Ok(Embeddings::new_without_norms(
@@ -141,10 +141,10 @@ where
         W: Write,
     {
         writeln!(w, "{} {}", self.vocab().words_len(), self.dims())
-            .map_err(|e| ErrorKind::io_error("Cannot write word embedding matrix shape", e))?;
+            .map_err(|e| Error::io_error("Cannot write word embedding matrix shape", e))?;
 
         for (word, embed_norm) in self.iter_with_norms() {
-            write!(w, "{} ", word).map_err(|e| ErrorKind::io_error("Cannot write token", e))?;
+            write!(w, "{} ", word).map_err(|e| Error::io_error("Cannot write token", e))?;
 
             let embed = if unnormalize {
                 CowArray::from(embed_norm.into_unnormalized())
@@ -154,11 +154,11 @@ where
 
             for v in embed.view() {
                 w.write_f32::<LittleEndian>(*v)
-                    .map_err(|e| ErrorKind::io_error("Cannot write embedding component", e))?;
+                    .map_err(|e| Error::io_error("Cannot write embedding component", e))?;
             }
 
             w.write_all(&[0x0a])
-                .map_err(|e| ErrorKind::io_error("Cannot write embedding separator", e))?;
+                .map_err(|e| Error::io_error("Cannot write embedding separator", e))?;
         }
 
         Ok(())

@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 #[cfg(feature = "memmap")]
 use std::fs::File;
 #[cfg(feature = "memmap")]
@@ -10,7 +11,7 @@ use super::{NdArray, QuantizedArray, Storage, StorageView};
 #[cfg(feature = "memmap")]
 use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
 use ndarray::{ArrayView2, CowArray, Ix1};
 
@@ -92,30 +93,27 @@ impl ReadChunk for StorageWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageWrap::NdArray),
             ChunkIdentifier::QuantizedArray => QuantizedArray::read_chunk(read)
                 .map(Box::new)
                 .map(StorageWrap::QuantizedArray),
-            _ => Err(ErrorKind::Format(format!(
+            _ => Err(Error::Format(format!(
                 "Invalid chunk identifier, expected one of: {} or {}, got: {}",
                 ChunkIdentifier::NdArray,
                 ChunkIdentifier::QuantizedArray,
                 chunk_id
-            ))
-            .into()),
+            ))),
         }
     }
 }
@@ -125,29 +123,26 @@ impl MmapChunk for StorageWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageWrap::MmapArray),
             ChunkIdentifier::QuantizedArray => {
                 MmapQuantizedArray::mmap_chunk(read).map(StorageWrap::MmapQuantizedArray)
             }
-            _ => Err(ErrorKind::Format(format!(
+            _ => Err(Error::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
                 ChunkIdentifier::NdArray,
                 chunk_id
-            ))
-            .into()),
+            ))),
         }
     }
 }
@@ -241,26 +236,23 @@ impl ReadChunk for StorageViewWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageViewWrap::NdArray),
-            _ => Err(ErrorKind::Format(format!(
+            _ => Err(Error::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
                 ChunkIdentifier::NdArray,
                 chunk_id
-            ))
-            .into()),
+            ))),
         }
     }
 }
@@ -291,27 +283,24 @@ impl MmapChunk for StorageViewWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| ErrorKind::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read storage chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| ErrorKind::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             #[cfg(target_endian = "little")]
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageViewWrap::MmapArray),
-            _ => Err(ErrorKind::Format(format!(
+            _ => Err(Error::Format(format!(
                 "Invalid chunk identifier, expected: {}, got: {}",
                 ChunkIdentifier::NdArray,
                 chunk_id
-            ))
-            .into()),
+            ))),
         }
     }
 }

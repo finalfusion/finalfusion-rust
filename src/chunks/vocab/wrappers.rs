@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -7,7 +8,7 @@ use crate::chunks::vocab::subword::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab,
 };
 use crate::chunks::vocab::{SimpleVocab, SubwordVocab, Vocab, WordIndex};
-use crate::io::{Error, ErrorKind, Result};
+use crate::error::{Error, Result};
 
 /// Vocabulary types wrapper.
 ///
@@ -98,17 +99,14 @@ impl ReadChunk for VocabWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| ErrorKind::io_error("Cannot get vocabulary chunk start position", e))?;
+            .map_err(|e| Error::io_error("Cannot get vocabulary chunk start position", e))?;
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk identifier", e))?;
-        let chunk_id = ChunkIdentifier::try_from(chunk_id)
-            .ok_or_else(|| ErrorKind::Format(format!("Unknown chunk identifier: {}", chunk_id)))
-            .map_err(Error::from)?;
+            .map_err(|e| Error::io_error("Cannot read vocabulary chunk identifier", e))?;
+        let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
-        read.seek(SeekFrom::Start(chunk_start_pos)).map_err(|e| {
-            ErrorKind::io_error("Cannot seek to vocabulary chunk start position", e)
-        })?;
+        read.seek(SeekFrom::Start(chunk_start_pos))
+            .map_err(|e| Error::io_error("Cannot seek to vocabulary chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::SimpleVocab => {
@@ -123,15 +121,14 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::ExplicitSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::ExplicitSubwordVocab)
             }
-            _ => Err(ErrorKind::Format(format!(
+            _ => Err(Error::Format(format!(
                 "Invalid chunk identifier, expected one of: {}, {}, {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
                 ChunkIdentifier::ExplicitSubwordVocab,
                 ChunkIdentifier::FastTextSubwordVocab,
                 ChunkIdentifier::BucketSubwordVocab,
                 chunk_id
-            ))
-            .into()),
+            ))),
         }
     }
 }

@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::chunks::vocab::{create_indices, read_vocab_items, write_vocab_items, Vocab, WordIndex};
-use crate::io::{ErrorKind, Result};
+use crate::error::{Error, Result};
 
 /// Vocabulary without subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,11 +60,11 @@ impl ReadChunk for SimpleVocab {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary chunk length", e))?;
+            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
 
         let vocab_len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| ErrorKind::io_error("Cannot read vocabulary length", e))?
+            .map_err(|e| Error::io_error("Cannot read vocabulary length", e))?
             as usize;
 
         let words = read_vocab_items(read, vocab_len)?;
@@ -93,13 +93,13 @@ impl WriteChunk for SimpleVocab {
 
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)
-            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary chunk identifier", e))?;
+            .map_err(|e| Error::io_error("Cannot write vocabulary chunk identifier", e))?;
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary chunk length", e))?;
+            .map_err(|e| Error::io_error("Cannot write vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
-            .map_err(|e| ErrorKind::io_error("Cannot write vocabulary length", e))?;
+            .map_err(|e| Error::io_error("Cannot write vocabulary length", e))?;
 
         write_vocab_items(write, self.words())?;
 
