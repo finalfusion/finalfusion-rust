@@ -16,13 +16,19 @@ the API have not reached version 1 (particularly `ndarray` and
 `rand`). Future 0.x releases of `finalfusion` will be used to accomodate
 updates of these dependencies.
 
+**Heads-up:** there is a small API change between finalfusion 0.11 and
+0.12. The `Error` type has been moved from `finalfusion::io` to
+`finalfusion::error`. The separate `ErrorKind` enum has been merged
+with `Error`. `Error` is now marked as non-exhaustive, so that new
+error variants can be added in the future without changing the API.
+
 ## Usage
 
 To make `finalfusion` available in your crate, simply place the following
 in your `Cargo.toml`
 
 ~~~
-finalfusion = 0.10
+finalfusion = 0.12
 ~~~
 
 Loading embeddings and querying it is as simple as:
