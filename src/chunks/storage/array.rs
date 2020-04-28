@@ -12,7 +12,9 @@ use crate::util::padding;
 #[cfg(feature = "memmap")]
 mod mmap {
     use std::fs::File;
-    use std::io::{BufReader, Seek, SeekFrom, Write};
+    #[cfg(target_endian = "little")]
+    use std::io::Write;
+    use std::io::{BufReader, Seek, SeekFrom};
     use std::mem::size_of;
 
     use crate::chunks::io::MmapChunk;
@@ -23,9 +25,14 @@ mod mmap {
     use ndarray::{ArrayView2, CowArray, Ix1};
     use ndarray::{Dimension, Ix2};
 
+    #[cfg(target_endian = "little")]
     use super::NdArray;
-    use crate::chunks::io::{ChunkIdentifier, TypeId, WriteChunk};
-    use crate::chunks::storage::{Storage, StorageView};
+    #[cfg(target_endian = "little")]
+    use crate::chunks::io::WriteChunk;
+    use crate::chunks::io::{ChunkIdentifier, TypeId};
+    use crate::chunks::storage::Storage;
+    #[cfg(target_endian = "little")]
+    use crate::chunks::storage::StorageView;
     use crate::error::{Error, Result};
     use crate::util::padding;
 

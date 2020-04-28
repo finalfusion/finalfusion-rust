@@ -314,8 +314,9 @@ mod mmap {
     use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk};
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
-    use crate::chunks::storage::{MmapArray, MmapQuantizedArray};
-    use crate::chunks::storage::{StorageViewWrap, StorageWrap};
+    #[cfg(target_endian = "little")]
+    use crate::chunks::storage::StorageViewWrap;
+    use crate::chunks::storage::{MmapArray, MmapQuantizedArray, StorageWrap};
     use crate::chunks::vocab::{
         BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, VocabWrap,
     };
