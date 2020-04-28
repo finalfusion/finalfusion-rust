@@ -1,13 +1,7 @@
-#[cfg(feature = "memmap")]
-use std::fs::File;
-#[cfg(feature = "memmap")]
-use std::io::BufReader;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-#[cfg(feature = "memmap")]
-use memmap::{Mmap, MmapOptions};
 use ndarray::{
     Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, Dimension, IntoDimension, Ix1,
 };
@@ -16,8 +10,6 @@ use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use super::{Storage, StorageView};
-#[cfg(feature = "memmap")]
-use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::error::{Error, Result};
 use crate::util::padding;
@@ -440,137 +432,152 @@ where
     }
 }
 
-/// Memory-mapped quantized embedding matrix.
 #[cfg(feature = "memmap")]
-pub struct MmapQuantizedArray {
-    quantizer: PQ<f32>,
-    quantized_embeddings: Mmap,
-    norms: Option<Array1<f32>>,
-}
+mod mmap {
+    use std::fs::File;
+    use std::io::{BufReader, Seek, SeekFrom, Write};
 
-#[cfg(feature = "memmap")]
-impl MmapQuantizedArray {
-    unsafe fn quantized_embeddings(&self) -> ArrayView2<u8> {
-        let n_embeddings = self.shape().0;
+    use memmap::{Mmap, MmapOptions};
+    use ndarray::{Array1, ArrayView2, CowArray, Ix1};
+    use reductive::pq::{QuantizeVector, ReconstructVector, PQ};
 
-        ArrayView2::from_shape_ptr(
-            (n_embeddings, self.quantizer.quantized_len()),
-            self.quantized_embeddings.as_ptr(),
-        )
+    use super::{PQRead, QuantizedArray, Storage};
+    use crate::chunks::io::MmapChunk;
+    use crate::chunks::io::{ChunkIdentifier, WriteChunk};
+    use crate::error::{Error, Result};
+    use byteorder::{LittleEndian, ReadBytesExt};
+
+    /// Memory-mapped quantized embedding matrix.
+    pub struct MmapQuantizedArray {
+        quantizer: PQ<f32>,
+        quantized_embeddings: Mmap,
+        norms: Option<Array1<f32>>,
     }
-}
 
-#[cfg(feature = "memmap")]
-impl MmapQuantizedArray {
-    fn mmap_quantized_embeddings(
-        read: &mut BufReader<File>,
-        n_embeddings: usize,
-        quantized_len: usize,
-    ) -> Result<Mmap> {
-        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
-            Error::io_error(
-                "Cannot get file position for memory mapping embedding matrix",
-                e,
+    impl MmapQuantizedArray {
+        unsafe fn quantized_embeddings(&self) -> ArrayView2<u8> {
+            let n_embeddings = self.shape().0;
+
+            ArrayView2::from_shape_ptr(
+                (n_embeddings, self.quantizer.quantized_len()),
+                self.quantized_embeddings.as_ptr(),
             )
-        })?;
-        let matrix_len = n_embeddings * quantized_len;
-        let mut mmap_opts = MmapOptions::new();
-        let quantized = unsafe {
-            mmap_opts
-                .offset(offset)
-                .len(matrix_len)
-                .map(&read.get_ref())
-                .map_err(|e| Error::io_error("Cannot memory map quantized embedding matrix", e))?
-        };
-
-        // Position the reader after the matrix.
-        read.seek(SeekFrom::Current(matrix_len as i64))
-            .map_err(|e| Error::io_error("Cannot skip quantized embedding matrix", e))?;
-
-        Ok(quantized)
+        }
     }
 
-    /// Get the quantizer.
-    pub fn quantizer(&self) -> &PQ<f32> {
-        &self.quantizer
-    }
-}
+    impl MmapQuantizedArray {
+        fn mmap_quantized_embeddings(
+            read: &mut BufReader<File>,
+            n_embeddings: usize,
+            quantized_len: usize,
+        ) -> Result<Mmap> {
+            let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::io_error(
+                    "Cannot get file position for memory mapping embedding matrix",
+                    e,
+                )
+            })?;
+            let matrix_len = n_embeddings * quantized_len;
+            let mut mmap_opts = MmapOptions::new();
+            let quantized = unsafe {
+                mmap_opts
+                    .offset(offset)
+                    .len(matrix_len)
+                    .map(&read.get_ref())
+                    .map_err(|e| {
+                        Error::io_error("Cannot memory map quantized embedding matrix", e)
+                    })?
+            };
 
-#[cfg(feature = "memmap")]
-impl Storage for MmapQuantizedArray {
-    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
-        let quantized = unsafe { self.quantized_embeddings() };
+            // Position the reader after the matrix.
+            read.seek(SeekFrom::Current(matrix_len as i64))
+                .map_err(|e| Error::io_error("Cannot skip quantized embedding matrix", e))?;
 
-        let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
-        if let Some(norms) = &self.norms {
-            reconstructed *= norms[idx];
+            Ok(quantized)
         }
 
-        CowArray::from(reconstructed)
+        /// Get the quantizer.
+        pub fn quantizer(&self) -> &PQ<f32> {
+            &self.quantizer
+        }
     }
 
-    fn shape(&self) -> (usize, usize) {
-        (
-            self.quantized_embeddings.len() / self.quantizer.quantized_len(),
-            self.quantizer.reconstructed_len(),
-        )
+    impl Storage for MmapQuantizedArray {
+        fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
+            let quantized = unsafe { self.quantized_embeddings() };
+
+            let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
+            if let Some(norms) = &self.norms {
+                reconstructed *= norms[idx];
+            }
+
+            CowArray::from(reconstructed)
+        }
+
+        fn shape(&self) -> (usize, usize) {
+            (
+                self.quantized_embeddings.len() / self.quantizer.quantized_len(),
+                self.quantizer.reconstructed_len(),
+            )
+        }
+    }
+
+    impl MmapChunk for MmapQuantizedArray {
+        fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
+            ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
+
+            // Read and discard chunk length.
+            read.read_u64::<LittleEndian>().map_err(|e| {
+                Error::io_error("Cannot read quantized embedding matrix chunk length", e)
+            })?;
+
+            let PQRead {
+                n_embeddings,
+                quantizer,
+                read_norms,
+            } = QuantizedArray::read_product_quantizer(read)?;
+
+            let norms = if read_norms {
+                let mut norms_vec = vec![0f32; n_embeddings];
+                read.read_f32_into::<LittleEndian>(&mut norms_vec)
+                    .map_err(|e| Error::io_error("Cannot read norms", e))?;
+                Some(Array1::from(norms_vec))
+            } else {
+                None
+            };
+
+            let quantized_embeddings =
+                Self::mmap_quantized_embeddings(read, n_embeddings, quantizer.quantized_len())?;
+
+            Ok(MmapQuantizedArray {
+                quantizer,
+                quantized_embeddings,
+                norms,
+            })
+        }
+    }
+
+    impl WriteChunk for MmapQuantizedArray {
+        fn chunk_identifier(&self) -> ChunkIdentifier {
+            ChunkIdentifier::QuantizedArray
+        }
+
+        fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+        where
+            W: Write + Seek,
+        {
+            QuantizedArray::write_chunk(
+                write,
+                &self.quantizer,
+                unsafe { self.quantized_embeddings() },
+                self.norms.as_ref().map(|n| n.view()),
+            )
+        }
     }
 }
 
 #[cfg(feature = "memmap")]
-impl MmapChunk for MmapQuantizedArray {
-    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
-        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::QuantizedArray)?;
-
-        // Read and discard chunk length.
-        read.read_u64::<LittleEndian>().map_err(|e| {
-            Error::io_error("Cannot read quantized embedding matrix chunk length", e)
-        })?;
-
-        let PQRead {
-            n_embeddings,
-            quantizer,
-            read_norms,
-        } = QuantizedArray::read_product_quantizer(read)?;
-
-        let norms = if read_norms {
-            let mut norms_vec = vec![0f32; n_embeddings];
-            read.read_f32_into::<LittleEndian>(&mut norms_vec)
-                .map_err(|e| Error::io_error("Cannot read norms", e))?;
-            Some(Array1::from(norms_vec))
-        } else {
-            None
-        };
-
-        let quantized_embeddings =
-            Self::mmap_quantized_embeddings(read, n_embeddings, quantizer.quantized_len())?;
-
-        Ok(MmapQuantizedArray {
-            quantizer,
-            quantized_embeddings,
-            norms,
-        })
-    }
-}
-
-#[cfg(feature = "memmap")]
-impl WriteChunk for MmapQuantizedArray {
-    fn chunk_identifier(&self) -> ChunkIdentifier {
-        ChunkIdentifier::QuantizedArray
-    }
-
-    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
-    where
-        W: Write + Seek,
-    {
-        QuantizedArray::write_chunk(
-            write,
-            &self.quantizer,
-            unsafe { self.quantized_embeddings() },
-            self.norms.as_ref().map(|n| n.view()),
-        )
-    }
-}
+pub use mmap::MmapQuantizedArray;
 
 #[cfg(test)]
 mod tests {
