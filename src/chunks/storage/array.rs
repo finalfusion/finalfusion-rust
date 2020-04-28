@@ -1,38 +1,44 @@
-#[cfg(feature = "memmap")]
-use std::fs::File;
-#[cfg(feature = "memmap")]
-use std::io::BufReader;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
-#[cfg(target_endian = "big")]
-use byteorder::ByteOrder;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-#[cfg(feature = "memmap")]
-use memmap::{Mmap, MmapOptions};
 use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Ix1};
-#[cfg(feature = "memmap")]
-use ndarray::{Dimension, Ix2};
 
 use super::{Storage, StorageView, StorageViewMut};
-#[cfg(feature = "memmap")]
-use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::error::{Error, Result};
 use crate::util::padding;
 
-/// Memory-mapped matrix.
-#[derive(Debug)]
 #[cfg(feature = "memmap")]
-pub struct MmapArray {
-    map: Mmap,
-    shape: Ix2,
-}
+mod mmap {
+    use std::fs::File;
+    use std::io::{BufReader, Seek, SeekFrom, Write};
+    use std::mem::size_of;
 
-#[cfg(feature = "memmap")]
-impl Storage for MmapArray {
-    fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
-        #[allow(clippy::cast_ptr_alignment,unused_mut)]
+    use crate::chunks::io::MmapChunk;
+    #[cfg(target_endian = "big")]
+    use byteorder::ByteOrder;
+    use byteorder::{LittleEndian, ReadBytesExt};
+    use memmap::{Mmap, MmapOptions};
+    use ndarray::{ArrayView2, CowArray, Ix1};
+    use ndarray::{Dimension, Ix2};
+
+    use super::NdArray;
+    use crate::chunks::io::{ChunkIdentifier, TypeId, WriteChunk};
+    use crate::chunks::storage::{Storage, StorageView};
+    use crate::error::{Error, Result};
+    use crate::util::padding;
+
+    /// Memory-mapped matrix.
+    #[derive(Debug)]
+    pub struct MmapArray {
+        map: Mmap,
+        shape: Ix2,
+    }
+
+    impl Storage for MmapArray {
+        fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
+            #[allow(clippy::cast_ptr_alignment,unused_mut)]
         let mut embedding =
             // Alignment is ok, padding guarantees that the pointer is at
             // a multiple of 4.
@@ -40,105 +46,100 @@ impl Storage for MmapArray {
                 .row(idx)
                 .to_owned();
 
-        #[cfg(target_endian = "big")]
-        LittleEndian::from_slice_f32(
-            embedding
-                .as_slice_mut()
-                .expect("Cannot borrow vector as mutable slice"),
-        );
+            #[cfg(target_endian = "big")]
+            LittleEndian::from_slice_f32(
+                embedding
+                    .as_slice_mut()
+                    .expect("Cannot borrow vector as mutable slice"),
+            );
 
-        CowArray::from(embedding)
+            CowArray::from(embedding)
+        }
+
+        fn shape(&self) -> (usize, usize) {
+            self.shape.into_pattern()
+        }
     }
 
-    fn shape(&self) -> (usize, usize) {
-        self.shape.into_pattern()
+    #[cfg(target_endian = "little")]
+    impl StorageView for MmapArray {
+        fn view(&self) -> ArrayView2<f32> {
+            // Alignment is ok, padding guarantees that the pointer is at
+            // a multiple of 4.
+            #[allow(clippy::cast_ptr_alignment)]
+            unsafe {
+                ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32)
+            }
+        }
     }
-}
 
-#[cfg(all(target_endian = "little", feature = "memmap"))]
-impl StorageView for MmapArray {
-    fn view(&self) -> ArrayView2<f32> {
-        // Alignment is ok, padding guarantees that the pointer is at
-        // a multiple of 4.
-        #[allow(clippy::cast_ptr_alignment)]
-        unsafe {
-            ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32)
+    impl MmapChunk for MmapArray {
+        fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
+            ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
+
+            // Read and discard chunk length.
+            read.read_u64::<LittleEndian>()
+                .map_err(|e| Error::io_error("Cannot read embedding matrix chunk length", e))?;
+
+            let rows = read.read_u64::<LittleEndian>().map_err(|e| {
+                Error::io_error("Cannot read number of rows of the embedding matrix", e)
+            })? as usize;
+            let cols = read.read_u32::<LittleEndian>().map_err(|e| {
+                Error::io_error("Cannot read number of columns of the embedding matrix", e)
+            })? as usize;
+            let shape = Ix2(rows, cols);
+
+            // The components of the embedding matrix should be of type f32.
+            f32::ensure_data_type(read)?;
+
+            let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::io_error("Cannot get file position for computing padding", e)
+            })?);
+            read.seek(SeekFrom::Current(n_padding as i64))
+                .map_err(|e| Error::io_error("Cannot skip padding", e))?;
+
+            // Set up memory mapping.
+            let matrix_len = shape.size() * size_of::<f32>();
+            let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::io_error(
+                    "Cannot get file position for memory mapping embedding matrix",
+                    e,
+                )
+            })?;
+            let mut mmap_opts = MmapOptions::new();
+            let map = unsafe {
+                mmap_opts
+                    .offset(offset)
+                    .len(matrix_len)
+                    .map(&read.get_ref())
+                    .map_err(|e| Error::io_error("Cannot memory map embedding matrix", e))?
+            };
+
+            // Position the reader after the matrix.
+            read.seek(SeekFrom::Current(matrix_len as i64))
+                .map_err(|e| Error::io_error("Cannot skip embedding matrix", e))?;
+
+            Ok(MmapArray { map, shape })
+        }
+    }
+
+    #[cfg(target_endian = "little")]
+    impl WriteChunk for MmapArray {
+        fn chunk_identifier(&self) -> ChunkIdentifier {
+            ChunkIdentifier::NdArray
+        }
+
+        fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+        where
+            W: Write + Seek,
+        {
+            NdArray::write_ndarray_chunk(self.view(), write)
         }
     }
 }
 
-impl StorageViewMut for NdArray {
-    fn view_mut(&mut self) -> ArrayViewMut2<f32> {
-        self.inner.view_mut()
-    }
-}
-
 #[cfg(feature = "memmap")]
-impl MmapChunk for MmapArray {
-    fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
-        ChunkIdentifier::ensure_chunk_type(read, ChunkIdentifier::NdArray)?;
-
-        // Read and discard chunk length.
-        read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read embedding matrix chunk length", e))?;
-
-        let rows = read
-            .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of rows of the embedding matrix", e))?
-            as usize;
-        let cols = read.read_u32::<LittleEndian>().map_err(|e| {
-            Error::io_error("Cannot read number of columns of the embedding matrix", e)
-        })? as usize;
-        let shape = Ix2(rows, cols);
-
-        // The components of the embedding matrix should be of type f32.
-        f32::ensure_data_type(read)?;
-
-        let n_padding =
-            padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
-            })?);
-        read.seek(SeekFrom::Current(n_padding as i64))
-            .map_err(|e| Error::io_error("Cannot skip padding", e))?;
-
-        // Set up memory mapping.
-        let matrix_len = shape.size() * size_of::<f32>();
-        let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
-            Error::io_error(
-                "Cannot get file position for memory mapping embedding matrix",
-                e,
-            )
-        })?;
-        let mut mmap_opts = MmapOptions::new();
-        let map = unsafe {
-            mmap_opts
-                .offset(offset)
-                .len(matrix_len)
-                .map(&read.get_ref())
-                .map_err(|e| Error::io_error("Cannot memory map embedding matrix", e))?
-        };
-
-        // Position the reader after the matrix.
-        read.seek(SeekFrom::Current(matrix_len as i64))
-            .map_err(|e| Error::io_error("Cannot skip embedding matrix", e))?;
-
-        Ok(MmapArray { map, shape })
-    }
-}
-
-#[cfg(all(feature = "memmap", target_endian = "little"))]
-impl WriteChunk for MmapArray {
-    fn chunk_identifier(&self) -> ChunkIdentifier {
-        ChunkIdentifier::NdArray
-    }
-
-    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
-    where
-        W: Write + Seek,
-    {
-        NdArray::write_ndarray_chunk(self.view(), write)
-    }
-}
+pub use mmap::MmapArray;
 
 /// In-memory `ndarray` matrix.
 #[derive(Clone, Debug)]
@@ -233,6 +234,12 @@ impl Storage for NdArray {
 impl StorageView for NdArray {
     fn view(&self) -> ArrayView2<f32> {
         self.inner.view()
+    }
+}
+
+impl StorageViewMut for NdArray {
+    fn view_mut(&mut self) -> ArrayViewMut2<f32> {
+        self.inner.view_mut()
     }
 }
 

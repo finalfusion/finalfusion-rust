@@ -1,9 +1,5 @@
 //! Word embeddings.
 
-#[cfg(feature = "memmap")]
-use std::fs::File;
-#[cfg(feature = "memmap")]
-use std::io::BufReader;
 use std::io::{Read, Seek, Write};
 use std::iter::Enumerate;
 use std::mem;
@@ -14,13 +10,9 @@ use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
 
-#[cfg(feature = "memmap")]
-use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
-#[cfg(feature = "memmap")]
-use crate::chunks::storage::{MmapArray, MmapQuantizedArray};
 use crate::chunks::storage::{
     NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView, StorageViewWrap,
     StorageWrap,
@@ -30,8 +22,6 @@ use crate::chunks::vocab::{
     WordIndex,
 };
 use crate::error::{Error, Result};
-#[cfg(feature = "memmap")]
-use crate::io::MmapEmbeddings;
 use crate::io::{ReadEmbeddings, WriteEmbeddings};
 use crate::util::l2_normalize;
 
@@ -289,43 +279,17 @@ macro_rules! impl_embeddings_from(
 // specialization to generalize this.
 impl_embeddings_from!(SimpleVocab, NdArray, StorageWrap);
 impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
-#[cfg(all(target_endian = "little", feature = "memmap"))]
-impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(SimpleVocab, QuantizedArray, StorageWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(SimpleVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(BucketSubwordVocab, NdArray, StorageViewWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
-#[cfg(all(target_endian = "little", feature = "memmap"))]
-impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(BucketSubwordVocab, QuantizedArray, StorageWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(BucketSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(FastTextSubwordVocab, NdArray, StorageViewWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
-#[cfg(all(target_endian = "little", feature = "memmap"))]
-impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(FastTextSubwordVocab, MmapQuantizedArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(ExplicitSubwordVocab, MmapQuantizedArray, StorageWrap);
-#[cfg(all(target_endian = "little", feature = "memmap"))]
-impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(VocabWrap, QuantizedArray, StorageWrap);
-#[cfg(feature = "memmap")]
-impl_embeddings_from!(VocabWrap, MmapQuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
 where
@@ -341,37 +305,74 @@ where
 }
 
 #[cfg(feature = "memmap")]
-impl<V, S> MmapEmbeddings for Embeddings<V, S>
-where
-    Self: Sized,
-    V: ReadChunk,
-    S: MmapChunk,
-{
-    fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self> {
-        let header = Header::read_chunk(read)?;
-        let chunks = header.chunk_identifiers();
-        if chunks.is_empty() {
-            return Err(Error::Format(String::from(
-                "Embedding file does not contain chunks",
-            )));
+mod mmap {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    use super::Embeddings;
+    use crate::chunks::io::MmapChunk;
+    use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk};
+    use crate::chunks::metadata::Metadata;
+    use crate::chunks::norms::NdNorms;
+    use crate::chunks::storage::{MmapArray, MmapQuantizedArray};
+    use crate::chunks::storage::{StorageViewWrap, StorageWrap};
+    use crate::chunks::vocab::{
+        BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, VocabWrap,
+    };
+    use crate::error::{Error, Result};
+    use crate::io::MmapEmbeddings;
+
+    impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
+    #[cfg(target_endian = "little")]
+    impl_embeddings_from!(SimpleVocab, MmapArray, StorageViewWrap);
+    impl_embeddings_from!(SimpleVocab, MmapQuantizedArray, StorageWrap);
+    impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageWrap);
+    #[cfg(target_endian = "little")]
+    impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
+    impl_embeddings_from!(BucketSubwordVocab, MmapQuantizedArray, StorageWrap);
+    impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
+    #[cfg(target_endian = "little")]
+    impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);
+    impl_embeddings_from!(FastTextSubwordVocab, MmapQuantizedArray, StorageWrap);
+    impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageWrap);
+    impl_embeddings_from!(ExplicitSubwordVocab, MmapQuantizedArray, StorageWrap);
+    #[cfg(target_endian = "little")]
+    impl_embeddings_from!(ExplicitSubwordVocab, MmapArray, StorageViewWrap);
+    #[cfg(feature = "memmap")]
+    impl_embeddings_from!(VocabWrap, MmapQuantizedArray, StorageWrap);
+
+    impl<V, S> MmapEmbeddings for Embeddings<V, S>
+    where
+        Self: Sized,
+        V: ReadChunk,
+        S: MmapChunk,
+    {
+        fn mmap_embeddings(read: &mut BufReader<File>) -> Result<Self> {
+            let header = Header::read_chunk(read)?;
+            let chunks = header.chunk_identifiers();
+            if chunks.is_empty() {
+                return Err(Error::Format(String::from(
+                    "Embedding file does not contain chunks",
+                )));
+            }
+
+            let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
+                Some(Metadata::read_chunk(read)?)
+            } else {
+                None
+            };
+
+            let vocab = V::read_chunk(read)?;
+            let storage = S::mmap_chunk(read)?;
+            let norms = NdNorms::read_chunk(read).ok();
+
+            Ok(Embeddings {
+                metadata,
+                vocab,
+                storage,
+                norms,
+            })
         }
-
-        let metadata = if header.chunk_identifiers()[0] == ChunkIdentifier::Metadata {
-            Some(Metadata::read_chunk(read)?)
-        } else {
-            None
-        };
-
-        let vocab = V::read_chunk(read)?;
-        let storage = S::mmap_chunk(read)?;
-        let norms = NdNorms::read_chunk(read).ok();
-
-        Ok(Embeddings {
-            metadata,
-            vocab,
-            storage,
-            norms,
-        })
     }
 }
 
