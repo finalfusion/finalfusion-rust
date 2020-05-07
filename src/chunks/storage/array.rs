@@ -228,6 +228,12 @@ impl From<Array2<f32>> for NdArray {
     }
 }
 
+impl From<NdArray> for Array2<f32> {
+    fn from(arr: NdArray) -> Self {
+        arr.inner
+    }
+}
+
 impl Storage for NdArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         CowArray::from(self.inner.row(idx))

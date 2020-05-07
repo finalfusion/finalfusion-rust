@@ -10,7 +10,7 @@ pub use self::array::NdArray;
 mod quantized;
 #[cfg(feature = "memmap")]
 pub use self::quantized::MmapQuantizedArray;
-pub use self::quantized::{Quantize, QuantizedArray};
+pub use self::quantized::{Quantize, QuantizedArray, Reconstruct};
 
 mod wrappers;
 pub use self::wrappers::{StorageViewWrap, StorageWrap};

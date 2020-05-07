@@ -12,6 +12,7 @@ use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 use super::{Storage, StorageView};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::error::{Error, Result};
+use crate::storage::NdArray;
 use crate::util::padding;
 
 /// Quantized embedding matrix.
@@ -432,6 +433,30 @@ where
     }
 }
 
+/// Reconstructable embedding matrix.
+pub trait Reconstruct {
+    type Target;
+
+    /// Reconstruct a quantized embedding matrix.
+    fn reconstruct(&self) -> Self::Target;
+}
+
+impl Reconstruct for QuantizedArray {
+    type Target = NdArray;
+
+    fn reconstruct(&self) -> Self::Target {
+        let mut array = self
+            .quantizer
+            .reconstruct_batch(self.quantized_embeddings.view());
+
+        if let Some(ref norms) = self.norms {
+            array *= &norms.view().into_shape((norms.len(), 1)).unwrap();
+        }
+
+        array.into()
+    }
+}
+
 #[cfg(feature = "memmap")]
 mod mmap {
     use std::fs::File;
@@ -444,8 +469,11 @@ mod mmap {
     use super::{PQRead, QuantizedArray, Storage};
     use crate::chunks::io::MmapChunk;
     use crate::chunks::io::{ChunkIdentifier, WriteChunk};
+    use crate::chunks::storage::NdArray;
     use crate::error::{Error, Result};
     use byteorder::{LittleEndian, ReadBytesExt};
+
+    use super::Reconstruct;
 
     /// Memory-mapped quantized embedding matrix.
     pub struct MmapQuantizedArray {
@@ -574,6 +602,22 @@ mod mmap {
             )
         }
     }
+
+    impl Reconstruct for MmapQuantizedArray {
+        type Target = NdArray;
+
+        fn reconstruct(&self) -> Self::Target {
+            let mut array = self
+                .quantizer
+                .reconstruct_batch(unsafe { self.quantized_embeddings() });
+
+            if let Some(ref norms) = self.norms {
+                array *= &norms.view().into_shape((norms.len(), 1)).unwrap();
+            }
+
+            array.into()
+        }
+    }
 }
 
 #[cfg(feature = "memmap")]
@@ -588,9 +632,7 @@ mod tests {
     use reductive::pq::PQ;
 
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    #[cfg(feature = "memmap")]
-    use crate::chunks::storage::Storage;
-    use crate::chunks::storage::{NdArray, Quantize, QuantizedArray};
+    use crate::chunks::storage::{NdArray, Quantize, QuantizedArray, Reconstruct, Storage};
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -617,7 +659,6 @@ mod tests {
     }
 
     // Compare storage for which Eq is not implemented.
-    #[cfg(feature = "memmap")]
     fn storage_eq(arr: &impl Storage, check_arr: &impl Storage) {
         assert_eq!(arr.shape(), check_arr.shape());
         for idx in 0..check_arr.shape().0 {
@@ -665,6 +706,13 @@ mod tests {
     }
 
     #[test]
+    fn quantize_reconstruct_roundtrip() {
+        let quantized = test_quantized_array(true);
+        let reconstructed = quantized.reconstruct();
+        storage_eq(&quantized, &reconstructed);
+    }
+
+    #[test]
     #[cfg(feature = "memmap")]
     fn mmap_quantized_array() {
         use crate::chunks::io::MmapChunk;
@@ -682,6 +730,22 @@ mod tests {
 
         // Check
         storage_eq(&arr, &check_arr);
+    }
+
+    #[test]
+    #[cfg(feature = "memmap")]
+    fn reconstruct_mmap_quantized_array() {
+        use std::fs::File;
+        use std::io::BufReader;
+
+        use crate::chunks::io::MmapChunk;
+        use crate::chunks::storage::MmapQuantizedArray;
+
+        let mut storage_read =
+            BufReader::new(File::open("testdata/quantized_storage.bin").unwrap());
+        let quantized = MmapQuantizedArray::mmap_chunk(&mut storage_read).unwrap();
+        let reconstructed = quantized.reconstruct();
+        storage_eq(&quantized, &reconstructed);
     }
 
     #[test]
