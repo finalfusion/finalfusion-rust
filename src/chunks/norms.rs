@@ -74,8 +74,8 @@ impl ReadChunk for NdNorms {
         read.seek(SeekFrom::Current(n_padding as i64))
             .map_err(|e| Error::io_error("Cannot skip padding", e))?;
 
-        let mut data = vec![0f32; len];
-        read.read_f32_into::<LittleEndian>(&mut data)
+        let mut data = Array1::zeros((len,));
+        read.read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
             .map_err(|e| Error::io_error("Cannot read norms", e))?;
 
         Ok(NdNorms::new(data))

@@ -285,13 +285,11 @@ impl ReadChunk for NdArray {
         read.seek(SeekFrom::Current(n_padding as i64))
             .map_err(|e| Error::io_error("Cannot skip padding", e))?;
 
-        let mut data = vec![0f32; rows * cols];
-        read.read_f32_into::<LittleEndian>(&mut data)
+        let mut data = Array2::zeros((rows, cols));
+        read.read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
             .map_err(|e| Error::io_error("Cannot read embedding matrix", e))?;
 
-        Ok(NdArray {
-            inner: Array2::from_shape_vec((rows, cols), data).map_err(Error::Shape)?,
-        })
+        Ok(NdArray { inner: data })
     }
 }
 
