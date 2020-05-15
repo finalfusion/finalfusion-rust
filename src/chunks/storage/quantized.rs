@@ -2,9 +2,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use ndarray::{
-    Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, Dimension, IntoDimension, Ix1,
-};
+use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, CowArray, IntoDimension, Ix1};
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
@@ -87,13 +85,10 @@ impl QuantizedArray {
             .map_err(|e| Error::io_error("Cannot skip padding", e))?;
 
         let projection = if projection {
-            let mut projection_vec = vec![0f32; reconstructed_len * reconstructed_len];
-            read.read_f32_into::<LittleEndian>(&mut projection_vec)
+            let mut projection = Array2::zeros((reconstructed_len, reconstructed_len));
+            read.read_f32_into::<LittleEndian>(projection.as_slice_mut().unwrap())
                 .map_err(|e| Error::io_error("Cannot read projection matrix", e))?;
-            Some(
-                Array2::from_shape_vec((reconstructed_len, reconstructed_len), projection_vec)
-                    .map_err(Error::Shape)?,
-            )
+            Some(projection)
         } else {
             None
         };
@@ -104,17 +99,13 @@ impl QuantizedArray {
             reconstructed_len / quantized_len,
         )
             .into_dimension();
-        let mut quantizers = vec![0f32; quantizer_shape.size()];
-        read.read_f32_into::<LittleEndian>(&mut quantizers)
+        let mut quantizers = Array::zeros(quantizer_shape);
+        read.read_f32_into::<LittleEndian>(quantizers.as_slice_mut().unwrap())
             .map_err(|e| Error::io_error("Cannot read subquantizer", e))?;
 
         Ok(PQRead {
             n_embeddings,
-            quantizer: PQ::new(
-                projection,
-                Array::from_shape_vec(quantizer_shape, quantizers)
-                    .expect("Incorrect quantizer shape"),
-            ),
+            quantizer: PQ::new(projection, quantizers),
             read_norms,
         })
     }
@@ -291,22 +282,17 @@ impl ReadChunk for QuantizedArray {
         } = Self::read_product_quantizer(read)?;
 
         let norms = if read_norms {
-            let mut norms_vec = vec![0f32; n_embeddings];
-            read.read_f32_into::<LittleEndian>(&mut norms_vec)
+            let mut norms = Array1::zeros((n_embeddings,));
+            read.read_f32_into::<LittleEndian>(norms.as_slice_mut().unwrap())
                 .map_err(|e| Error::io_error("Cannot read norms", e))?;
-            Some(Array1::from(norms_vec))
+            Some(norms)
         } else {
             None
         };
 
-        let mut quantized_embeddings_vec = vec![0u8; n_embeddings * quantizer.quantized_len()];
-        read.read_exact(&mut quantized_embeddings_vec)
+        let mut quantized_embeddings = Array2::zeros((n_embeddings, quantizer.quantized_len()));
+        read.read_exact(quantized_embeddings.as_slice_mut().unwrap())
             .map_err(|e| Error::io_error("Cannot read quantized embeddings", e))?;
-        let quantized_embeddings = Array2::from_shape_vec(
-            (n_embeddings, quantizer.quantized_len()),
-            quantized_embeddings_vec,
-        )
-        .map_err(Error::Shape)?;
 
         Ok(QuantizedArray {
             quantizer,
@@ -566,10 +552,10 @@ mod mmap {
             } = QuantizedArray::read_product_quantizer(read)?;
 
             let norms = if read_norms {
-                let mut norms_vec = vec![0f32; n_embeddings];
-                read.read_f32_into::<LittleEndian>(&mut norms_vec)
+                let mut norms_vec = Array1::zeros((n_embeddings,));
+                read.read_f32_into::<LittleEndian>(norms_vec.as_slice_mut().unwrap())
                     .map_err(|e| Error::io_error("Cannot read norms", e))?;
-                Some(Array1::from(norms_vec))
+                Some(norms_vec)
             } else {
                 None
             };

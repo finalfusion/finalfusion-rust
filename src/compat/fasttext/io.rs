@@ -285,12 +285,11 @@ where
         .read_u64::<LittleEndian>()
         .map_err(|e| Error::io_error("Cannot read number of embedding matrix columns", e))?;
 
-    let mut data = vec![0.0; (m * n) as usize];
+    // XXX: check overflow.
+    let mut data = Array2::zeros((m as usize, n as usize));
     reader
-        .read_f32_into::<LittleEndian>(&mut data)
+        .read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
         .map_err(|e| Error::io_error("Cannot read embeddings", e))?;
-
-    let data = Array2::from_shape_vec((m as usize, n as usize), data).map_err(Error::Shape)?;
 
     Ok(NdArray::new(data))
 }
