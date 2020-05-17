@@ -25,6 +25,9 @@ pub enum Error {
 
     #[error("Unknown chunk identifier {0}")]
     UnknownChunkIdentifier(u32),
+
+    #[error("Data cannot be represented using native word size")]
+    Overflow,
 }
 
 impl Error {

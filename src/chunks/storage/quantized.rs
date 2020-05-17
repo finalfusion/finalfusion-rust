@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
@@ -67,7 +68,8 @@ impl QuantizedArray {
         let n_embeddings = read
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::io_error("Cannot read number of quantized embeddings", e))?
-            as usize;
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
 
         Self::check_quantizer_invariants(quantized_len, reconstructed_len)?;
 

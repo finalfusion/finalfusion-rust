@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
@@ -11,6 +12,7 @@ use crate::util::padding;
 
 #[cfg(feature = "memmap")]
 mod mmap {
+    use std::convert::TryInto;
     use std::fs::File;
     #[cfg(target_endian = "little")]
     use std::io::Write;
@@ -88,9 +90,13 @@ mod mmap {
             read.read_u64::<LittleEndian>()
                 .map_err(|e| Error::io_error("Cannot read embedding matrix chunk length", e))?;
 
-            let rows = read.read_u64::<LittleEndian>().map_err(|e| {
-                Error::io_error("Cannot read number of rows of the embedding matrix", e)
-            })? as usize;
+            let rows = read
+                .read_u64::<LittleEndian>()
+                .map_err(|e| {
+                    Error::io_error("Cannot read number of rows of the embedding matrix", e)
+                })?
+                .try_into()
+                .map_err(|_| Error::Overflow)?;
             let cols = read.read_u32::<LittleEndian>().map_err(|e| {
                 Error::io_error("Cannot read number of columns of the embedding matrix", e)
             })? as usize;
@@ -270,7 +276,8 @@ impl ReadChunk for NdArray {
         let rows = read
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::io_error("Cannot read number of rows of the embedding matrix", e))?
-            as usize;
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
         let cols = read.read_u32::<LittleEndian>().map_err(|e| {
             Error::io_error("Cannot read number of columns of the embedding matrix", e)
         })? as usize;
