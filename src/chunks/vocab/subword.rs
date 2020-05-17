@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::io;
 use std::io::{Read, Seek, Write};
 use std::mem::size_of;
@@ -55,6 +56,21 @@ where
             words.len(),
             indices.len(),
             "words contained duplicate entries."
+        );
+
+        // Check that usize can represent the indexer's upper bound.
+        assert!(
+            usize::try_from(indexer.upper_bound()).is_ok(),
+            "The upper bound of the indexer cannot be represented by the native word size."
+        );
+
+        // Check that usize can represent the combined vocabulary sizes.
+        assert!(
+            words
+                .len()
+                .checked_add(indexer.upper_bound() as usize)
+                .is_some(),
+            "The vocab + subword vocab size cannot be represented by the native word size"
         );
 
         SubwordVocab {
