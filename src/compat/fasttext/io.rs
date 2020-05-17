@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::io::BufRead;
 
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -280,13 +281,17 @@ where
 {
     let m = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of embedding matrix rows", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of embedding matrix rows", e))?
+        .try_into()
+        .map_err(|_| Error::Overflow)?;
     let n = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of embedding matrix columns", e))?;
+        .map_err(|e| Error::io_error("Cannot read number of embedding matrix columns", e))?
+        .try_into()
+        .map_err(|_| Error::Overflow)?;
 
     // XXX: check overflow.
-    let mut data = Array2::zeros((m as usize, n as usize));
+    let mut data = Array2::zeros((m, n));
     reader
         .read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
         .map_err(|e| Error::io_error("Cannot read embeddings", e))?;

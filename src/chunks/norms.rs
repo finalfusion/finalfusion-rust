@@ -1,5 +1,6 @@
 //! Norms chunk
 
+use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::ops::Deref;
@@ -63,7 +64,8 @@ impl ReadChunk for NdNorms {
         let len = read
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::io_error("Cannot read norms vector length", e))?
-            as usize;
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
 
         f32::ensure_data_type(read)?;
 

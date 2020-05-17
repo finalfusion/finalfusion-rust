@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::io::{Read, Seek, Write};
 use std::mem::size_of;
 
@@ -65,7 +66,8 @@ impl ReadChunk for SimpleVocab {
         let vocab_len = read
             .read_u64::<LittleEndian>()
             .map_err(|e| Error::io_error("Cannot read vocabulary length", e))?
-            as usize;
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
 
         let words = read_vocab_items(read, vocab_len)?;
 
