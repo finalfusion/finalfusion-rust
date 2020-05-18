@@ -28,6 +28,7 @@ jobs:
     strategy:
       matrix:
         target:
+          - aarch64-unknown-linux-gnu
           - i686-unknown-linux-gnu
           - mips64-unknown-linux-gnuabi64
     steps:
