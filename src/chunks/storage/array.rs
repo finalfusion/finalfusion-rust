@@ -3,7 +3,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Ix1};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, Axis, CowArray, Ix1};
 
 use super::{Storage, StorageView, StorageViewMut};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
@@ -24,7 +24,7 @@ mod mmap {
     use byteorder::ByteOrder;
     use byteorder::{LittleEndian, ReadBytesExt};
     use memmap::{Mmap, MmapOptions};
-    use ndarray::{ArrayView2, CowArray, Ix1};
+    use ndarray::{Array2, ArrayView2, Axis, CowArray, Ix1};
     use ndarray::{Dimension, Ix2};
 
     #[cfg(target_endian = "little")]
@@ -63,6 +63,27 @@ mod mmap {
             );
 
             CowArray::from(embedding)
+        }
+
+        #[allow(clippy::let_and_return)]
+        fn embeddings(&self, indices: &[usize]) -> Array2<f32> {
+            #[allow(clippy::cast_ptr_alignment,unused_mut)]
+            let embeddings =
+            // Alignment is ok, padding guarantees that the pointer is at
+            // a multiple of 4.
+		unsafe { ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32) };
+
+            #[allow(unused_mut)]
+            let mut selected_embeddings = embeddings.select(Axis(0), indices);
+
+            #[cfg(target_endian = "big")]
+            LittleEndian::from_slice_f32(
+                selected_embeddings
+                    .as_slice_mut()
+                    .expect("Cannot borrow matrix as mutable slice"),
+            );
+
+            selected_embeddings
         }
 
         fn shape(&self) -> (usize, usize) {
@@ -245,6 +266,10 @@ impl Storage for NdArray {
         CowArray::from(self.inner.row(idx))
     }
 
+    fn embeddings(&self, indices: &[usize]) -> Array2<f32> {
+        self.inner.select(Axis(0), indices)
+    }
+
     fn shape(&self) -> (usize, usize) {
         self.inner.dim()
     }
@@ -321,7 +346,7 @@ mod tests {
     use ndarray::Array2;
 
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::storage::{NdArray, StorageView};
+    use crate::chunks::storage::{NdArray, Storage, StorageView};
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -340,6 +365,19 @@ mod tests {
 
         // Return chunk length.
         read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    #[test]
+    fn embeddings_returns_expected_embeddings() {
+        const CHECK_INDICES: &[usize] = &[0, 50, 99, 0];
+
+        let check_arr = test_ndarray();
+
+        let embeddings = check_arr.embeddings(CHECK_INDICES);
+
+        for (embedding, &idx) in embeddings.outer_iter().zip(CHECK_INDICES) {
+            assert_eq!(embedding, check_arr.embedding(idx));
+        }
     }
 
     #[test]
@@ -364,5 +402,37 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let arr = NdArray::read_chunk(&mut cursor).unwrap();
         assert_eq!(arr.view(), check_arr.view());
+    }
+
+    #[cfg(feature = "memmap")]
+    mod mmap {
+        use std::io::{BufReader, BufWriter, Seek, SeekFrom};
+
+        use tempfile::tempfile;
+
+        use super::test_ndarray;
+        use crate::chunks::io::{MmapChunk, WriteChunk};
+        use crate::chunks::storage::{MmapArray, Storage};
+
+        fn test_mmap_array() -> MmapArray {
+            let array = test_ndarray();
+            let mut tmp = tempfile().unwrap();
+            array.write_chunk(&mut BufWriter::new(&mut tmp)).unwrap();
+            tmp.seek(SeekFrom::Start(0)).unwrap();
+            MmapArray::mmap_chunk(&mut BufReader::new(tmp)).unwrap()
+        }
+
+        #[test]
+        fn embeddings_returns_expected_embeddings() {
+            const CHECK_INDICES: &[usize] = &[0, 50, 99, 0];
+
+            let check_arr = test_mmap_array();
+
+            let embeddings = check_arr.embeddings(CHECK_INDICES);
+
+            for (embedding, &idx) in embeddings.outer_iter().zip(CHECK_INDICES) {
+                assert_eq!(embedding, check_arr.embedding(idx));
+            }
+        }
     }
 }

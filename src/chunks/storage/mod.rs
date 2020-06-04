@@ -1,6 +1,6 @@
 //! Embedding matrix representations.
 
-use ndarray::{ArrayView2, ArrayViewMut2, CowArray, Ix1};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, CowArray, Ix1};
 
 mod array;
 #[cfg(feature = "memmap")]
@@ -22,6 +22,9 @@ pub use self::wrappers::{StorageViewWrap, StorageWrap};
 /// abstracts over concrete storage types.
 pub trait Storage {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1>;
+
+    /// Retrieve multiple embeddings.
+    fn embeddings(&self, indices: &[usize]) -> Array2<f32>;
 
     fn shape(&self) -> (usize, usize);
 }
