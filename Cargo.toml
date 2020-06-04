@@ -39,9 +39,10 @@ default = ["memmap"]
 
 [dev-dependencies]
 approx = "0.3"
-maplit = "1"
-lazy_static = "1"
 criterion = "0.3"
+lazy_static = "1"
+maplit = "1"
+tempfile = "3"
 
 [[bench]]
 name = "array"

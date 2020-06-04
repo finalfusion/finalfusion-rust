@@ -5,6 +5,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::{Read, Seek, SeekFrom, Write};
 
+use byteorder::{LittleEndian, ReadBytesExt};
+use ndarray::{Array2, ArrayView2, CowArray, Ix1};
+
 #[cfg(feature = "memmap")]
 use super::{MmapArray, MmapQuantizedArray};
 use super::{NdArray, QuantizedArray, Storage, StorageView};
@@ -12,8 +15,6 @@ use super::{NdArray, QuantizedArray, Storage, StorageView};
 use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
 use crate::error::{Error, Result};
-use byteorder::{LittleEndian, ReadBytesExt};
-use ndarray::{ArrayView2, CowArray, Ix1};
 
 /// Storage types wrapper.
 ///
@@ -45,6 +46,17 @@ impl Storage for StorageWrap {
             StorageWrap::MmapQuantizedArray(inner) => inner.embedding(idx),
             StorageWrap::NdArray(inner) => inner.embedding(idx),
             StorageWrap::QuantizedArray(inner) => inner.embedding(idx),
+        }
+    }
+
+    fn embeddings(&self, indices: &[usize]) -> Array2<f32> {
+        match self {
+            #[cfg(feature = "memmap")]
+            StorageWrap::MmapArray(inner) => inner.embeddings(indices),
+            #[cfg(feature = "memmap")]
+            StorageWrap::MmapQuantizedArray(inner) => inner.embeddings(indices),
+            StorageWrap::NdArray(inner) => inner.embeddings(indices),
+            StorageWrap::QuantizedArray(inner) => inner.embeddings(indices),
         }
     }
 
@@ -194,6 +206,14 @@ impl Storage for StorageViewWrap {
             #[cfg(all(feature = "memmap", target_endian = "little"))]
             StorageViewWrap::MmapArray(inner) => inner.embedding(idx),
             StorageViewWrap::NdArray(inner) => inner.embedding(idx),
+        }
+    }
+
+    fn embeddings(&self, indices: &[usize]) -> Array2<f32> {
+        match self {
+            #[cfg(all(feature = "memmap", target_endian = "little"))]
+            StorageViewWrap::MmapArray(inner) => inner.embeddings(indices),
+            StorageViewWrap::NdArray(inner) => inner.embeddings(indices),
         }
     }
 
