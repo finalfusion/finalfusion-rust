@@ -5,7 +5,7 @@ use std::iter::Enumerate;
 use std::mem;
 use std::slice;
 
-use ndarray::{Array1, ArrayViewMut1, CowArray, Ix1};
+use ndarray::{Array1, ArrayViewMut1, Axis, CowArray, Ix1};
 use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::TrainPQ;
@@ -135,11 +135,8 @@ where
         match self.vocab.idx(word)? {
             WordIndex::Word(idx) => Some(self.storage.embedding(idx)),
             WordIndex::Subword(indices) => {
-                let mut embed = Array1::zeros((self.storage.shape().1,));
-                for idx in indices {
-                    embed += &self.storage.embedding(idx).view();
-                }
-
+                let embeds = self.storage.embeddings(&indices);
+                let mut embed = embeds.sum_axis(Axis(0));
                 l2_normalize(embed.view_mut());
 
                 Some(CowArray::from(embed))
