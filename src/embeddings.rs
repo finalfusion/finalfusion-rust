@@ -174,8 +174,10 @@ where
             WordIndex::Subword(indices) => {
                 target.fill(0.);
 
-                for idx in indices {
-                    target += &self.storage.embedding(idx).view();
+                let embeds = self.storage.embeddings(&indices);
+
+                for embed in embeds.outer_iter() {
+                    target += &embed;
                 }
 
                 l2_normalize(target.view_mut());
@@ -204,10 +206,8 @@ where
                 norm: self.norms().map(|n| n[idx]).unwrap_or(1.),
             }),
             WordIndex::Subword(indices) => {
-                let mut embed = Array1::zeros((self.storage.shape().1,));
-                for idx in indices {
-                    embed += &self.storage.embedding(idx).view();
-                }
+                let embeds = self.storage.embeddings(&indices);
+                let mut embed = embeds.sum_axis(Axis(0));
 
                 let norm = l2_normalize(embed.view_mut());
 
