@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
+use std::f32;
 
 use ndarray::{s, Array1, ArrayView1, ArrayView2, CowArray, Ix1};
 use ordered_float::NotNan;
@@ -19,6 +20,18 @@ use crate::util::l2_normalize;
 pub struct WordSimilarityResult<'a> {
     pub similarity: NotNan<f32>,
     pub word: &'a str,
+}
+
+impl<'a> WordSimilarityResult<'a> {
+    /// Get the word's similarity in angular similarity.
+    pub fn angular_similarity(&self) -> f32 {
+        1f32 - (self.similarity.acos() / f32::consts::PI)
+    }
+
+    /// Get the word's similarity in cosine similarity.
+    pub fn cosine_similarity(&self) -> f32 {
+        *self.similarity
+    }
 }
 
 impl<'a> Ord for WordSimilarityResult<'a> {
@@ -427,9 +440,11 @@ mod tests {
     use std::fs::File;
     use std::io::BufReader;
 
+    use approx::AbsDiffEq;
+
     use crate::compat::word2vec::ReadWord2Vec;
     use crate::embeddings::Embeddings;
-    use crate::similarity::{Analogy, EmbeddingSimilarity, WordSimilarity};
+    use crate::similarity::{Analogy, EmbeddingSimilarity, WordSimilarity, WordSimilarityResult};
 
     static SIMILARITY_ORDER_STUTTGART_10: &'static [&'static str] = &[
         "Karlsruhe",
@@ -529,6 +544,34 @@ mod tests {
         "deutschen",
         "Westfalen",
     ];
+
+    #[test]
+    fn cosine_similarity_is_correctly_converted_to_angular_similarity() {
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 1f32.into()
+        })
+        .angular_similarity()
+        .abs_diff_eq(&1f32, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0.70710678.into()
+        })
+        .angular_similarity()
+        .abs_diff_eq(&0.75, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0f32.into()
+        })
+        .angular_similarity()
+        .abs_diff_eq(&0.5f32, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: (-1f32).into()
+        })
+        .angular_similarity()
+        .abs_diff_eq(&0f32, 1e-5));
+    }
 
     #[test]
     fn test_similarity() {
