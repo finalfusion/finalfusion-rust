@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 use std::f32;
 
-use ndarray::{s, Array1, ArrayView1, ArrayView2, CowArray, Ix1};
+use ndarray::{s, ArrayView1, CowArray, Ix1};
 use ordered_float::NotNan;
 
 use crate::chunks::storage::{Storage, StorageView};
@@ -135,99 +135,8 @@ where
                 .map(|(word, _)| word.to_owned())
                 .collect();
 
-            Ok(
-                self.similarity_(embedding.view(), &skip, limit, |embeds, embed| {
-                    embeds.dot(&embed)
-                }),
-            )
+            Ok(self.similarity_(embedding.view(), &skip, limit))
         }
-    }
-}
-
-/// Trait for analogy queries with a custom similarity function.
-pub trait AnalogyBy {
-    /// Perform an analogy query using the given similarity function.
-    ///
-    /// This method returns words that are close in vector space the analogy
-    /// query `word1` is to `word2` as `word3` is to `?`. More concretely,
-    /// it searches embeddings that are similar to:
-    ///
-    /// *embedding(word2) - embedding(word1) + embedding(word3)*
-    ///
-    /// At most, `limit` results are returned.
-    ///
-    ///`Result::Err` is returned when no embedding could be computed
-    /// for one or more of the tokens, indicating which of the tokens
-    /// were present.
-    fn analogy_by<F>(
-        &self,
-        query: [&str; 3],
-        limit: usize,
-        similarity: F,
-    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        self.analogy_by_masked(query, [true, true, true], limit, similarity)
-    }
-
-    /// Perform an analogy query using the given similarity function.
-    ///
-    /// This method returns words that are close in vector space the analogy
-    /// query `word1` is to `word2` as `word3` is to `?`. More concretely,
-    /// it searches embeddings that are similar to:
-    ///
-    /// *embedding(word2) - embedding(word1) + embedding(word3)*
-    ///
-    /// At most, `limit` results are returned.
-    ///
-    /// `remove` specifies which parts of the queries are excluded from the
-    /// output candidates. If `remove[0]` is `true`, `word1` cannot be
-    /// returned as an answer to the query.
-    ///
-    ///`Result::Err` is returned when no embedding could be computed
-    /// for one or more of the tokens, indicating which of the tokens
-    /// were present.
-    fn analogy_by_masked<F>(
-        &self,
-        query: [&str; 3],
-        remove: [bool; 3],
-        limit: usize,
-        similarity: F,
-    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
-}
-
-#[deprecated(note = "'AnalogyBy' will be removed in finalfusion 0.13")]
-impl<V, S> AnalogyBy for Embeddings<V, S>
-where
-    V: Vocab,
-    S: StorageView,
-{
-    fn analogy_by_masked<F>(
-        &self,
-        query: [&str; 3],
-        remove: [bool; 3],
-        limit: usize,
-        similarity: F,
-    ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        let [embedding1, embedding2, embedding3] = lookup_words3(self, query)?;
-
-        let mut embedding = (&embedding2.view() - &embedding1.view()) + embedding3.view();
-        l2_normalize(embedding.view_mut());
-
-        let skip = query
-            .iter()
-            .zip(remove.iter())
-            .filter(|(_, &exclude)| exclude)
-            .map(|(word, _)| word.to_owned())
-            .collect();
-
-        Ok(self.similarity_(embedding.view(), &skip, limit, similarity))
     }
 }
 
@@ -242,24 +151,6 @@ pub trait WordSimilarity {
     fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>>;
 }
 
-/// Trait for word similarity queries with a custom similarity function.
-pub trait WordSimilarityBy {
-    /// Find words that are similar to the query word using the given similarity
-    /// function.
-    ///
-    /// The similarity function should return, given the embeddings matrix and
-    /// the word vector a vector of similarity scores. At most, `limit` results
-    /// are returned.
-    fn word_similarity_by<F>(
-        &self,
-        word: &str,
-        limit: usize,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarityResult>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
-}
-
 impl<V, S> WordSimilarity for Embeddings<V, S>
 where
     V: Vocab,
@@ -270,34 +161,7 @@ where
         let mut skip = HashSet::new();
         skip.insert(word);
 
-        Some(
-            self.similarity_(embed.view(), &skip, limit, |embeds, embed| {
-                embeds.dot(&embed)
-            }),
-        )
-    }
-}
-
-#[deprecated(note = "'WordSimilarityBy' will be removed in finalfusion 0.13")]
-impl<V, S> WordSimilarityBy for Embeddings<V, S>
-where
-    V: Vocab,
-    S: StorageView,
-{
-    fn word_similarity_by<F>(
-        &self,
-        word: &str,
-        limit: usize,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarityResult>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        let embed = self.embedding(word)?;
-        let mut skip = HashSet::new();
-        skip.insert(word);
-
-        Some(self.similarity_(embed.view(), &skip, limit, similarity))
+        Some(self.similarity_(embed.view(), &skip, limit))
     }
 }
 
@@ -331,24 +195,6 @@ pub trait EmbeddingSimilarity {
         skips: &HashSet<&str>,
     ) -> Option<Vec<WordSimilarityResult>>;
 }
-/// Trait for embedding similarity queries with a custom similarity function.
-pub trait EmbeddingSimilarityBy {
-    /// Find words that are similar to the query embedding using the given
-    /// similarity function.
-    ///
-    /// The similarity function should return, given the embeddings matrix and
-    /// the query vector a vector of similarity scores. At most, `limit` results
-    /// are returned.
-    fn embedding_similarity_by<F>(
-        &self,
-        query: ArrayView1<f32>,
-        limit: usize,
-        skip: &HashSet<&str>,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarityResult>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
-}
 
 impl<V, S> EmbeddingSimilarity for Embeddings<V, S>
 where
@@ -361,40 +207,17 @@ where
         limit: usize,
         skip: &HashSet<&str>,
     ) -> Option<Vec<WordSimilarityResult>> {
-        Some(self.similarity_(query, skip, limit, |embeds, embed| embeds.dot(&embed)))
-    }
-}
-
-#[deprecated(note = "'EmbeddingSimilarityBy' will be removed in finalfusion 0.13")]
-impl<V, S> EmbeddingSimilarityBy for Embeddings<V, S>
-where
-    V: Vocab,
-    S: StorageView,
-{
-    fn embedding_similarity_by<F>(
-        &self,
-        query: ArrayView1<f32>,
-        limit: usize,
-        skip: &HashSet<&str>,
-        similarity: F,
-    ) -> Option<Vec<WordSimilarityResult>>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
-        Some(self.similarity_(query, skip, limit, similarity))
+        Some(self.similarity_(query, skip, limit))
     }
 }
 
 trait SimilarityPrivate {
-    fn similarity_<F>(
+    fn similarity_(
         &self,
         embed: ArrayView1<f32>,
         skip: &HashSet<&str>,
         limit: usize,
-        similarity: F,
-    ) -> Vec<WordSimilarityResult>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
+    ) -> Vec<WordSimilarityResult>;
 }
 
 impl<V, S> SimilarityPrivate for Embeddings<V, S>
@@ -402,24 +225,19 @@ where
     V: Vocab,
     S: StorageView,
 {
-    fn similarity_<F>(
+    fn similarity_(
         &self,
         embed: ArrayView1<f32>,
         skip: &HashSet<&str>,
         limit: usize,
-        mut similarity: F,
-    ) -> Vec<WordSimilarityResult>
-    where
-        F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>,
-    {
+    ) -> Vec<WordSimilarityResult> {
         // ndarray#474
         #[allow(clippy::deref_addrof)]
-        let sims = similarity(
-            self.storage()
-                .view()
-                .slice(s![0..self.vocab().words_len(), ..]),
-            embed.view(),
-        );
+        let sims = self
+            .storage()
+            .view()
+            .slice(s![0..self.vocab().words_len(), ..])
+            .dot(&embed.view());
 
         let mut results = BinaryHeap::with_capacity(limit);
         for (idx, &sim) in sims.iter().enumerate() {
