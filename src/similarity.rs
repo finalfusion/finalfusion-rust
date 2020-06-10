@@ -32,6 +32,22 @@ impl<'a> WordSimilarityResult<'a> {
     pub fn cosine_similarity(&self) -> f32 {
         *self.similarity
     }
+
+    /// Get the euclidean distance between the vectors.
+    pub fn euclidean_distance(&self) -> f32 {
+        // Trivially derived from the law of cosines
+        (2f32 - 2f32 * self.cosine_similarity()).sqrt()
+    }
+
+    /// Returns the euclidean similarity.
+    ///
+    /// This method returns a similarity in *[0,1]*, where *0*
+    /// corresponds to a euclidean distance of *2* (the maximum
+    /// distance between two unit vectors) and *1* to a euclidean
+    /// distance of *0*.
+    pub fn euclidean_similarity(&self) -> f32 {
+        1f32 - (self.euclidean_distance() / 2f32)
+    }
 }
 
 impl<'a> Ord for WordSimilarityResult<'a> {
@@ -570,6 +586,62 @@ mod tests {
             similarity: (-1f32).into()
         })
         .angular_similarity()
+        .abs_diff_eq(&0f32, 1e-5));
+    }
+
+    #[test]
+    fn cosine_similarity_is_correctly_converted_to_euclidean_distance() {
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 1f32.into()
+        })
+        .euclidean_distance()
+        .abs_diff_eq(&0f32, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0.70710678.into()
+        })
+        .euclidean_distance()
+        .abs_diff_eq(&0.76537, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0f32.into()
+        })
+        .euclidean_distance()
+        .abs_diff_eq(&2f32.sqrt(), 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: (-1f32).into()
+        })
+        .euclidean_distance()
+        .abs_diff_eq(&2f32, 1e-5));
+    }
+
+    #[test]
+    fn cosine_similarity_is_correctly_converted_to_euclidean_similarity() {
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 1f32.into()
+        })
+        .euclidean_similarity()
+        .abs_diff_eq(&1f32, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0.70710678.into()
+        })
+        .euclidean_similarity()
+        .abs_diff_eq(&0.61732, 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: 0f32.into()
+        })
+        .euclidean_similarity()
+        .abs_diff_eq(&(1f32 - 1f32 / 2f32.sqrt()), 1e-5));
+        assert!((WordSimilarityResult {
+            word: "test",
+            similarity: (-1f32).into()
+        })
+        .euclidean_similarity()
         .abs_diff_eq(&0f32, 1e-5));
     }
 
