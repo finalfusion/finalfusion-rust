@@ -170,9 +170,9 @@ pub trait EmbeddingSimilarity {
     /// Find words that are similar to the query embedding.
     ///
     /// The similarity between the query embedding and other embeddings is
-    /// defined by the dot product of the embeddings. If the vectors are unit
-    /// vectors (e.g. by virtue of calling `normalize`), this is the cosine
-    /// similarity. At most, `limit` results are returned.
+    /// defined by the dot product of the embeddings. The embeddings in the
+    /// storage are l2-normalized, this method l2-normalizes the input query,
+    /// therefore the dot product is equivalent to the cosine similarity.
     fn embedding_similarity(
         &self,
         query: ArrayView1<f32>,
@@ -185,9 +185,9 @@ pub trait EmbeddingSimilarity {
     /// certain words.
     ///
     /// The similarity between the query embedding and other embeddings is
-    /// defined by the dot product of the embeddings. If the vectors are unit
-    /// vectors (e.g. by virtue of calling `normalize`), this is the cosine
-    /// similarity. At most, `limit` results are returned.
+    /// defined by the dot product of the embeddings. The embeddings in the
+    /// storage are l2-normalized, this method l2-normalizes the input query,
+    /// therefore the dot product is equivalent to the cosine similarity.
     fn embedding_similarity_masked(
         &self,
         query: ArrayView1<f32>,
@@ -207,7 +207,9 @@ where
         limit: usize,
         skip: &HashSet<&str>,
     ) -> Option<Vec<WordSimilarityResult>> {
-        Some(self.similarity_(query, skip, limit))
+        let mut query = query.to_owned();
+        l2_normalize(query.view_mut());
+        Some(self.similarity_(query.view(), skip, limit))
     }
 }
 
