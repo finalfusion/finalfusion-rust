@@ -123,10 +123,27 @@ where
         limit: usize,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
         {
-            self.analogy_by_masked(query, remove, limit, |embeds, embed| embeds.dot(&embed))
+            let [embedding1, embedding2, embedding3] = lookup_words3(self, query)?;
+
+            let mut embedding = (&embedding2.view() - &embedding1.view()) + embedding3.view();
+            l2_normalize(embedding.view_mut());
+
+            let skip = query
+                .iter()
+                .zip(remove.iter())
+                .filter(|(_, &exclude)| exclude)
+                .map(|(word, _)| word.to_owned())
+                .collect();
+
+            Ok(
+                self.similarity_(embedding.view(), &skip, limit, |embeds, embed| {
+                    embeds.dot(&embed)
+                }),
+            )
         }
     }
 }
+
 /// Trait for analogy queries with a custom similarity function.
 pub trait AnalogyBy {
     /// Perform an analogy query using the given similarity function.
@@ -182,6 +199,7 @@ pub trait AnalogyBy {
         F: FnMut(ArrayView2<f32>, ArrayView1<f32>) -> Array1<f32>;
 }
 
+#[deprecated(note = "'AnalogyBy' will be removed in finalfusion 0.13")]
 impl<V, S> AnalogyBy for Embeddings<V, S>
 where
     V: Vocab,
@@ -248,10 +266,19 @@ where
     S: StorageView,
 {
     fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>> {
-        self.word_similarity_by(word, limit, |embeds, embed| embeds.dot(&embed))
+        let embed = self.embedding(word)?;
+        let mut skip = HashSet::new();
+        skip.insert(word);
+
+        Some(
+            self.similarity_(embed.view(), &skip, limit, |embeds, embed| {
+                embeds.dot(&embed)
+            }),
+        )
     }
 }
 
+#[deprecated(note = "'WordSimilarityBy' will be removed in finalfusion 0.13")]
 impl<V, S> WordSimilarityBy for Embeddings<V, S>
 where
     V: Vocab,
@@ -334,10 +361,11 @@ where
         limit: usize,
         skip: &HashSet<&str>,
     ) -> Option<Vec<WordSimilarityResult>> {
-        self.embedding_similarity_by(query, limit, skip, |embeds, embed| embeds.dot(&embed))
+        Some(self.similarity_(query, skip, limit, |embeds, embed| embeds.dot(&embed)))
     }
 }
 
+#[deprecated(note = "'EmbeddingSimilarityBy' will be removed in finalfusion 0.13")]
 impl<V, S> EmbeddingSimilarityBy for Embeddings<V, S>
 where
     V: Vocab,
