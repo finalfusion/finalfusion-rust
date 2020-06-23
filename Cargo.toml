@@ -20,7 +20,7 @@ exclude = [
 [dependencies]
 byteorder = "1"
 fnv = "1"
-itertools = "0.8"
+itertools = "0.9"
 ndarray = "0.13"
 ordered-float = "1"
 rand = "0.7"
