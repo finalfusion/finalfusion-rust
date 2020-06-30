@@ -1,7 +1,8 @@
 use std::convert::TryInto;
-use std::io::BufRead;
+use std::io::{BufRead, Write};
+use std::ops::Mul;
 
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{s, Array2, ErrorKind as ShapeErrorKind, ShapeError};
 use serde::Serialize;
 use toml::Value;
@@ -119,9 +120,65 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
     }
 }
 
+/// Read embeddings in the fastText format.
+pub trait WriteFastText<W>
+where
+    W: Write,
+{
+    /// Write the embeddings to the given writer in fastText format.
+    ///
+    /// fastText embeddings contain metadata. If `config` is `None`,
+    /// then the value `0` will be used for metadata that is not
+    /// available. Otherwise, the metadata from `config` will be used.
+    fn write_fasttext(&self, write: &mut W, config: Option<Config>) -> Result<()>;
+}
+
+impl<W, S> WriteFastText<W> for Embeddings<FastTextSubwordVocab, S>
+where
+    W: Write,
+    S: Storage,
+{
+    fn write_fasttext(&self, write: &mut W, config: Option<Config>) -> Result<()> {
+        let vocab = self.vocab();
+        let mut config = config.unwrap_or_else(Config::new);
+
+        // Merge known parts of the configuration.
+        config.bucket = vocab
+            .indexer()
+            .buckets()
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
+        config.dims = self
+            .storage()
+            .shape()
+            .1
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
+        config.max_n = vocab.max_n();
+        config.min_n = vocab.min_n();
+
+        write
+            .write_u32::<LittleEndian>(FASTTEXT_FILEFORMAT_MAGIC)
+            .map_err(|e| Error::io_error("Cannot write fastText magic", e))?;
+        write
+            .write_u32::<LittleEndian>(FASTTEXT_VERSION)
+            .map_err(|e| Error::io_error("Cannot write fastText version", e))?;
+
+        config.write(write)?;
+
+        write_vocab(write, self.vocab())?;
+
+        write
+            .write_u8(0)
+            .map_err(|e| Error::io_error("Cannot write quantization status", e))?;
+
+        write_embeddings(write, self)
+    }
+}
+
 /// fastText model configuration.
 #[derive(Copy, Clone, Debug, Serialize)]
-struct Config {
+pub struct Config {
     dims: u32,
     window_size: u32,
     epoch: u32,
@@ -138,6 +195,26 @@ struct Config {
 }
 
 impl Config {
+    // Don't expose as `Default`, since the default values are quite
+    // non-sensical.
+    fn new() -> Self {
+        Config {
+            bucket: Default::default(),
+            dims: Default::default(),
+            epoch: Default::default(),
+            loss: Loss::HierarchicalSoftmax,
+            lr_update_rate: Default::default(),
+            max_n: Default::default(),
+            min_count: Default::default(),
+            min_n: Default::default(),
+            model: Model::CBOW,
+            neg: Default::default(),
+            sampling_threshold: Default::default(),
+            window_size: Default::default(),
+            word_ngrams: Default::default(),
+        }
+    }
+
     /// Read fastText model configuration.
     fn read<R>(reader: &mut R) -> Result<Config>
     where
@@ -195,11 +272,52 @@ impl Config {
             sampling_threshold,
         })
     }
+
+    fn write<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write,
+    {
+        write
+            .write_u32::<LittleEndian>(self.dims)
+            .map_err(|e| Error::io_error("Cannot write number of dimensions", e))?;
+        write
+            .write_u32::<LittleEndian>(self.window_size)
+            .map_err(|e| Error::io_error("Cannot write window size", e))?;
+        write
+            .write_u32::<LittleEndian>(self.epoch)
+            .map_err(|e| Error::io_error("Cannot write number of epochs", e))?;
+        write
+            .write_u32::<LittleEndian>(self.min_count)
+            .map_err(|e| Error::io_error("Cannot write minimum count", e))?;
+        write
+            .write_u32::<LittleEndian>(self.neg)
+            .map_err(|e| Error::io_error("Cannot write negative samples", e))?;
+        write
+            .write_u32::<LittleEndian>(self.word_ngrams)
+            .map_err(|e| Error::io_error("Cannot write word n-gram length", e))?;
+        self.loss.write(write)?;
+        self.model.write(write)?;
+        write
+            .write_u32::<LittleEndian>(self.bucket)
+            .map_err(|e| Error::io_error("Cannot write number of buckets", e))?;
+        write
+            .write_u32::<LittleEndian>(self.min_n)
+            .map_err(|e| Error::io_error("Cannot write minimum subword length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.max_n)
+            .map_err(|e| Error::io_error("Cannot write maximum subword length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.lr_update_rate)
+            .map_err(|e| Error::io_error("Cannot write LR update rate", e))?;
+        write
+            .write_f64::<LittleEndian>(self.sampling_threshold)
+            .map_err(|e| Error::io_error("Cannot write sampling threshold", e))
+    }
 }
 
 /// fastText loss type.
 #[derive(Copy, Clone, Debug, Serialize)]
-enum Loss {
+pub enum Loss {
     HierarchicalSoftmax,
     NegativeSampling,
     Softmax,
@@ -222,11 +340,27 @@ impl Loss {
             l => Err(Error::Format(format!("Unknown loss: {}", l))),
         }
     }
+
+    fn write<W>(self, write: &mut W) -> Result<()>
+    where
+        W: Write,
+    {
+        use self::Loss::*;
+        let loss_id = match self {
+            HierarchicalSoftmax => 1u32,
+            NegativeSampling => 2,
+            Softmax => 3,
+        };
+
+        write
+            .write_u32::<LittleEndian>(loss_id)
+            .map_err(|e| Error::io_error("Cannot write loss function", e))
+    }
 }
 
 /// fastText model type.
 #[derive(Copy, Clone, Debug, Serialize)]
-enum Model {
+pub enum Model {
     CBOW,
     SkipGram,
     Supervised,
@@ -248,6 +382,22 @@ impl Model {
             3 => Ok(Supervised),
             m => Err(Error::Format(format!("Unknown model: {}", m))),
         }
+    }
+
+    fn write<W>(self, write: &mut W) -> Result<()>
+    where
+        W: Write,
+    {
+        use self::Model::*;
+        let model_id = match self {
+            CBOW => 1u32,
+            SkipGram => 2,
+            Supervised => 3,
+        };
+
+        write
+            .write_u32::<LittleEndian>(model_id)
+            .map_err(|e| Error::io_error("Cannot write loss function", e))
     }
 }
 
@@ -297,6 +447,56 @@ where
         .map_err(|e| Error::io_error("Cannot read embeddings", e))?;
 
     Ok(NdArray::new(data))
+}
+
+/// Write embeddings.
+fn write_embeddings<W, S>(
+    write: &mut W,
+    embeddings: &Embeddings<FastTextSubwordVocab, S>,
+) -> Result<()>
+where
+    S: Storage,
+    W: Write,
+{
+    let storage = embeddings.storage();
+    let vocab = embeddings.vocab();
+
+    write
+        .write_u64::<LittleEndian>(storage.shape().0 as u64)
+        .map_err(|e| Error::io_error("Cannot write number of embedding matrix rows", e))?;
+    write
+        .write_u64::<LittleEndian>(storage.shape().1 as u64)
+        .map_err(|e| Error::io_error("Cannot write number of embedding matrix columns", e))?;
+
+    for (word, embedding_with_norm) in embeddings.iter_with_norms() {
+        let mut unnormalized_embedding =
+            embedding_with_norm.embedding.mul(embedding_with_norm.norm);
+
+        if let Some(subword_indices) = vocab.subword_indices(word) {
+            unnormalized_embedding *= (subword_indices.len() + 1) as f32;
+
+            for subword_index in subword_indices {
+                unnormalized_embedding -= &storage.embedding(subword_index);
+            }
+        }
+
+        for v in &unnormalized_embedding {
+            write
+                .write_f32::<LittleEndian>(*v)
+                .map_err(|e| Error::io_error("Cannot write embedding", e))?;
+        }
+    }
+
+    // Write subword embeddings.
+    for idx in vocab.words_len()..vocab.vocab_len() {
+        for v in storage.embedding(idx).view() {
+            write
+                .write_f32::<LittleEndian>(*v)
+                .map_err(|e| Error::io_error("Cannot write subword embedding", e))?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Read the vocabulary.
@@ -357,22 +557,69 @@ where
     ))
 }
 
+/// Write the vocabulary.
+fn write_vocab<W>(write: &mut W, vocab: &FastTextSubwordVocab) -> Result<()>
+where
+    W: Write,
+{
+    let words_len = vocab.words_len().try_into().map_err(|_| Error::Overflow)?;
+    write
+        .write_u32::<LittleEndian>(words_len)
+        .map_err(|e| Error::io_error("Cannot write vocabulary size", e))?;
+    write
+        .write_u32::<LittleEndian>(words_len)
+        .map_err(|e| Error::io_error("Cannot write number of words", e))?;
+    write
+        .write_u32::<LittleEndian>(0)
+        .map_err(|e| Error::io_error("Cannot write number of labels", e))?;
+    write
+        .write_u64::<LittleEndian>(0)
+        .map_err(|e| Error::io_error("Cannot write number of tokens", e))?;
+    write
+        .write_i64::<LittleEndian>(0)
+        .map_err(|e| Error::io_error("Cannot write pruned vocabulary size", e))?;
+
+    for word in vocab.words() {
+        write
+            .write(word.as_bytes())
+            .map_err(|e| Error::io_error("Cannot write word", e))?;
+        write
+            .write_u8(0)
+            .map_err(|e| Error::io_error("Cannot write word terminator", e))?;
+        write
+            .write_u64::<LittleEndian>(0)
+            .map_err(|e| Error::io_error("Cannot write word frequency", e))?;
+        write
+            .write_u8(0)
+            .map_err(|e| Error::io_error("Cannot read entry type", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::BufReader;
+    use std::io::{BufReader, Cursor};
 
     use approx::assert_abs_diff_eq;
 
     use super::ReadFastText;
+    use crate::compat::fasttext::WriteFastText;
     use crate::embeddings::Embeddings;
     use crate::similarity::WordSimilarity;
+    use crate::storage::{NdArray, StorageView};
+    use crate::vocab::FastTextSubwordVocab;
+
+    fn read_fasttext() -> Embeddings<FastTextSubwordVocab, NdArray> {
+        let f = File::open("testdata/fasttext.bin").unwrap();
+        let mut reader = BufReader::new(f);
+        Embeddings::read_fasttext(&mut reader).unwrap()
+    }
 
     #[test]
     fn test_read_fasttext() {
-        let f = File::open("testdata/fasttext.bin").unwrap();
-        let mut reader = BufReader::new(f);
-        let embeddings = Embeddings::read_fasttext(&mut reader).unwrap();
+        let embeddings = read_fasttext();
         let results = embeddings.word_similarity("über", 3).unwrap();
         assert_eq!(results[0].word, "auf");
         assert_abs_diff_eq!(*results[0].similarity, 0.568513, epsilon = 1e-6);
@@ -384,9 +631,7 @@ mod tests {
 
     #[test]
     fn test_read_fasttext_unknown() {
-        let f = File::open("testdata/fasttext.bin").unwrap();
-        let mut reader = BufReader::new(f);
-        let embeddings = Embeddings::read_fasttext(&mut reader).unwrap();
+        let embeddings = read_fasttext();
         let results = embeddings.word_similarity("unknown", 3).unwrap();
         assert_eq!(results[0].word, "einer");
         assert_abs_diff_eq!(*results[0].similarity, 0.691177, epsilon = 1e-6);
@@ -394,5 +639,17 @@ mod tests {
         assert_abs_diff_eq!(*results[1].similarity, 0.576449, epsilon = 1e-6);
         assert_eq!(results[2].word, "des");
         assert_abs_diff_eq!(*results[2].similarity, 0.570398, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn write_fasttext() {
+        let check = read_fasttext();
+        let mut write = Vec::new();
+        check.write_fasttext(&mut write, None).unwrap();
+        let mut read = Cursor::new(write);
+        let embeddings = Embeddings::read_fasttext(&mut read).unwrap();
+
+        assert_eq!(check.vocab(), embeddings.vocab());
+        assert_abs_diff_eq!(check.storage().view(), embeddings.storage().view());
     }
 }
