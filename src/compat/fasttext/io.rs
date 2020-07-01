@@ -527,7 +527,7 @@ where
     let prune_idx_size = reader
         .read_i64::<LittleEndian>()
         .map_err(|e| Error::io_error("Cannot read pruned vocabulary size", e))?;
-    if prune_idx_size > 0 {
+    if prune_idx_size >= 0 {
         return Err(Error::Format(
             "Pruned vocabularies are not supported".into(),
         ));
@@ -576,12 +576,12 @@ where
         .write_u64::<LittleEndian>(0)
         .map_err(|e| Error::io_error("Cannot write number of tokens", e))?;
     write
-        .write_i64::<LittleEndian>(0)
+        .write_i64::<LittleEndian>(-1)
         .map_err(|e| Error::io_error("Cannot write pruned vocabulary size", e))?;
 
     for word in vocab.words() {
         write
-            .write(word.as_bytes())
+            .write_all(word.as_bytes())
             .map_err(|e| Error::io_error("Cannot write word", e))?;
         write
             .write_u8(0)
