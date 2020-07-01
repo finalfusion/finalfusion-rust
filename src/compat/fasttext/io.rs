@@ -211,7 +211,7 @@ impl Config {
             neg: Default::default(),
             sampling_threshold: Default::default(),
             window_size: Default::default(),
-            word_ngrams: Default::default(),
+            word_ngrams: 1,
         }
     }
 
