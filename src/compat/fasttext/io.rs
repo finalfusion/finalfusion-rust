@@ -127,10 +127,10 @@ where
 {
     /// Write the embeddings to the given writer in fastText format.
     ///
-    /// fastText embeddings contain metadata. If `config` is `None`,
-    /// then the value `0` will be used for metadata that is not
-    /// available. Otherwise, the metadata from `config` will be used.
-    fn write_fasttext(&self, write: &mut W, config: Option<Config>) -> Result<()>;
+    /// fastText embeddings contain metadata. All metadata that is not
+    /// relevant to load and use the embeddings is set to zero when
+    /// writing fastText embeddings.
+    fn write_fasttext(&self, write: &mut W) -> Result<()>;
 }
 
 impl<W, S> WriteFastText<W> for Embeddings<FastTextSubwordVocab, S>
@@ -138,9 +138,9 @@ where
     W: Write,
     S: Storage,
 {
-    fn write_fasttext(&self, write: &mut W, config: Option<Config>) -> Result<()> {
+    fn write_fasttext(&self, write: &mut W) -> Result<()> {
         let vocab = self.vocab();
-        let mut config = config.unwrap_or_else(Config::new);
+        let mut config = Config::new();
 
         // Merge known parts of the configuration.
         config.bucket = vocab
@@ -178,7 +178,7 @@ where
 
 /// fastText model configuration.
 #[derive(Copy, Clone, Debug, Serialize)]
-pub struct Config {
+struct Config {
     dims: u32,
     window_size: u32,
     epoch: u32,
@@ -317,7 +317,7 @@ impl Config {
 
 /// fastText loss type.
 #[derive(Copy, Clone, Debug, Serialize)]
-pub enum Loss {
+enum Loss {
     HierarchicalSoftmax,
     NegativeSampling,
     Softmax,
@@ -360,7 +360,7 @@ impl Loss {
 
 /// fastText model type.
 #[derive(Copy, Clone, Debug, Serialize)]
-pub enum Model {
+enum Model {
     CBOW,
     SkipGram,
     Supervised,
@@ -645,7 +645,7 @@ mod tests {
     fn write_fasttext() {
         let check = read_fasttext();
         let mut write = Vec::new();
-        check.write_fasttext(&mut write, None).unwrap();
+        check.write_fasttext(&mut write).unwrap();
         let mut read = Cursor::new(write);
         let embeddings = Embeddings::read_fasttext(&mut read).unwrap();
 
