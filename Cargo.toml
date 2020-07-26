@@ -8,9 +8,7 @@ documentation = "https://docs.rs/finalfusion/"
 keywords = ["embeddings", "word2vec", "glove", "finalfusion", "fasttext"]
 homepage = "https://github.com/finalfusion/finalfusion-rust"
 repository = "https://github.com/finalfusion/finalfusion-rust"
-# Use after SPDX list is updated
-# license = "BlueOak-1.0.0"
-license-file = "LICENSE.md"
+license = "Apache-2.0 OR BlueOak-1.0.0"
 readme = "README.md"
 exclude = [
   ".gitignore",
