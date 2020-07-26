@@ -1,9 +1,16 @@
-Copyright 2018-2019 The finalfusion-rust contributors
+Copyright 2018-2020 The finalfusion-rust contributors
 
-finalfusion-rust is provided to you by its contributors under the Blue Oak
-Model License Version 1.0.0 (see LICENSE.md). Both Daniël de Kok and Sebastian
-Pütz may individually, at their own discretion, relicense future versions of
-finalfusion-rust under any later version of the Blue Oak Model License.
+finalfusion-rust is provided to you by its contributors licensed under either
+of:
+
+* Apache License Version 2.0 (LICENSE-2.0.txt)
+* Blue Oak Model License Version 1.0.0 (LICENSE.md)
+
+at your option.
+
+Both Daniël de Kok and Sebastian Pütz may individually, at their own
+discretion, relicense future versions of finalfusion-rust under any later
+version of these licenses.
 
 Contributors:
 
