@@ -23,7 +23,7 @@ ndarray = "0.13"
 ordered-float = "1"
 rand = "0.7"
 rand_xorshift = "0.2"
-reductive = "0.4"
+reductive = "0.5"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 toml = "0.5"
