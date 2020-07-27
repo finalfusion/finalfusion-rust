@@ -186,10 +186,11 @@ impl ExplicitIndexer {
     /// `subword -> index` mapping.
     ///
     /// Panics when there are duplicate ngrams.
-    pub fn new_with_indices(ngram_tuples: Vec<(String, u64)>) -> Self {
-        let mut old_to_new_indices = HashMap::new();
-        let mut index = HashMap::with_capacity(ngram_tuples.len());
-        let mut ngrams = Vec::with_capacity(ngram_tuples.len());
+    pub fn new_with_indices(ngram_tuples: impl IntoIterator<Item = (String, u64)>) -> Self {
+        let ngram_tuples = ngram_tuples.into_iter();
+        let mut old_to_new_indices = HashMap::with_capacity(ngram_tuples.size_hint().0);
+        let mut index = HashMap::with_capacity(ngram_tuples.size_hint().0);
+        let mut ngrams = Vec::with_capacity(ngram_tuples.size_hint().0);
         for (ngram, bucket) in ngram_tuples {
             let cur_idx = old_to_new_indices.len();
             let new_idx = *old_to_new_indices.entry(bucket).or_insert(cur_idx);
