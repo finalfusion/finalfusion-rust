@@ -351,6 +351,33 @@ where
 
         Ok(())
     }
+
+    /// Convert the hash-based vocabulary to an Explicit Vocabulary.
+    ///
+    /// N-grams in the range `(self.min_n..self.max_n)` are extracted from the words in the
+    /// vocabulary, each of these gets assigned an index from the `BucketIndexer` which is used to
+    /// determine the index in the explicit subword vocab.
+    pub fn to_explicit(&self) -> ExplicitSubwordVocab {
+        let mut ngram_index = HashMap::new();
+        let SubwordVocab {
+            words,
+            indices: _,
+            indexer,
+            min_n,
+            max_n,
+        } = &self;
+
+        for word in words.iter().map(Self::bracket) {
+            for (ngram, idx) in word
+                .subword_indices_with_ngrams(*min_n as usize, *max_n as usize, indexer)
+                .filter_map(|(ngram, idx)| idx.map(|idx| (ngram, idx)))
+            {
+                ngram_index.entry(ngram.into()).or_insert(idx);
+            }
+        }
+        let indexer = ExplicitIndexer::new_with_indices(ngram_index);
+        ExplicitSubwordVocab::new(words.to_owned(), *min_n, *max_n, indexer)
+    }
 }
 
 impl SubwordVocab<ExplicitIndexer> {
@@ -491,9 +518,11 @@ mod tests {
 
     use super::{BucketSubwordVocab, FastTextSubwordVocab, SubwordVocab};
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab};
+    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, Vocab};
     use crate::compat::fasttext::FastTextIndexer;
-    use crate::subword::{BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer};
+    use crate::subword::{
+        BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, StrWithCharLen,
+    };
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
         let words = vec![
@@ -532,6 +561,24 @@ mod tests {
         ];
 
         ExplicitSubwordVocab::new(words, 2, 3, ExplicitIndexer::new_with_indices(ngrams))
+    }
+
+    #[test]
+    fn test_conversion() {
+        let words = vec!["groß".to_owned(), "allerdings".to_owned()];
+        let indexer = FinalfusionHashIndexer::new(21);
+        let bucket_vocab = SubwordVocab::new(words, 3, 6, indexer);
+        let explicit = bucket_vocab.to_explicit();
+        let dings = StrWithCharLen::new("dings");
+        let gro = StrWithCharLen::new("<gro");
+        let dings_expl_idx = explicit.indexer().index_ngram(&dings);
+        let gro_expl_idx = explicit.indexer().index_ngram(&gro);
+        assert_eq!(dings_expl_idx, gro_expl_idx);
+        let dings_buck_idx = bucket_vocab.indexer().index_ngram(&dings);
+        let gro_buck_idx = bucket_vocab.indexer().index_ngram(&gro);
+        assert_eq!(gro_buck_idx, dings_buck_idx);
+        assert_eq!(explicit.vocab_len(), explicit.words_len() + 43);
+        assert_eq!(explicit.indexer().upper_bound(), 43);
     }
 
     #[test]
