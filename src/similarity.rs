@@ -305,6 +305,7 @@ mod tests {
     use std::io::BufReader;
 
     use approx::AbsDiffEq;
+    use ordered_float::NotNan;
 
     use crate::compat::word2vec::ReadWord2Vec;
     use crate::embeddings::Embeddings;
@@ -413,25 +414,25 @@ mod tests {
     fn cosine_similarity_is_correctly_converted_to_angular_similarity() {
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 1f32.into()
+            similarity: NotNan::new(1f32).unwrap()
         })
         .angular_similarity()
         .abs_diff_eq(&1f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0.70710678.into()
+            similarity: NotNan::new(0.70710678).unwrap()
         })
         .angular_similarity()
         .abs_diff_eq(&0.75, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0f32.into()
+            similarity: NotNan::new(0f32).unwrap()
         })
         .angular_similarity()
         .abs_diff_eq(&0.5f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: (-1f32).into()
+            similarity: NotNan::new(-1f32).unwrap()
         })
         .angular_similarity()
         .abs_diff_eq(&0f32, 1e-5));
@@ -441,25 +442,25 @@ mod tests {
     fn cosine_similarity_is_correctly_converted_to_euclidean_distance() {
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 1f32.into()
+            similarity: NotNan::new(1f32).unwrap()
         })
         .euclidean_distance()
         .abs_diff_eq(&0f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0.70710678.into()
+            similarity: NotNan::new(0.70710678).unwrap()
         })
         .euclidean_distance()
         .abs_diff_eq(&0.76537, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0f32.into()
+            similarity: NotNan::new(0f32).unwrap()
         })
         .euclidean_distance()
         .abs_diff_eq(&2f32.sqrt(), 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: (-1f32).into()
+            similarity: NotNan::new(-1f32).unwrap()
         })
         .euclidean_distance()
         .abs_diff_eq(&2f32, 1e-5));
@@ -469,25 +470,25 @@ mod tests {
     fn cosine_similarity_is_correctly_converted_to_euclidean_similarity() {
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 1f32.into()
+            similarity: NotNan::new(1f32).unwrap()
         })
         .euclidean_similarity()
         .abs_diff_eq(&1f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0.70710678.into()
+            similarity: NotNan::new(0.70710678).unwrap()
         })
         .euclidean_similarity()
         .abs_diff_eq(&0.61732, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: 0f32.into()
+            similarity: NotNan::new(0f32).unwrap()
         })
         .euclidean_similarity()
         .abs_diff_eq(&(1f32 - 1f32 / 2f32.sqrt()), 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: (-1f32).into()
+            similarity: NotNan::new(-1f32).unwrap(),
         })
         .euclidean_similarity()
         .abs_diff_eq(&0f32, 1e-5));
@@ -512,8 +513,6 @@ mod tests {
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
-
-        println!("{:?}", result);
 
         for (idx, word_similarity) in result.iter().enumerate() {
             assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
@@ -547,8 +546,6 @@ mod tests {
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
-
-        println!("{:?}", result);
 
         for (idx, word_similarity) in result.iter().enumerate() {
             assert_eq!(SIMILARITY_ORDER_STUTTGART_10[idx], word_similarity.word)
