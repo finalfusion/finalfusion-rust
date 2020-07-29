@@ -265,10 +265,11 @@ where
 
     let matrix = Array2::from_shape_vec(shape, data).map_err(Error::Shape)?;
 
-    Ok(Embeddings::new_without_norms(
+    Ok(Embeddings::new_with_maybe_norms(
         None,
         SimpleVocab::new(words),
         NdArray::new(matrix),
+        None,
     ))
 }
 

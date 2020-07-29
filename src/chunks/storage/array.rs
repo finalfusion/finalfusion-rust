@@ -5,7 +5,7 @@ use std::mem::size_of;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{Array2, ArrayView2, ArrayViewMut2, Axis, CowArray, Ix1};
 
-use super::{Storage, StorageView, StorageViewMut};
+use super::{sealed::CloneFromMapping, Storage, StorageView, StorageViewMut};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::error::{Error, Result};
 use crate::util::padding;
@@ -27,14 +27,13 @@ mod mmap {
     use ndarray::{Array2, ArrayView2, Axis, CowArray, Ix1};
     use ndarray::{Dimension, Ix2};
 
-    #[cfg(target_endian = "little")]
     use super::NdArray;
     #[cfg(target_endian = "little")]
     use crate::chunks::io::WriteChunk;
     use crate::chunks::io::{ChunkIdentifier, TypeId};
-    use crate::chunks::storage::Storage;
     #[cfg(target_endian = "little")]
     use crate::chunks::storage::StorageView;
+    use crate::chunks::storage::{sealed::CloneFromMapping, Storage};
     use crate::error::{Error, Result};
     use crate::util::padding;
 
@@ -100,6 +99,14 @@ mod mmap {
             unsafe {
                 ArrayView2::from_shape_ptr(self.shape, self.map.as_ptr() as *const f32)
             }
+        }
+    }
+
+    impl CloneFromMapping for MmapArray {
+        type Result = NdArray;
+
+        fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+            NdArray::new(self.embeddings(mapping))
         }
     }
 
@@ -284,6 +291,14 @@ impl StorageView for NdArray {
 impl StorageViewMut for NdArray {
     fn view_mut(&mut self) -> ArrayViewMut2<f32> {
         self.inner.view_mut()
+    }
+}
+
+impl CloneFromMapping for NdArray {
+    type Result = NdArray;
+
+    fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+        NdArray::new(self.embeddings(mapping))
     }
 }
 

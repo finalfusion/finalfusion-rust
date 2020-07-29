@@ -8,7 +8,7 @@ use rand::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
-use super::{Storage, StorageView};
+use super::{sealed::CloneFromMapping, Storage, StorageView};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
 use crate::error::{Error, Result};
 use crate::storage::NdArray;
@@ -280,6 +280,20 @@ impl Storage for QuantizedArray {
     }
 }
 
+impl CloneFromMapping for QuantizedArray {
+    type Result = QuantizedArray;
+
+    fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+        let quantized_embeddings = self.quantized_embeddings.select(Axis(0), &mapping);
+        let norms = self.norms.as_ref().map(|n| n.select(Axis(0), &mapping));
+        QuantizedArray {
+            quantizer: self.quantizer.clone(),
+            quantized_embeddings,
+            norms,
+        }
+    }
+}
+
 impl ReadChunk for QuantizedArray {
     fn read_chunk<R>(read: &mut R) -> Result<Self>
     where
@@ -472,7 +486,7 @@ mod mmap {
     use super::{PQRead, QuantizedArray, Storage};
     use crate::chunks::io::MmapChunk;
     use crate::chunks::io::{ChunkIdentifier, WriteChunk};
-    use crate::chunks::storage::NdArray;
+    use crate::chunks::storage::{sealed::CloneFromMapping, NdArray};
     use crate::error::{Error, Result};
     use byteorder::{LittleEndian, ReadBytesExt};
 
@@ -567,6 +581,21 @@ mod mmap {
                 self.quantized_embeddings.len() / self.quantizer.quantized_len(),
                 self.quantizer.reconstructed_len(),
             )
+        }
+    }
+
+    impl CloneFromMapping for MmapQuantizedArray {
+        type Result = QuantizedArray;
+
+        fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+            let quantized_embeddings =
+                unsafe { self.quantized_embeddings() }.select(Axis(0), &mapping);
+            let norms = self.norms.as_ref().map(|n| n.select(Axis(0), &mapping));
+            QuantizedArray {
+                quantizer: self.quantizer.clone(),
+                quantized_embeddings,
+                norms,
+            }
         }
     }
 

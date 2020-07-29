@@ -185,8 +185,13 @@ impl ExplicitIndexer {
     /// `(0..n_original_indices)` where `n_original_indices` is the number of unique indices in the
     /// `subword -> index` mapping.
     ///
+    /// The second item in the returned tuple holds the `provided_index -> new_index` mapping.
+    /// I.e.: the `i`th unique `provided_index` in `ngram_tuples` is mapped to the `new_index` `i`.
+    ///
     /// Panics when there are duplicate ngrams.
-    pub fn new_with_indices(ngram_tuples: impl IntoIterator<Item = (String, u64)>) -> Self {
+    pub fn new_with_indices(
+        ngram_tuples: impl IntoIterator<Item = (String, u64)>,
+    ) -> (Self, HashMap<u64, usize>) {
         let ngram_tuples = ngram_tuples.into_iter();
         let mut old_to_new_indices = HashMap::with_capacity(ngram_tuples.size_hint().0);
         let mut index = HashMap::with_capacity(ngram_tuples.size_hint().0);
@@ -201,11 +206,14 @@ impl ExplicitIndexer {
             ngrams.push(ngram);
         }
         let bound = old_to_new_indices.len();
-        ExplicitIndexer {
-            ngrams,
-            index,
-            bound,
-        }
+        (
+            ExplicitIndexer {
+                ngrams,
+                index,
+                bound,
+            },
+            old_to_new_indices,
+        )
     }
 }
 

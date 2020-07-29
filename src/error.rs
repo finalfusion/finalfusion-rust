@@ -28,6 +28,9 @@ pub enum Error {
 
     #[error("Data cannot be represented using native word size")]
     Overflow,
+
+    #[error("Can't convert {from:?} to {to:?}")]
+    ConversionError { from: String, to: String },
 }
 
 impl Error {
@@ -35,6 +38,13 @@ impl Error {
         Error::Io {
             desc: desc.into(),
             error,
+        }
+    }
+
+    pub fn conversion_error(from: impl Into<String>, to: impl Into<String>) -> Self {
+        Error::ConversionError {
+            from: from.into(),
+            to: to.into(),
         }
     }
 }

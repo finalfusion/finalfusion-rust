@@ -14,6 +14,7 @@ use super::{NdArray, QuantizedArray, Storage, StorageView};
 #[cfg(feature = "memmap")]
 use crate::chunks::io::MmapChunk;
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, WriteChunk};
+use crate::chunks::storage::sealed::CloneFromMapping;
 use crate::error::{Error, Result};
 
 /// Storage types wrapper.
@@ -68,6 +69,27 @@ impl Storage for StorageWrap {
             StorageWrap::MmapQuantizedArray(inner) => inner.shape(),
             StorageWrap::NdArray(inner) => inner.shape(),
             StorageWrap::QuantizedArray(inner) => inner.shape(),
+        }
+    }
+}
+
+impl CloneFromMapping for StorageWrap {
+    type Result = StorageWrap;
+
+    fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+        match self {
+            StorageWrap::QuantizedArray(quant) => {
+                StorageWrap::QuantizedArray(Box::new(quant.clone_from_mapping(mapping)))
+            }
+            #[cfg(feature = "memmap")]
+            StorageWrap::MmapQuantizedArray(quant) => {
+                StorageWrap::QuantizedArray(Box::new(quant.clone_from_mapping(mapping)))
+            }
+            #[cfg(feature = "memmap")]
+            StorageWrap::MmapArray(mmapped) => {
+                StorageWrap::NdArray(mmapped.clone_from_mapping(mapping))
+            }
+            StorageWrap::NdArray(array) => StorageWrap::NdArray(array.clone_from_mapping(mapping)),
         }
     }
 }
@@ -232,6 +254,22 @@ impl StorageView for StorageViewWrap {
             #[cfg(all(feature = "memmap", target_endian = "little"))]
             StorageViewWrap::MmapArray(inner) => inner.view(),
             StorageViewWrap::NdArray(inner) => inner.view(),
+        }
+    }
+}
+
+impl CloneFromMapping for StorageViewWrap {
+    type Result = StorageViewWrap;
+
+    fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
+        match self {
+            #[cfg(all(feature = "memmap", target_endian = "little"))]
+            StorageViewWrap::MmapArray(mmapped) => {
+                StorageViewWrap::NdArray(mmapped.clone_from_mapping(mapping))
+            }
+            StorageViewWrap::NdArray(array) => {
+                StorageViewWrap::NdArray(array.clone_from_mapping(mapping))
+            }
         }
     }
 }

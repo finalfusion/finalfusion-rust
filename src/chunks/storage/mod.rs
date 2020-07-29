@@ -29,6 +29,20 @@ pub trait Storage {
     fn shape(&self) -> (usize, usize);
 }
 
+pub(crate) mod sealed {
+    use crate::chunks::storage::Storage;
+
+    /// Return a new storage from an existing Storage based on a mapping.
+    pub trait CloneFromMapping {
+        type Result: Storage;
+
+        /// Construct a new Storage based on a mapping.
+        ///
+        /// The `i`th entry in the returned storage is based on `self.embedding(mapping[i])`.
+        fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result;
+    }
+}
+
 /// Storage that provide a view of the embedding matrix.
 pub trait StorageView: Storage {
     /// Get a view of the embedding matrix.

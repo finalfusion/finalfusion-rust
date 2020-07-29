@@ -107,10 +107,11 @@ where
                 .map_err(|e| Error::io_error("Cannot read word embedding", e))?;
         }
 
-        Ok(Embeddings::new_without_norms(
+        Ok(Embeddings::new_with_maybe_norms(
             None,
             SimpleVocab::new(words),
             NdArray::new(matrix),
+            None,
         ))
     }
 }
