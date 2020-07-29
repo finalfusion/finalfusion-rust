@@ -357,7 +357,10 @@ where
     /// N-grams in the range `(self.min_n..self.max_n)` are extracted from the words in the
     /// vocabulary, each of these gets assigned an index from the `BucketIndexer` which is used to
     /// determine the index in the explicit subword vocab.
-    pub fn to_explicit(&self) -> ExplicitSubwordVocab {
+    ///
+    /// The second item in the returned tuple holds the `bucket -> explicit_index` mapping for
+    /// all buckets hit by `self`.
+    pub fn to_explicit(&self) -> (ExplicitSubwordVocab, HashMap<u64, usize>) {
         let mut ngram_index = HashMap::new();
         let SubwordVocab {
             words,
@@ -375,8 +378,11 @@ where
                 ngram_index.entry(ngram.into()).or_insert(idx);
             }
         }
-        let indexer = ExplicitIndexer::new_with_indices(ngram_index);
-        ExplicitSubwordVocab::new(words.to_owned(), *min_n, *max_n, indexer)
+        let (indexer, mapping) = ExplicitIndexer::new_with_indices(ngram_index);
+        (
+            ExplicitSubwordVocab::new(words.to_owned(), *min_n, *max_n, indexer),
+            mapping,
+        )
     }
 }
 
@@ -407,7 +413,7 @@ impl SubwordVocab<ExplicitIndexer> {
 
         let words = read_vocab_items(read, words_len as usize)?;
         let ngrams = read_ngrams_with_indices(read, ngrams_len as usize)?;
-        let indexer = ExplicitIndexer::new_with_indices(ngrams);
+        let (indexer, _) = ExplicitIndexer::new_with_indices(ngrams);
         Ok(SubwordVocab::new(words, min_n, max_n, indexer))
     }
 
@@ -560,7 +566,7 @@ mod tests {
             ("<t".to_owned(), 2),
         ];
 
-        ExplicitSubwordVocab::new(words, 2, 3, ExplicitIndexer::new_with_indices(ngrams))
+        ExplicitSubwordVocab::new(words, 2, 3, ExplicitIndexer::new_with_indices(ngrams).0)
     }
 
     #[test]
@@ -568,7 +574,7 @@ mod tests {
         let words = vec!["groß".to_owned(), "allerdings".to_owned()];
         let indexer = FinalfusionHashIndexer::new(21);
         let bucket_vocab = SubwordVocab::new(words, 3, 6, indexer);
-        let explicit = bucket_vocab.to_explicit();
+        let (explicit, _) = bucket_vocab.to_explicit();
         let dings = StrWithCharLen::new("dings");
         let gro = StrWithCharLen::new("<gro");
         let dings_expl_idx = explicit.indexer().index_ngram(&dings);

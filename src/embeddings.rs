@@ -14,15 +14,16 @@ use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
 use crate::chunks::storage::{
-    NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage, StorageView, StorageViewWrap,
-    StorageWrap,
+    sealed::CloneFromMapping, NdArray, Quantize as QuantizeStorage, QuantizedArray, Storage,
+    StorageView, StorageViewWrap, StorageWrap,
 };
 use crate::chunks::vocab::{
-    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, Vocab, VocabWrap,
-    WordIndex,
+    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, SimpleVocab, SubwordVocab,
+    Vocab, VocabWrap, WordIndex,
 };
 use crate::error::{Error, Result};
 use crate::io::{ReadEmbeddings, WriteEmbeddings};
+use crate::subword::BucketIndexer;
 use crate::util::l2_normalize;
 
 /// Word embeddings.
@@ -54,31 +55,30 @@ where
             norms.len(),
             "Vocab and norms do not have the same length"
         );
+        Embeddings::new_with_maybe_norms(metadata, vocab, storage, Some(norms))
+    }
+
+    pub(crate) fn new_with_maybe_norms(
+        metadata: Option<Metadata>,
+        vocab: V,
+        storage: S,
+        norms: Option<NdNorms>,
+    ) -> Self {
         assert_eq!(
             vocab.vocab_len(),
             storage.shape().0,
             "Max vocab index must match number of rows in the embedding matrix."
         );
-
         Embeddings {
             metadata,
             vocab,
             storage,
-            norms: Some(norms),
+            norms,
         }
     }
 }
 
 impl<V, S> Embeddings<V, S> {
-    pub(crate) fn new_without_norms(metadata: Option<Metadata>, vocab: V, storage: S) -> Self {
-        Embeddings {
-            metadata,
-            vocab,
-            storage,
-            norms: None,
-        }
-    }
-
     /// Decompose embeddings in its vocabulary, storage, and
     /// optionally norms.
     pub fn into_parts(self) -> (Option<Metadata>, V, S, Option<NdNorms>) {
@@ -254,6 +254,61 @@ where
     pub fn len(&self) -> usize {
         self.vocab.words_len()
     }
+}
+
+impl<I, S> Embeddings<SubwordVocab<I>, S>
+where
+    I: BucketIndexer,
+    S: Storage + CloneFromMapping,
+{
+    /// Convert to explicitly indexed subword Embeddings.
+    pub fn to_explicit(&self) -> Embeddings<ExplicitSubwordVocab, S::Result> {
+        to_explicit_impl(self.vocab(), self.storage(), self.norms())
+    }
+}
+
+impl<S> Embeddings<VocabWrap, S>
+where
+    S: Storage + CloneFromMapping,
+{
+    /// Try to convert to explicitly indexed subword embeddings.
+    ///
+    /// Conversion fails if the wrapped vocabulary is `SimpleVocab` or already an
+    /// `ExplicitSubwordVocab`.
+    pub fn try_to_explicit(&self) -> Result<Embeddings<ExplicitSubwordVocab, S::Result>> {
+        match &self.vocab {
+            VocabWrap::BucketSubwordVocab(sw) => {
+                Ok(to_explicit_impl(sw, self.storage(), self.norms()))
+            }
+            VocabWrap::FastTextSubwordVocab(sw) => {
+                Ok(to_explicit_impl(sw, self.storage(), self.norms()))
+            }
+            VocabWrap::SimpleVocab(_) => {
+                Err(Error::conversion_error("SimpleVocab", "ExplicitVocab"))
+            }
+            VocabWrap::ExplicitSubwordVocab(_) => {
+                Err(Error::conversion_error("ExplicitVocab", "ExplicitVocab"))
+            }
+        }
+    }
+}
+
+fn to_explicit_impl<I, S>(
+    vocab: &SubwordVocab<I>,
+    storage: &S,
+    norms: Option<&NdNorms>,
+) -> Embeddings<ExplicitSubwordVocab, S::Result>
+where
+    S: Storage + CloneFromMapping,
+    I: BucketIndexer,
+{
+    let (expl_voc, old_to_new) = vocab.to_explicit();
+    let mut mapping = (0..expl_voc.vocab_len()).collect::<Vec<_>>();
+    for (old, new) in old_to_new {
+        mapping[expl_voc.words_len() + new] = old as usize + expl_voc.words_len();
+    }
+    let new_storage = storage.clone_from_mapping(&mapping);
+    Embeddings::new_with_maybe_norms(None, expl_voc, new_storage, norms.cloned())
 }
 
 macro_rules! impl_embeddings_from(
@@ -599,11 +654,12 @@ mod tests {
     use super::Embeddings;
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
-    use crate::chunks::storage::{NdArray, StorageView};
-    use crate::chunks::vocab::SimpleVocab;
+    use crate::chunks::storage::{NdArray, Storage, StorageView};
+    use crate::chunks::vocab::{SimpleVocab, Vocab};
     use crate::compat::fasttext::ReadFastText;
     use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::io::{ReadEmbeddings, WriteEmbeddings};
+    use crate::subword::Indexer;
 
     fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
@@ -655,6 +711,33 @@ mod tests {
 
         #[cfg(target_endian = "little")]
         assert_eq!(embeds.storage().view(), check_embeds.storage().view());
+    }
+
+    #[test]
+    fn to_explicit() {
+        let mut reader = BufReader::new(File::open("testdata/fasttext.bin").unwrap());
+        let embeds = Embeddings::read_fasttext(&mut reader).unwrap();
+        let expl_embeds = embeds.to_explicit();
+        let ganz = embeds.embedding("ganz").unwrap();
+        let ganz_expl = expl_embeds.embedding("ganz").unwrap();
+        assert_eq!(ganz, ganz_expl);
+
+        assert!(embeds
+            .vocab
+            .idx("anz")
+            .map(|i| i.subword().is_some())
+            .unwrap_or(false));
+        let anz_idx = embeds.vocab.indexer().index_ngram(&"anz".into()).unwrap() as usize
+            + embeds.vocab.words_len();
+        let anz = embeds.storage.embedding(anz_idx);
+        let anz_idx = expl_embeds
+            .vocab
+            .indexer()
+            .index_ngram(&"anz".into())
+            .unwrap() as usize
+            + embeds.vocab.words_len();
+        let anz_expl = expl_embeds.storage.embedding(anz_idx);
+        assert_eq!(anz, anz_expl);
     }
 
     #[test]
