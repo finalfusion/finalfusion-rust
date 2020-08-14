@@ -18,8 +18,8 @@ use crate::util::l2_normalize;
 /// its similarity to a query word.
 #[derive(Debug, Eq, PartialEq)]
 pub struct WordSimilarityResult<'a> {
-    pub similarity: NotNan<f32>,
-    pub word: &'a str,
+    similarity: NotNan<f32>,
+    word: &'a str,
 }
 
 impl<'a> WordSimilarityResult<'a> {
@@ -47,6 +47,10 @@ impl<'a> WordSimilarityResult<'a> {
     /// distance of *0*.
     pub fn euclidean_similarity(&self) -> f32 {
         1f32 - (self.euclidean_distance() / 2f32)
+    }
+
+    pub fn word(&self) -> &str {
+        self.word
     }
 }
 

@@ -621,24 +621,24 @@ mod tests {
     fn test_read_fasttext() {
         let embeddings = read_fasttext();
         let results = embeddings.word_similarity("über", 3).unwrap();
-        assert_eq!(results[0].word, "auf");
-        assert_abs_diff_eq!(*results[0].similarity, 0.568513, epsilon = 1e-6);
-        assert_eq!(results[1].word, "vor");
-        assert_abs_diff_eq!(*results[1].similarity, 0.551551, epsilon = 1e-6);
-        assert_eq!(results[2].word, "durch");
-        assert_abs_diff_eq!(*results[2].similarity, 0.547349, epsilon = 1e-6);
+        assert_eq!(results[0].word(), "auf");
+        assert_abs_diff_eq!(results[0].cosine_similarity(), 0.568513, epsilon = 1e-6);
+        assert_eq!(results[1].word(), "vor");
+        assert_abs_diff_eq!(results[1].cosine_similarity(), 0.551551, epsilon = 1e-6);
+        assert_eq!(results[2].word(), "durch");
+        assert_abs_diff_eq!(results[2].cosine_similarity(), 0.547349, epsilon = 1e-6);
     }
 
     #[test]
     fn test_read_fasttext_unknown() {
         let embeddings = read_fasttext();
         let results = embeddings.word_similarity("unknown", 3).unwrap();
-        assert_eq!(results[0].word, "einer");
-        assert_abs_diff_eq!(*results[0].similarity, 0.691177, epsilon = 1e-6);
-        assert_eq!(results[1].word, "und");
-        assert_abs_diff_eq!(*results[1].similarity, 0.576449, epsilon = 1e-6);
-        assert_eq!(results[2].word, "des");
-        assert_abs_diff_eq!(*results[2].similarity, 0.570398, epsilon = 1e-6);
+        assert_eq!(results[0].word(), "einer");
+        assert_abs_diff_eq!(results[0].cosine_similarity(), 0.691177, epsilon = 1e-6);
+        assert_eq!(results[1].word(), "und");
+        assert_abs_diff_eq!(results[1].cosine_similarity(), 0.576449, epsilon = 1e-6);
+        assert_eq!(results[2].word(), "des");
+        assert_abs_diff_eq!(results[2].cosine_similarity(), 0.570398, epsilon = 1e-6);
     }
 
     #[test]
