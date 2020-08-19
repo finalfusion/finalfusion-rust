@@ -146,17 +146,26 @@ and unknown words.
 
 ## Using a BLAS or LAPACK library
 
-If you are using `finalfusion` in an application, you can choose to
-enable the use of a BLAS/LAPACK libraries in `reductive` using the
-features:
+If you are using `finalfusion` in a binary crate, you can compile
+`ndarray` with BLAS support to speed up certain functionality in
+`finalfusion-rust`. In order to do so, enable the `ndarray/blas`
+feature and add one of the following crates as a dependency to select
+a BLAS/LAPACK implementation:
 
-* `reductive/netblas`: Use reference BLAS/LAPACK (slow, not recommended)
-* `reductive/openblas`: Use OpenBLAS
-* `reductive/intel-mkl`: Use Intel Math Kernel Library
+* `netlib-src`: Use reference BLAS/LAPACK (slow, not recommended)
+* `openblas-src`: Use OpenBLAS
+* `intel-mkl-src`: Use Intel Math Kernel Library
 
-Compiling against a LAPACK library is required to quantize embedding
-matrices using an *optimized product quantizer*. You do **not** need
-such a library to use quantized embeddings.
+If you want to quantize an embedding matrix using *optimized product
+quantization*, you must enable the the `reductive/opq-train` feature
+in addition to adding a BLAS/LAPACK implementation.
+
+The
+[Cargo.toml](https://github.com/finalfusion/finalfusion-utils/blob/master/Cargo.toml)
+file of `finalfusion-utils` can be used as an example of how to use
+BLAS in a binary crate.
+
+### Example: embedding lookups in quantized matrices
 
 Embedding lookups in embedding matrices that were quantized using the
 optimized product quantizer can be speeded up using a good BLAS
