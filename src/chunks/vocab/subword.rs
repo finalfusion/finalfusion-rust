@@ -186,11 +186,12 @@ where
             .as_str()
             .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
             .map(|idx| idx as usize + self.words_len());
-        if I::infallible() {
+        let indices = if I::infallible() {
             let size = indices.size_hint().1.unwrap();
-            return Some(indices.collect_with_capacity(size));
-        }
-        let indices = indices.collect::<Vec<_>>();
+            indices.collect_with_capacity(size)
+        } else {
+            indices.collect::<Vec<_>>()
+        };
         if indices.is_empty() {
             None
         } else {
@@ -639,5 +640,13 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn bucket_vocabs_no_indices_are_none() {
+        let check_vocab = test_subword_vocab();
+        assert!(check_vocab.idx("").is_none());
+        let check_vocab = test_ngram_vocab();
+        assert!(check_vocab.idx("").is_none());
     }
 }
