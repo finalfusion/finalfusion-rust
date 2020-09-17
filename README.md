@@ -37,7 +37,7 @@ Loading embeddings and querying it is as simple as:
 use std::fs::File;
 use std::io::BufReader;
 
-import finalfusion::prelude::*;
+use finalfusion::prelude::*;
 
 fn main() {
     let mut reader = BufReader::new(File::open("embeddings.fifu").unwrap());
