@@ -22,7 +22,7 @@ itertools = "0.9"
 ndarray = "0.13"
 ordered-float = "2"
 rand = "0.7"
-rand_xorshift = "0.2"
+rand_xorshift = "0.3"
 reductive = "0.5"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
