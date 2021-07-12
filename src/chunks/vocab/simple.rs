@@ -30,7 +30,7 @@ impl SimpleVocab {
             indices.len(),
             "words contained duplicate entries."
         );
-        SimpleVocab { words, indices }
+        SimpleVocab { indices, words }
     }
 }
 

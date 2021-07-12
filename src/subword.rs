@@ -316,8 +316,8 @@ impl<'a> NGrams<'a> {
         let ngram_len = cmp::min(max_n, char_offsets.len());
 
         NGrams {
-            min_n,
             max_n,
+            min_n,
             string,
             char_offsets,
             ngram_len,
@@ -445,7 +445,7 @@ impl<'a, 'b, I> NGramsIndicesIter<'a, 'b, I> {
     /// subword indices.
     pub fn new(string: &'a str, min_n: usize, max_n: usize, indexer: &'b I) -> Self {
         let ngrams = NGrams::new(string, min_n, max_n);
-        NGramsIndicesIter { indexer, ngrams }
+        NGramsIndicesIter { ngrams, indexer }
     }
 }
 

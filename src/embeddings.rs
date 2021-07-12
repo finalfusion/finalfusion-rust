@@ -71,8 +71,8 @@ where
         );
         Embeddings {
             metadata,
-            vocab,
             storage,
+            vocab,
             norms,
         }
     }
@@ -421,8 +421,8 @@ mod mmap {
 
             Ok(Embeddings {
                 metadata,
-                vocab,
                 storage,
+                vocab,
                 norms,
             })
         }
@@ -458,8 +458,8 @@ where
 
         Ok(Embeddings {
             metadata,
-            vocab,
             storage,
+            vocab,
             norms,
         })
     }

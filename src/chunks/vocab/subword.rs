@@ -74,11 +74,11 @@ where
         );
 
         SubwordVocab {
+            indexer,
             indices,
             words,
             min_n,
             max_n,
-            indexer,
         }
     }
 

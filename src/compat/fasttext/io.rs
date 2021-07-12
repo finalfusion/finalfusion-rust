@@ -207,7 +207,7 @@ impl Config {
             max_n: Default::default(),
             min_count: Default::default(),
             min_n: Default::default(),
-            model: Model::CBOW,
+            model: Model::Cbow,
             neg: Default::default(),
             sampling_threshold: Default::default(),
             window_size: Default::default(),
@@ -361,7 +361,7 @@ impl Loss {
 /// fastText model type.
 #[derive(Copy, Clone, Debug, Serialize)]
 enum Model {
-    CBOW,
+    Cbow,
     SkipGram,
     Supervised,
 }
@@ -377,7 +377,7 @@ impl Model {
 
         use self::Model::*;
         match model {
-            1 => Ok(CBOW),
+            1 => Ok(Cbow),
             2 => Ok(SkipGram),
             3 => Ok(Supervised),
             m => Err(Error::Format(format!("Unknown model: {}", m))),
@@ -390,7 +390,7 @@ impl Model {
     {
         use self::Model::*;
         let model_id = match self {
-            CBOW => 1u32,
+            Cbow => 1u32,
             SkipGram => 2,
             Supervised => 3,
         };
