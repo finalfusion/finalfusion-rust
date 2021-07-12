@@ -479,7 +479,7 @@ mod mmap {
     use std::fs::File;
     use std::io::{BufReader, Seek, SeekFrom, Write};
 
-    use memmap::{Mmap, MmapOptions};
+    use memmap2::{Mmap, MmapOptions};
     use ndarray::{Array1, Array2, ArrayView2, Axis, CowArray, Ix1};
     use reductive::pq::{QuantizeVector, ReconstructVector, PQ};
 
@@ -528,7 +528,7 @@ mod mmap {
                 mmap_opts
                     .offset(offset)
                     .len(matrix_len)
-                    .map(&read.get_ref())
+                    .map(&*read.get_ref())
                     .map_err(|e| {
                         Error::io_error("Cannot memory map quantized embedding matrix", e)
                     })?
