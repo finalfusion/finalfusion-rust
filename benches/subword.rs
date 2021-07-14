@@ -19,10 +19,8 @@ fn subwords(string: &str, min_n: usize, max_n: usize, indexer: &impl Indexer) ->
 
 fn ngrams_benchmark(c: &mut Criterion) {
     let rng = thread_rng();
-    let string = rng
-        .sample_iter(&Alphanumeric)
-        .take(WORD_LENGTH)
-        .collect::<String>();
+    let string =
+        String::from_utf8(rng.sample_iter(&Alphanumeric).take(WORD_LENGTH).collect()).unwrap();
 
     let indexer = FinalfusionHashIndexer::new(21);
 
