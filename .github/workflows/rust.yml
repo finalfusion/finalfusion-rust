@@ -15,6 +15,10 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
+          command: check
+          args: --all-targets
+      - uses: actions-rs/cargo@v1
+        with:
           command: test
 
   test-cross:

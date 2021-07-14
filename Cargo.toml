@@ -28,12 +28,13 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 toml = "0.5"
 
-[dependencies.memmap]
-version = "0.7"
+[dependencies.memmap2]
+version = "0.3"
 optional = true
 
 [features]
 default = ["memmap"]
+memmap = ["memmap2"]
 
 [dev-dependencies]
 approx = "0.4"
@@ -53,4 +54,3 @@ harness = false
 [[bench]]
 name = "quantized"
 harness = false
-

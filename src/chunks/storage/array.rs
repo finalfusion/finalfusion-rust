@@ -23,7 +23,7 @@ mod mmap {
     #[cfg(target_endian = "big")]
     use byteorder::ByteOrder;
     use byteorder::{LittleEndian, ReadBytesExt};
-    use memmap::{Mmap, MmapOptions};
+    use memmap2::{Mmap, MmapOptions};
     use ndarray::{Array2, ArrayView2, Axis, CowArray, Ix1};
     use ndarray::{Dimension, Ix2};
 
@@ -152,7 +152,7 @@ mod mmap {
                 mmap_opts
                     .offset(offset)
                     .len(matrix_len)
-                    .map(&read.get_ref())
+                    .map(&*read.get_ref())
                     .map_err(|e| Error::io_error("Cannot memory map embedding matrix", e))?
             };
 
