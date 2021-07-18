@@ -3,6 +3,7 @@
 use std::io;
 
 use ndarray::ShapeError;
+use rand::Error as RandError;
 use thiserror::Error;
 
 /// `Result` type alias for operations that can lead to I/O errors.
@@ -15,6 +16,10 @@ pub enum Error {
     /// Invalid file format.
     #[error("Invalid file format {0}")]
     Format(String),
+
+    /// Random number generation error.
+    #[error(transparent)]
+    RandError(#[from] RandError),
 
     /// `ndarray` shape error.
     #[error(transparent)]

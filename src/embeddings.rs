@@ -6,8 +6,7 @@ use std::mem;
 use std::slice;
 
 use ndarray::{Array1, ArrayViewMut1, Axis, CowArray, Ix1};
-use rand::{RngCore, SeedableRng};
-use rand_xorshift::XorShiftRng;
+use rand::{CryptoRng, RngCore, SeedableRng};
 use reductive::pq::TrainPQ;
 
 use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
@@ -25,6 +24,7 @@ use crate::error::{Error, Result};
 use crate::io::{ReadEmbeddings, WriteEmbeddings};
 use crate::subword::BucketIndexer;
 use crate::util::l2_normalize;
+use rand_chacha::ChaChaRng;
 
 /// Word embeddings.
 ///
@@ -520,7 +520,7 @@ pub trait Quantize<V> {
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-    ) -> Embeddings<V, QuantizedArray>
+    ) -> Result<Embeddings<V, QuantizedArray>>
     where
         T: TrainPQ<f32>,
     {
@@ -530,7 +530,7 @@ pub trait Quantize<V> {
             n_iterations,
             n_attempts,
             normalize,
-            XorShiftRng::from_entropy(),
+            ChaChaRng::from_entropy(),
         )
     }
 
@@ -546,10 +546,10 @@ pub trait Quantize<V> {
         n_attempts: usize,
         normalize: bool,
         rng: R,
-    ) -> Embeddings<V, QuantizedArray>
+    ) -> Result<Embeddings<V, QuantizedArray>>
     where
         T: TrainPQ<f32>,
-        R: RngCore + SeedableRng + Send;
+        R: CryptoRng + RngCore + SeedableRng + Send;
 }
 
 impl<V, S> Quantize<V> for Embeddings<V, S>
@@ -565,10 +565,10 @@ where
         n_attempts: usize,
         normalize: bool,
         rng: R,
-    ) -> Embeddings<V, QuantizedArray>
+    ) -> Result<Embeddings<V, QuantizedArray>>
     where
         T: TrainPQ<f32>,
-        R: RngCore + SeedableRng + Send,
+        R: CryptoRng + RngCore + SeedableRng + Send,
     {
         let quantized_storage = self.storage().quantize_using::<T, R>(
             n_subquantizers,
@@ -577,14 +577,14 @@ where
             n_attempts,
             normalize,
             rng,
-        );
+        )?;
 
-        Embeddings {
+        Ok(Embeddings {
             metadata: self.metadata().cloned(),
             vocab: self.vocab.clone(),
             storage: quantized_storage,
             norms: self.norms().cloned(),
-        }
+        })
     }
 }
 
@@ -647,7 +647,6 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Seek, SeekFrom};
 
-    use approx::AbsDiffEq;
     use ndarray::{array, Array1};
     use toml::toml;
 

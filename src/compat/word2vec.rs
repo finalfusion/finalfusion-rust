@@ -171,8 +171,6 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
-    use approx::AbsDiffEq;
-
     use crate::chunks::storage::StorageView;
     use crate::chunks::vocab::Vocab;
     use crate::compat::word2vec::{ReadWord2Vec, ReadWord2VecRaw, WriteWord2Vec};

@@ -350,8 +350,6 @@ mod tests {
     use std::fs::File;
     use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 
-    use approx::AbsDiffEq;
-
     use crate::chunks::storage::{NdArray, StorageView};
     use crate::chunks::vocab::{SimpleVocab, Vocab};
     use crate::compat::word2vec::ReadWord2VecRaw;

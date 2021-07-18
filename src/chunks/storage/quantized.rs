@@ -4,8 +4,7 @@ use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Axis, CowArray, IntoDimension, Ix1};
-use rand::{RngCore, SeedableRng};
-use rand_xorshift::XorShiftRng;
+use rand::{CryptoRng, RngCore, SeedableRng};
 use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
 
 use super::{sealed::CloneFromMapping, Storage, StorageView};
@@ -367,7 +366,7 @@ pub trait Quantize {
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-    ) -> QuantizedArray
+    ) -> Result<QuantizedArray>
     where
         T: TrainPQ<f32>,
     {
@@ -377,7 +376,7 @@ pub trait Quantize {
             n_iterations,
             n_attempts,
             normalize,
-            XorShiftRng::from_entropy(),
+            ChaChaRng::from_entropy(),
         )
     }
 
@@ -393,10 +392,10 @@ pub trait Quantize {
         n_attempts: usize,
         normalize: bool,
         rng: R,
-    ) -> QuantizedArray
+    ) -> Result<QuantizedArray>
     where
         T: TrainPQ<f32>,
-        R: RngCore + SeedableRng + Send;
+        R: CryptoRng + RngCore + SeedableRng + Send;
 }
 
 impl<S> Quantize for S
@@ -414,11 +413,11 @@ where
         n_iterations: usize,
         n_attempts: usize,
         normalize: bool,
-        rng: R,
-    ) -> QuantizedArray
+        mut rng: R,
+    ) -> Result<QuantizedArray>
     where
         T: TrainPQ<f32>,
-        R: RngCore + SeedableRng + Send,
+        R: CryptoRng + RngCore + SeedableRng + Send,
     {
         let (embeds, norms) = if normalize {
             let norms = self.view().outer_iter().map(|e| e.dot(&e).sqrt()).collect();
@@ -437,16 +436,16 @@ where
             n_iterations,
             n_attempts,
             embeds.view(),
-            rng,
-        );
+            &mut rng,
+        )?;
 
         let quantized_embeddings = quantizer.quantize_batch(embeds.view());
 
-        QuantizedArray {
+        Ok(QuantizedArray {
             quantizer,
             quantized_embeddings,
             norms,
-        }
+        })
     }
 }
 
@@ -671,6 +670,7 @@ mod mmap {
 
 #[cfg(feature = "memmap")]
 pub use mmap::MmapQuantizedArray;
+use rand_chacha::ChaChaRng;
 
 #[cfg(test)]
 mod tests {
@@ -696,7 +696,7 @@ mod tests {
 
     fn test_quantized_array(norms: bool) -> QuantizedArray {
         let ndarray = test_ndarray();
-        ndarray.quantize::<PQ<f32>>(10, 4, 5, 1, norms)
+        ndarray.quantize::<PQ<f32>>(10, 4, 5, 1, norms).unwrap()
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
