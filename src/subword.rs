@@ -484,10 +484,10 @@ mod tests {
             "ld", "d",
         ];
 
-        hello_check.sort();
+        hello_check.sort_unstable();
 
         let mut hello_ngrams: Vec<_> = NGrams::new("hellö world", 1, 3).map(|s| s.inner).collect();
-        hello_ngrams.sort();
+        hello_ngrams.sort_unstable();
 
         assert_eq!(hello_check, hello_ngrams);
     }
@@ -499,10 +499,10 @@ mod tests {
             "wor", "or", "orl", "rl", "rld", "ld",
         ];
 
-        hello_check.sort();
+        hello_check.sort_unstable();
 
         let mut hello_ngrams: Vec<_> = NGrams::new("hello world", 2, 3).map(|s| s.inner).collect();
-        hello_ngrams.sort();
+        hello_ngrams.sort_unstable();
 
         assert_eq!(hello_check, hello_ngrams);
     }
@@ -510,10 +510,10 @@ mod tests {
     #[test]
     fn short_ngram_test() {
         let mut yep_check: Vec<&str> = vec!["ˈjə", "jəp", "ˈjəp"];
-        yep_check.sort();
+        yep_check.sort_unstable();
 
         let mut yep_ngrams: Vec<_> = NGrams::new("ˈjəp", 3, 6).map(|s| s.inner).collect();
-        yep_ngrams.sort();
+        yep_ngrams.sort_unstable();
 
         assert_eq!(yep_check, yep_ngrams);
     }
@@ -620,7 +620,7 @@ mod tests {
         let indexer = FinalfusionHashIndexer::new(2);
         for (word, indices_check) in SUBWORD_TESTS_2.iter() {
             let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
-            indices.sort();
+            indices.sort_unstable();
             assert_eq!(indices_check, &indices);
         }
     }
@@ -634,7 +634,7 @@ mod tests {
         let indexer = FinalfusionHashIndexer::new(21);
         for (word, indices_check) in SUBWORD_TESTS_21.iter() {
             let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
-            indices.sort();
+            indices.sort_unstable();
             assert_eq!(indices_check, &indices);
         }
     }

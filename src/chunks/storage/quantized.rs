@@ -283,8 +283,8 @@ impl CloneFromMapping for QuantizedArray {
     type Result = QuantizedArray;
 
     fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
-        let quantized_embeddings = self.quantized_embeddings.select(Axis(0), &mapping);
-        let norms = self.norms.as_ref().map(|n| n.select(Axis(0), &mapping));
+        let quantized_embeddings = self.quantized_embeddings.select(Axis(0), mapping);
+        let norms = self.norms.as_ref().map(|n| n.select(Axis(0), mapping));
         QuantizedArray {
             quantizer: self.quantizer.clone(),
             quantized_embeddings,
@@ -588,8 +588,8 @@ mod mmap {
 
         fn clone_from_mapping(&self, mapping: &[usize]) -> Self::Result {
             let quantized_embeddings =
-                unsafe { self.quantized_embeddings() }.select(Axis(0), &mapping);
-            let norms = self.norms.as_ref().map(|n| n.select(Axis(0), &mapping));
+                unsafe { self.quantized_embeddings() }.select(Axis(0), mapping);
+            let norms = self.norms.as_ref().map(|n| n.select(Axis(0), mapping));
             QuantizedArray {
                 quantizer: self.quantizer.clone(),
                 quantized_embeddings,
