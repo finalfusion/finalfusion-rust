@@ -315,7 +315,7 @@ mod tests {
     use crate::embeddings::Embeddings;
     use crate::similarity::{Analogy, EmbeddingSimilarity, WordSimilarity, WordSimilarityResult};
 
-    static SIMILARITY_ORDER_STUTTGART_10: &'static [&'static str] = &[
+    static SIMILARITY_ORDER_STUTTGART_10: &[&str] = &[
         "Karlsruhe",
         "Mannheim",
         "München",
@@ -328,7 +328,7 @@ mod tests {
         "Berlin",
     ];
 
-    static SIMILARITY_ORDER: &'static [&'static str] = &[
+    static SIMILARITY_ORDER: &[&str] = &[
         "Potsdam",
         "Hamburg",
         "Leipzig",
@@ -371,7 +371,7 @@ mod tests {
         "Berlin-Spandau",
     ];
 
-    static ANALOGY_ORDER: &'static [&'static str] = &[
+    static ANALOGY_ORDER: &[&str] = &[
         "Deutschland",
         "Westdeutschland",
         "Sachsen",
