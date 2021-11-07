@@ -17,6 +17,10 @@ pub enum Error {
     #[error("Invalid file format {0}")]
     Format(String),
 
+    /// Conversion of n-grams from implicit to explicit.
+    #[error("{0}")]
+    NGramConversionError(String),
+
     /// Random number generation error.
     #[error(transparent)]
     RandError(#[from] RandError),
@@ -39,6 +43,10 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn ngram_conversion_error(desc: impl Into<String>) -> Self {
+        Error::NGramConversionError(desc.into())
+    }
+
     pub fn io_error(desc: impl Into<String>, error: io::Error) -> Self {
         Error::Io {
             desc: desc.into(),

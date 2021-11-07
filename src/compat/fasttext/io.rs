@@ -15,6 +15,7 @@ use crate::embeddings::Embeddings;
 use crate::error::{Error, Result};
 use crate::subword::BucketIndexer;
 use crate::util::{l2_normalize_array, read_string};
+use crate::vocab::IndicesScope;
 
 use super::FastTextIndexer;
 
@@ -407,7 +408,7 @@ impl Model {
 /// adds the subword embeddings.
 fn add_subword_embeddings(vocab: &FastTextSubwordVocab, embeds: &mut NdArray) {
     for (idx, word) in vocab.words().iter().enumerate() {
-        if let Some(indices) = vocab.subword_indices(word) {
+        if let Some(indices) = vocab.subword_indices(word, IndicesScope::Subwords) {
             let n_embeds = indices.len() + 1;
 
             // Sum the embedding and its subword embeddings.
@@ -472,7 +473,7 @@ where
         let mut unnormalized_embedding =
             embedding_with_norm.embedding.mul(embedding_with_norm.norm);
 
-        if let Some(subword_indices) = vocab.subword_indices(word) {
+        if let Some(subword_indices) = vocab.subword_indices(word, IndicesScope::Subwords) {
             unnormalized_embedding *= (subword_indices.len() + 1) as f32;
 
             for subword_index in subword_indices {
@@ -554,6 +555,7 @@ where
         config.min_n,
         config.max_n,
         FastTextIndexer::new(config.bucket as usize),
+        IndicesScope::Subwords,
     ))
 }
 

@@ -8,16 +8,19 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 
 use fnv::FnvHasher;
+use smallvec::{smallvec, SmallVec};
 
 use crate::util::CollectWithCapacity;
+
+pub type NGramVec = SmallVec<[u64; 4]>;
 
 /// N-Gram indexer
 ///
 /// An indexer maps an n-gram to an index in the subword embedding
 /// matrix.
 pub trait Indexer {
-    /// Map an n-gram to an index in the subword embedding matrix.
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64>;
+    /// Map an n-gram to indices in the subword embedding matrix.
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> NGramVec;
 
     /// Return the (exclusive) upper bound of this indexer.
     fn upper_bound(&self) -> u64;
@@ -109,10 +112,10 @@ impl<H> Indexer for HashIndexer<H>
 where
     H: Default + Hasher,
 {
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> NGramVec {
         let mut hasher = H::default();
         ngram.hash(&mut hasher);
-        Some(hasher.finish() & self.mask)
+        smallvec![hasher.finish() & self.mask]
     }
 
     fn upper_bound(&self) -> u64 {
@@ -218,8 +221,11 @@ impl ExplicitIndexer {
 }
 
 impl Indexer for ExplicitIndexer {
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
-        self.index.get(ngram.inner).cloned()
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> NGramVec {
+        match self.index.get(ngram.inner) {
+            Some(&idx) => smallvec![idx],
+            None => smallvec![],
+        }
     }
 
     fn upper_bound(&self) -> u64 {
@@ -378,7 +384,7 @@ pub trait SubwordIndices<'a, 'b, I>
 where
     I: Indexer + 'b,
 {
-    type Iter: Iterator<Item = (&'a str, Option<u64>)>;
+    type Iter: Iterator<Item = (&'a str, NGramVec)>;
 
     /// Return an iterator over the subword indices of a string.
     ///
@@ -395,7 +401,7 @@ where
     {
         Box::new(
             self.subword_indices_with_ngrams(min_n, max_n, indexer)
-                .filter_map(|(_, idx)| idx),
+                .flat_map(|(_, indices)| indices),
         )
     }
 
@@ -453,7 +459,7 @@ impl<'a, 'b, I> Iterator for NGramsIndicesIter<'a, 'b, I>
 where
     I: Indexer,
 {
-    type Item = (&'a str, Option<u64>);
+    type Item = (&'a str, NGramVec);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -470,11 +476,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use lazy_static::lazy_static;
-    use maplit::hashmap;
     use std::collections::HashMap;
 
+    use lazy_static::lazy_static;
+    use maplit::hashmap;
+    use smallvec::smallvec;
+
     use super::{BucketIndexer, FinalfusionHashIndexer, NGrams, SubwordIndices};
+    use crate::subword::NGramVec;
 
     #[test]
     fn ngrams_test() {
@@ -562,53 +571,54 @@ mod tests {
     }
 
     lazy_static! {
-        static ref NGRAMS_INDICES_TESTS_36: HashMap<&'static str, Vec<(&'static str, u64)>> = [
-            (
-                "<Daniël>",
-                vec![
-                    ("Dan", 214157),
-                    ("iël", 233912),
-                    ("Danië", 311961),
-                    ("iël>", 488897),
-                    ("niël>", 620206),
-                    ("anië", 741276),
-                    ("Dani", 841219),
-                    ("Daniël", 1167494),
-                    ("ani", 1192256),
-                    ("niël", 1489905),
-                    ("ël>", 1532271),
-                    ("nië", 1644730),
-                    ("<Dan", 1666166),
-                    ("aniël", 1679745),
-                    ("<Danië", 1680294),
-                    ("aniël>", 1693100),
-                    ("<Da", 2026735),
-                    ("<Dani", 2065822)
-                ]
-            ),
-            (
-                "<hallo>",
-                vec![
-                    ("lo>", 75867),
-                    ("<hal", 104120),
-                    ("hallo>", 136555),
-                    ("hal", 456131),
-                    ("allo>", 599360),
-                    ("llo", 722393),
-                    ("all", 938007),
-                    ("<ha", 985859),
-                    ("hallo", 1006102),
-                    ("allo", 1163391),
-                    ("llo>", 1218704),
-                    ("<hallo", 1321513),
-                    ("<hall", 1505861),
-                    ("hall", 1892376)
-                ]
-            )
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        static ref NGRAMS_INDICES_TESTS_36: HashMap<&'static str, Vec<(&'static str, NGramVec)>> =
+            [
+                (
+                    "<Daniël>",
+                    vec![
+                        ("Dan", smallvec![214157]),
+                        ("iël", smallvec![233912]),
+                        ("Danië", smallvec![311961]),
+                        ("iël>", smallvec![488897]),
+                        ("niël>", smallvec![620206]),
+                        ("anië", smallvec![741276]),
+                        ("Dani", smallvec![841219]),
+                        ("Daniël", smallvec![1167494]),
+                        ("ani", smallvec![1192256]),
+                        ("niël", smallvec![1489905]),
+                        ("ël>", smallvec![1532271]),
+                        ("nië", smallvec![1644730]),
+                        ("<Dan", smallvec![1666166]),
+                        ("aniël", smallvec![1679745]),
+                        ("<Danië", smallvec![1680294]),
+                        ("aniël>", smallvec![1693100]),
+                        ("<Da", smallvec![2026735]),
+                        ("<Dani", smallvec![2065822])
+                    ]
+                ),
+                (
+                    "<hallo>",
+                    vec![
+                        ("lo>", smallvec![75867]),
+                        ("<hal", smallvec![104120]),
+                        ("hallo>", smallvec![136555]),
+                        ("hal", smallvec![456131]),
+                        ("allo>", smallvec![599360]),
+                        ("llo", smallvec![722393]),
+                        ("all", smallvec![938007]),
+                        ("<ha", smallvec![985859]),
+                        ("hallo", smallvec![1006102]),
+                        ("allo", smallvec![1163391]),
+                        ("llo>", smallvec![1218704]),
+                        ("<hallo", smallvec![1321513]),
+                        ("<hall", smallvec![1505861]),
+                        ("hall", smallvec![1892376])
+                    ]
+                )
+            ]
+            .iter()
+            .cloned()
+            .collect();
     }
 
     #[test]
@@ -650,7 +660,7 @@ mod tests {
             let mut ngrams_indices_test = word
                 .subword_indices_with_ngrams(3, 6, &indexer)
                 .collect::<Vec<_>>();
-            ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1);
+            ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1.clone());
             for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)
             {
                 assert_eq!(iter_check.0, iter_test.0);
