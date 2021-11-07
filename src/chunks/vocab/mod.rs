@@ -9,8 +9,8 @@ use crate::error::{Error, Result};
 
 mod subword;
 pub use subword::{
-    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, NGramIndices, SubwordIndices,
-    SubwordVocab,
+    BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, FloretSubwordVocab,
+    IndicesScope, NGramIndices, SubwordIndices, SubwordVocab,
 };
 
 mod simple;

@@ -2,6 +2,8 @@
 
 pub mod fasttext;
 
+pub mod floret;
+
 pub mod text;
 
 pub mod word2vec;

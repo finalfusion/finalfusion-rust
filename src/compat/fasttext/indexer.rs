@@ -1,6 +1,8 @@
 use std::i32;
 
-use crate::subword::{BucketIndexer, Indexer, StrWithCharLen};
+use smallvec::smallvec;
+
+use crate::subword::{BucketIndexer, Indexer, NGramVec, StrWithCharLen};
 
 /// fastText-compatible subword indexer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -41,8 +43,9 @@ impl BucketIndexer for FastTextIndexer {
 }
 
 impl Indexer for FastTextIndexer {
-    fn index_ngram(&self, ngram: &StrWithCharLen) -> Option<u64> {
-        Some(u64::from(fasttext_hash(ngram.as_str()) % self.buckets))
+    fn index_ngram(&self, ngram: &StrWithCharLen) -> NGramVec {
+        let index = u64::from(fasttext_hash(ngram.as_str()) % self.buckets);
+        smallvec![index]
     }
 
     fn upper_bound(&self) -> u64 {

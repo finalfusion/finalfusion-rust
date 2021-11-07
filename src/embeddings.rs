@@ -262,7 +262,7 @@ where
     S: Storage + CloneFromMapping,
 {
     /// Convert to explicitly indexed subword Embeddings.
-    pub fn to_explicit(&self) -> Embeddings<ExplicitSubwordVocab, S::Result> {
+    pub fn to_explicit(&self) -> Result<Embeddings<ExplicitSubwordVocab, S::Result>> {
         to_explicit_impl(self.vocab(), self.storage(), self.norms())
     }
 }
@@ -278,10 +278,10 @@ where
     pub fn try_to_explicit(&self) -> Result<Embeddings<ExplicitSubwordVocab, S::Result>> {
         match &self.vocab {
             VocabWrap::BucketSubwordVocab(sw) => {
-                Ok(to_explicit_impl(sw, self.storage(), self.norms()))
+                Ok(to_explicit_impl(sw, self.storage(), self.norms())?)
             }
             VocabWrap::FastTextSubwordVocab(sw) => {
-                Ok(to_explicit_impl(sw, self.storage(), self.norms()))
+                Ok(to_explicit_impl(sw, self.storage(), self.norms())?)
             }
             VocabWrap::SimpleVocab(_) => {
                 Err(Error::conversion_error("SimpleVocab", "ExplicitVocab"))
@@ -297,18 +297,24 @@ fn to_explicit_impl<I, S>(
     vocab: &SubwordVocab<I>,
     storage: &S,
     norms: Option<&NdNorms>,
-) -> Embeddings<ExplicitSubwordVocab, S::Result>
+) -> Result<Embeddings<ExplicitSubwordVocab, S::Result>>
 where
     S: Storage + CloneFromMapping,
     I: BucketIndexer,
 {
-    let (expl_voc, old_to_new) = vocab.to_explicit();
+    let (expl_voc, old_to_new) = vocab.to_explicit()?;
     let mut mapping = (0..expl_voc.vocab_len()).collect::<Vec<_>>();
     for (old, new) in old_to_new {
         mapping[expl_voc.words_len() + new] = old as usize + expl_voc.words_len();
     }
+
     let new_storage = storage.clone_from_mapping(&mapping);
-    Embeddings::new_with_maybe_norms(None, expl_voc, new_storage, norms.cloned())
+    Ok(Embeddings::new_with_maybe_norms(
+        None,
+        expl_voc,
+        new_storage,
+        norms.cloned(),
+    ))
 }
 
 macro_rules! impl_embeddings_from(
@@ -716,7 +722,7 @@ mod tests {
     fn to_explicit() {
         let mut reader = BufReader::new(File::open("testdata/fasttext.bin").unwrap());
         let embeds = Embeddings::read_fasttext(&mut reader).unwrap();
-        let expl_embeds = embeds.to_explicit();
+        let expl_embeds = embeds.to_explicit().unwrap();
         let ganz = embeds.embedding("ganz").unwrap();
         let ganz_expl = expl_embeds.embedding("ganz").unwrap();
         assert_eq!(ganz, ganz_expl);
@@ -726,14 +732,10 @@ mod tests {
             .idx("anz")
             .map(|i| i.subword().is_some())
             .unwrap_or(false));
-        let anz_idx = embeds.vocab.indexer().index_ngram(&"anz".into()).unwrap() as usize
+        let anz_idx = embeds.vocab.indexer().index_ngram(&"anz".into())[0] as usize
             + embeds.vocab.words_len();
         let anz = embeds.storage.embedding(anz_idx);
-        let anz_idx = expl_embeds
-            .vocab
-            .indexer()
-            .index_ngram(&"anz".into())
-            .unwrap() as usize
+        let anz_idx = expl_embeds.vocab.indexer().index_ngram(&"anz".into())[0] as usize
             + embeds.vocab.words_len();
         let anz_expl = expl_embeds.storage.embedding(anz_idx);
         assert_eq!(anz, anz_expl);
