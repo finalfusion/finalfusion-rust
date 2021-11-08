@@ -9,6 +9,7 @@ use crate::chunks::vocab::subword::{
 };
 use crate::chunks::vocab::{SimpleVocab, SubwordVocab, Vocab, WordIndex};
 use crate::error::{Error, Result};
+use crate::vocab::FloretSubwordVocab;
 
 /// Vocabulary types wrapper.
 ///
@@ -25,6 +26,7 @@ pub enum VocabWrap {
     SimpleVocab(SimpleVocab),
     ExplicitSubwordVocab(ExplicitSubwordVocab),
     FastTextSubwordVocab(FastTextSubwordVocab),
+    FloretSubwordVocab(FloretSubwordVocab),
     BucketSubwordVocab(BucketSubwordVocab),
 }
 
@@ -34,6 +36,7 @@ impl Vocab for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.idx(word),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.idx(word),
             VocabWrap::FastTextSubwordVocab(inner) => inner.idx(word),
+            VocabWrap::FloretSubwordVocab(inner) => inner.idx(word),
             VocabWrap::BucketSubwordVocab(inner) => inner.idx(word),
         }
     }
@@ -44,6 +47,7 @@ impl Vocab for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.words_len(),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.words_len(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.words_len(),
+            VocabWrap::FloretSubwordVocab(inner) => inner.words_len(),
             VocabWrap::BucketSubwordVocab(inner) => inner.words_len(),
         }
     }
@@ -53,6 +57,7 @@ impl Vocab for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.vocab_len(),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.vocab_len(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.vocab_len(),
+            VocabWrap::FloretSubwordVocab(inner) => inner.vocab_len(),
             VocabWrap::BucketSubwordVocab(inner) => inner.vocab_len(),
         }
     }
@@ -63,6 +68,7 @@ impl Vocab for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.words(),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.words(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.words(),
+            VocabWrap::FloretSubwordVocab(inner) => inner.words(),
             VocabWrap::BucketSubwordVocab(inner) => inner.words(),
         }
     }
@@ -77,6 +83,12 @@ impl From<SimpleVocab> for VocabWrap {
 impl From<FastTextSubwordVocab> for VocabWrap {
     fn from(v: FastTextSubwordVocab) -> Self {
         VocabWrap::FastTextSubwordVocab(v)
+    }
+}
+
+impl From<FloretSubwordVocab> for VocabWrap {
+    fn from(v: FloretSubwordVocab) -> Self {
+        VocabWrap::FloretSubwordVocab(v)
     }
 }
 
@@ -139,6 +151,9 @@ impl WriteChunk for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.chunk_identifier(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.chunk_identifier(),
+            VocabWrap::FloretSubwordVocab(_inner) => unimplemented!(
+                "floret chunks are currently not supported in the finalfusion format"
+            ),
             VocabWrap::BucketSubwordVocab(inner) => inner.chunk_identifier(),
         }
     }
@@ -151,6 +166,9 @@ impl WriteChunk for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.write_chunk(write),
             VocabWrap::FastTextSubwordVocab(inner) => inner.write_chunk(write),
+            VocabWrap::FloretSubwordVocab(_inner) => unimplemented!(
+                "floret chunks are currently not supported in the finalfusion format"
+            ),
             VocabWrap::BucketSubwordVocab(inner) => inner.write_chunk(write),
         }
     }

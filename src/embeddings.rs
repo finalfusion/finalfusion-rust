@@ -273,8 +273,8 @@ where
 {
     /// Try to convert to explicitly indexed subword embeddings.
     ///
-    /// Conversion fails if the wrapped vocabulary is `SimpleVocab` or already an
-    /// `ExplicitSubwordVocab`.
+    /// Conversion fails if the wrapped vocabulary is `SimpleVocab`, `FloretSubwordVocab` or
+    /// already an `ExplicitSubwordVocab`.
     pub fn try_to_explicit(&self) -> Result<Embeddings<ExplicitSubwordVocab, S::Result>> {
         match &self.vocab {
             VocabWrap::BucketSubwordVocab(sw) => {
@@ -289,6 +289,10 @@ where
             VocabWrap::ExplicitSubwordVocab(_) => {
                 Err(Error::conversion_error("ExplicitVocab", "ExplicitVocab"))
             }
+            VocabWrap::FloretSubwordVocab(_) => Err(Error::conversion_error(
+                "FloretSubwordVocab",
+                "ExplicitVocab",
+            )),
         }
     }
 }
