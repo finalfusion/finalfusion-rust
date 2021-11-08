@@ -10,7 +10,7 @@
 //! * The word and its n-grams are mapped to 1-4 buckets.
 
 mod io;
-pub use io::ReadFloretText;
+pub use io::{ReadFloretText, WriteFloretText};
 
 mod indexer;
 pub use indexer::FloretIndexer;

@@ -136,6 +136,16 @@ where
         }
     }
 
+    /// Get begin-of-word marker.
+    pub fn bow(&self) -> &str {
+        &self.bow
+    }
+
+    /// Get end-of-word marker.
+    pub fn eow(&self) -> &str {
+        &self.eow
+    }
+
     /// Get the vocab's indexer.
     pub fn indexer(&self) -> &I {
         &self.indexer

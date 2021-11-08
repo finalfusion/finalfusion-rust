@@ -32,6 +32,14 @@ impl FloretIndexer {
             seed,
         }
     }
+
+    pub fn n_hashes(&self) -> u32 {
+        self.n_hashes
+    }
+
+    pub fn seed(&self) -> u32 {
+        self.seed
+    }
 }
 
 impl Indexer for FloretIndexer {

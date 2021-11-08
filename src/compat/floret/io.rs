@@ -1,13 +1,15 @@
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 
-use ndarray::Array2;
+use itertools::Itertools;
+use ndarray::{s, Array2};
 
 use crate::chunks::storage::NdArray;
 use crate::compat::floret::FloretIndexer;
 use crate::embeddings::Embeddings;
 use crate::error::{Error, Result};
+use crate::storage::StorageView;
 use crate::util::{read_number, read_string};
-use crate::vocab::{FloretSubwordVocab, IndicesScope};
+use crate::vocab::{FloretSubwordVocab, IndicesScope, Vocab};
 
 /// Read embeddings in the floret format.
 ///
@@ -106,10 +108,52 @@ impl ReadFloretText for Embeddings<FloretSubwordVocab, NdArray> {
     }
 }
 
+/// Write embeddings in the floret format.
+pub trait WriteFloretText
+where
+    Self: Sized,
+{
+    /// Read embeddings in the floret format.
+    fn write_floret_text(&self, write: &mut dyn Write) -> Result<()>;
+}
+
+impl WriteFloretText for Embeddings<FloretSubwordVocab, NdArray> {
+    fn write_floret_text(&self, write: &mut dyn Write) -> Result<()> {
+        writeln!(
+            write,
+            "{} {} {} {} {} {} {} {}",
+            self.vocab().vocab_len(),
+            self.dims(),
+            self.vocab().min_n(),
+            self.vocab().max_n(),
+            self.vocab().indexer().n_hashes(),
+            self.vocab().indexer().seed(),
+            self.vocab().bow(),
+            self.vocab().eow()
+        )
+        .map_err(|e| Error::io_error("Cannot write floret embeddings metadata", e))?;
+
+        // Ensure that we are only writing part of the embedding matrix which is
+        // used for floret embeddings. The storage may have word embeddings through
+        // other means (e.g. when used as an input vocab for training).
+        let storage_view = self.storage().view();
+        let hash_matrix = storage_view.slice(s![self.vocab().words_len().., ..]);
+
+        for (idx, embed) in hash_matrix.outer_iter().enumerate() {
+            let embed_str = embed.view().iter().map(ToString::to_string).join(" ");
+            writeln!(write, "{} {}", idx, embed_str)
+                .map_err(|e| Error::io_error("Cannot write embedding", e))?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
+    use crate::compat::floret::WriteFloretText;
     use approx::assert_abs_diff_eq;
 
     use super::ReadFloretText;
@@ -128,7 +172,8 @@ mod tests {
 6 8.3574 -5.225 8.6529 8.5605 -8.9465 3.767 -5.4636 -1.4635 -0.98947 -0.58025
 7 -10.01 3.3894 -4.4487 1.1669 -11.904 6.5158 4.3681 0.79913 -6.9131 -8.687
 8 -5.4576 7.1019 -8.8259 1.7189 4.955 -8.9157 -3.8905 -0.60086 -2.1233 5.892
-9 8.0678 -4.4142 3.6236 4.5889 -2.7611 2.4455 0.67096 -4.2822 2.0875 4.6274"
+9 8.0678 -4.4142 3.6236 4.5889 -2.7611 2.4455 0.67096 -4.2822 2.0875 4.6274
+"
     }
 
     fn floret_embeds_square_brackets() -> &'static str {
@@ -203,5 +248,17 @@ von -1.6226685 -0.16304988 2.0203125 -0.8460312 -0.5596545 2.6361988 -0.19833624
 
             assert_abs_diff_eq!(floret_embedding, check_embedding, epsilon = 1e-4);
         }
+    }
+
+    #[test]
+    fn test_floret_read_write_roundtrip() {
+        let floret_embeds_text = floret_embeds_small_text();
+        let floret_embeds =
+            Embeddings::read_floret_text(&mut Cursor::new(floret_embeds_text)).unwrap();
+
+        let mut output = Vec::new();
+        floret_embeds.write_floret_text(&mut output).unwrap();
+
+        assert_eq!(output, floret_embeds_text.as_bytes());
     }
 }
