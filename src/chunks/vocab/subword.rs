@@ -601,7 +601,7 @@ where
         if indices.len() > 1 {
             return Err(Error::io_error(
                 format!(
-                    "Indexer maps n-gram to multipli indices during serialization: {}",
+                    "Indexer maps n-gram to multiple indices during serialization: {}",
                     ngram
                 ),
                 io::ErrorKind::Other.into(),
