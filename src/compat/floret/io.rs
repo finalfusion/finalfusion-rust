@@ -122,7 +122,7 @@ impl WriteFloretText for Embeddings<FloretSubwordVocab, NdArray> {
         writeln!(
             write,
             "{} {} {} {} {} {} {} {}",
-            self.vocab().vocab_len(),
+            self.vocab().vocab_len() - self.vocab().words_len(),
             self.dims(),
             self.vocab().min_n(),
             self.vocab().max_n(),
