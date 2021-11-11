@@ -7,6 +7,7 @@ use std::slice;
 
 use ndarray::{Array1, ArrayViewMut1, Axis, CowArray, Ix1};
 use rand::{CryptoRng, RngCore, SeedableRng};
+use rand_chacha::ChaChaRng;
 use reductive::pq::TrainPQ;
 
 use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
@@ -24,7 +25,7 @@ use crate::error::{Error, Result};
 use crate::io::{ReadEmbeddings, WriteEmbeddings};
 use crate::subword::BucketIndexer;
 use crate::util::l2_normalize;
-use rand_chacha::ChaChaRng;
+use crate::vocab::FloretSubwordVocab;
 
 /// Word embeddings.
 ///
@@ -351,6 +352,8 @@ impl_embeddings_from!(FastTextSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
+impl_embeddings_from!(FloretSubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(FloretSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(VocabWrap, QuantizedArray, StorageWrap);
 
 impl<'a, V, S> IntoIterator for &'a Embeddings<V, S>
