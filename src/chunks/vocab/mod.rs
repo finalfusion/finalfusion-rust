@@ -10,13 +10,14 @@ use crate::error::{Error, Result};
 mod subword;
 pub use subword::{
     BucketSubwordVocab, ExplicitSubwordVocab, FastTextSubwordVocab, FloretSubwordVocab,
-    IndicesScope, NGramIndices, SubwordIndices, SubwordVocab,
+    NGramIndices, SubwordIndices, SubwordVocab,
 };
 
 mod simple;
 pub use simple::SimpleVocab;
 
 mod wrappers;
+pub use crate::subword::IndicesScope;
 pub use wrappers::VocabWrap;
 
 /// Embedding vocabularies.

@@ -8,8 +8,9 @@ use crate::compat::floret::FloretIndexer;
 use crate::embeddings::Embeddings;
 use crate::error::{Error, Result};
 use crate::storage::StorageView;
+use crate::subword::IndicesScope;
 use crate::util::{read_number, read_string};
-use crate::vocab::{FloretSubwordVocab, IndicesScope, Vocab};
+use crate::vocab::{FloretSubwordVocab, Vocab};
 
 /// Read embeddings in the floret format.
 ///
@@ -98,7 +99,7 @@ impl ReadFloretText for Embeddings<FloretSubwordVocab, NdArray> {
                 min_n,
                 max_n,
                 indexer,
-                IndicesScope::WordAndSubword,
+                IndicesScope::StringAndSubstrings,
                 bow,
                 eow,
             ),

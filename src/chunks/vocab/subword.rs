@@ -13,7 +13,7 @@ use crate::compat::fasttext::FastTextIndexer;
 use crate::compat::floret::FloretIndexer;
 use crate::error::{Error, Result};
 use crate::subword::{
-    BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, StrWithCharLen,
+    BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, IndicesScope,
     SubwordIndices as StrSubwordIndices,
 };
 
@@ -28,16 +28,6 @@ pub type BucketSubwordVocab = SubwordVocab<FinalfusionHashIndexer>;
 
 /// finalfusion vocabulary with explicit n-grams.
 pub type ExplicitSubwordVocab = SubwordVocab<ExplicitIndexer>;
-
-/// What to compute subwords for.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IndicesScope {
-    /// Only subword indices.
-    Subwords,
-
-    /// Word and subword indices.
-    WordAndSubword,
-}
 
 /// Vocabulary with subword units.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -218,7 +208,12 @@ where
         let indices = self
             .bracket(word)
             .as_str()
-            .subword_indices_with_ngrams(self.min_n as usize, self.max_n as usize, &self.indexer)
+            .subword_indices_with_ngrams(
+                self.min_n as usize,
+                self.max_n as usize,
+                &self.indexer,
+                self.indices_scope,
+            )
             .map(|(ngram, indices)| {
                 (
                     ngram.to_owned(),
@@ -253,20 +248,16 @@ where
 {
     fn subword_indices(&self, word: &str, indices_scope: IndicesScope) -> Option<Vec<usize>> {
         let word = self.bracket(word);
-        let mut indices = word
+        let indices = word
             .as_str()
-            .subword_indices(self.min_n as usize, self.max_n as usize, &self.indexer)
+            .subword_indices(
+                self.min_n as usize,
+                self.max_n as usize,
+                &self.indexer,
+                indices_scope,
+            )
             .map(|idx| idx as usize + self.words_len())
             .collect::<Vec<_>>();
-
-        if indices_scope == IndicesScope::WordAndSubword {
-            indices.extend(
-                self.indexer
-                    .index_ngram(&StrWithCharLen::from(word.as_str()))
-                    .into_iter()
-                    .map(|idx| idx as usize + self.words_len()),
-            );
-        }
 
         if indices.is_empty() {
             None
@@ -380,7 +371,7 @@ where
             min_n,
             max_n,
             I::new(buckets as usize),
-            IndicesScope::Subwords,
+            IndicesScope::Substrings,
         ))
     }
 
@@ -452,9 +443,12 @@ where
         } = &self;
 
         for word in words.iter().map(|word| self.bracket(word)) {
-            for (ngram, indices) in
-                word.subword_indices_with_ngrams(*min_n as usize, *max_n as usize, indexer)
-            {
+            for (ngram, indices) in word.subword_indices_with_ngrams(
+                *min_n as usize,
+                *max_n as usize,
+                indexer,
+                self.indices_scope,
+            ) {
                 if indices.is_empty() {
                     continue;
                 }
@@ -474,7 +468,7 @@ where
                 *min_n,
                 *max_n,
                 indexer,
-                IndicesScope::Subwords,
+                IndicesScope::Substrings,
             ),
             mapping,
         ))
@@ -514,7 +508,7 @@ impl SubwordVocab<ExplicitIndexer> {
             min_n,
             max_n,
             indexer,
-            IndicesScope::Subwords,
+            IndicesScope::Substrings,
         ))
     }
 
@@ -639,10 +633,11 @@ mod tests {
 
     use super::{BucketSubwordVocab, FastTextSubwordVocab, SubwordVocab};
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, IndicesScope, Vocab};
+    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, Vocab};
     use crate::compat::fasttext::FastTextIndexer;
     use crate::subword::{
-        BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, StrWithCharLen,
+        BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, IndicesScope,
+        StrWithCharLen,
     };
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
@@ -653,7 +648,7 @@ mod tests {
             "test".to_owned(),
         ];
         let indexer = FastTextIndexer::new(20);
-        SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Subwords)
+        SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Substrings)
     }
 
     fn test_subword_vocab() -> BucketSubwordVocab {
@@ -664,7 +659,7 @@ mod tests {
             "test".to_owned(),
         ];
         let indexer = FinalfusionHashIndexer::new(20);
-        SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Subwords)
+        SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Substrings)
     }
 
     fn test_ngram_vocab() -> ExplicitSubwordVocab {
@@ -686,7 +681,7 @@ mod tests {
             2,
             3,
             ExplicitIndexer::new_with_indices(ngrams).0,
-            IndicesScope::Subwords,
+            IndicesScope::Substrings,
         )
     }
 
@@ -694,7 +689,7 @@ mod tests {
     fn test_conversion() {
         let words = vec!["groß".to_owned(), "allerdings".to_owned()];
         let indexer = FinalfusionHashIndexer::new(21);
-        let bucket_vocab = SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Subwords);
+        let bucket_vocab = SubwordVocab::new(words, 3, 6, indexer, IndicesScope::Substrings);
         let (explicit, _) = bucket_vocab.to_explicit().unwrap();
         let dings = StrWithCharLen::new("dings");
         let gro = StrWithCharLen::new("<gro");
