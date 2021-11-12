@@ -3,7 +3,7 @@ use std::io::Cursor;
 use murmur3::murmur3_x64_128;
 use smallvec::smallvec;
 
-use crate::subword::{Indexer, NGramVec, StrWithCharLen};
+use crate::subword::{Indexer, IndicesScope, NGramVec, StrWithCharLen};
 
 /// floret subword indexer.
 ///
@@ -67,5 +67,9 @@ impl Indexer for FloretIndexer {
 
     fn infallible() -> bool {
         true
+    }
+
+    fn scope() -> IndicesScope {
+        IndicesScope::StringAndSubstrings
     }
 }

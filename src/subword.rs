@@ -27,6 +27,9 @@ pub trait Indexer {
 
     /// Indicates whether this Indexer never fails to produce an index.
     fn infallible() -> bool;
+
+    /// The scope of the indexer.
+    fn scope() -> IndicesScope;
 }
 
 /// N-Gram indexer with bucketing.
@@ -125,6 +128,10 @@ where
 
     fn infallible() -> bool {
         true
+    }
+
+    fn scope() -> IndicesScope {
+        IndicesScope::Substrings
     }
 }
 
@@ -234,6 +241,10 @@ impl Indexer for ExplicitIndexer {
 
     fn infallible() -> bool {
         false
+    }
+
+    fn scope() -> IndicesScope {
+        IndicesScope::Substrings
     }
 }
 
@@ -405,13 +416,12 @@ where
         min_n: usize,
         max_n: usize,
         indexer: &'b I,
-        scope: IndicesScope,
     ) -> Box<dyn Iterator<Item = u64> + 'a>
     where
         'b: 'a,
     {
         Box::new(
-            self.subword_indices_with_ngrams(min_n, max_n, indexer, scope)
+            self.subword_indices_with_ngrams(min_n, max_n, indexer)
                 .flat_map(|(_, indices)| indices),
         )
     }
@@ -425,7 +435,6 @@ where
         min_n: usize,
         max_n: usize,
         indexer: &'b I,
-        scope: IndicesScope,
     ) -> Self::Iter;
 }
 
@@ -439,9 +448,8 @@ where
         min_n: usize,
         max_n: usize,
         indexer: &'b I,
-        scope: IndicesScope,
     ) -> Self::Iter {
-        NGramsIndicesIter::new(self, min_n, max_n, indexer, scope)
+        NGramsIndicesIter::new(self, min_n, max_n, indexer)
     }
 }
 
@@ -463,15 +471,12 @@ impl<'a, 'b, I> NGramsIndicesIter<'a, 'b, I> {
     ///
     /// The iterator will create all ngrams of length *[min_n, max_n]* and corresponding
     /// subword indices.
-    pub fn new(
-        string: &'a str,
-        min_n: usize,
-        max_n: usize,
-        indexer: &'b I,
-        scope: IndicesScope,
-    ) -> Self {
+    pub fn new(string: &'a str, min_n: usize, max_n: usize, indexer: &'b I) -> Self
+    where
+        I: Indexer,
+    {
         let ngrams = NGrams::new(string, min_n, max_n);
-        let string = match scope {
+        let string = match I::scope() {
             IndicesScope::Substrings => None,
             IndicesScope::StringAndSubstrings => Some(string),
         };
@@ -492,8 +497,7 @@ where
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(string) = self.string {
-            self.string = None;
+        if let Some(string) = self.string.take() {
             return Some((string, self.indexer.index_ngram(&string.into())));
         }
 
@@ -512,7 +516,6 @@ where
 mod tests {
     use std::collections::HashMap;
 
-    use crate::chunks::vocab::IndicesScope;
     use lazy_static::lazy_static;
     use maplit::hashmap;
     use smallvec::smallvec;
@@ -664,9 +667,7 @@ mod tests {
 
         let indexer = FinalfusionHashIndexer::new(2);
         for (word, indices_check) in SUBWORD_TESTS_2.iter() {
-            let mut indices = word
-                .subword_indices(3, 6, &indexer, IndicesScope::Substrings)
-                .collect::<Vec<_>>();
+            let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
             indices.sort_unstable();
             assert_eq!(indices_check, &indices);
         }
@@ -680,9 +681,7 @@ mod tests {
 
         let indexer = FinalfusionHashIndexer::new(21);
         for (word, indices_check) in SUBWORD_TESTS_21.iter() {
-            let mut indices = word
-                .subword_indices(3, 6, &indexer, IndicesScope::Substrings)
-                .collect::<Vec<_>>();
+            let mut indices = word.subword_indices(3, 6, &indexer).collect::<Vec<_>>();
             indices.sort_unstable();
             assert_eq!(indices_check, &indices);
         }
@@ -697,7 +696,7 @@ mod tests {
         let indexer = FinalfusionHashIndexer::new(21);
         for (word, ngrams_indices_check) in NGRAMS_INDICES_TESTS_36.iter() {
             let mut ngrams_indices_test = word
-                .subword_indices_with_ngrams(3, 6, &indexer, IndicesScope::Substrings)
+                .subword_indices_with_ngrams(3, 6, &indexer)
                 .collect::<Vec<_>>();
             ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1.clone());
             for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)

@@ -17,7 +17,6 @@ mod simple;
 pub use simple::SimpleVocab;
 
 mod wrappers;
-pub use crate::subword::IndicesScope;
 pub use wrappers::VocabWrap;
 
 /// Embedding vocabularies.
