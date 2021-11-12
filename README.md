@@ -4,11 +4,11 @@
 [![docs.rs](https://docs.rs/finalfusion/badge.svg)](https://docs.rs/finalfusion/)
 [![Travis CI](https://img.shields.io/travis/finalfusion/finalfusion-rust.svg)](https://travis-ci.org/finalfusion/finalfusion-rust)
 
-`finalfusion` is a crate for reading, writing, and using embeddings in
-Rust. `finalfusion` primarily works with
-[its own format](https://finalfusion.github.io/spec) which supports a large
-variety of features. Additionally, the fastText, word2vec and GloVe file
-formats are also supported.
+`finalfusion` is a crate for reading, writing, and using embeddings in Rust.
+`finalfusion` primarily works with [its own
+format](https://finalfusion.github.io/spec) which supports a large variety of
+features. Additionally, the fastText, floret, GloVe, and word2vec file formats
+are also supported.
 
 `finalfusion` is API stable since 0.11.0. However, we cannot tag
 version 1 yet, because several dependencies that are exposed through
@@ -28,7 +28,7 @@ To make `finalfusion` available in your crate, simply place the following
 in your `Cargo.toml`
 
 ~~~
-finalfusion = 0.12
+finalfusion = 0.16
 ~~~
 
 Loading embeddings and querying it is as simple as:
@@ -60,8 +60,9 @@ fn main() {
 * Format
     * [finalfusion](https://finalfusion.github.io/spec)
     * fastText
-    * word2vec
+    * floret
     * GloVe
+    * word2vec
     
 Moreover, `finalfusion` provides: 
 
