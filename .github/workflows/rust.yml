@@ -19,10 +19,12 @@ jobs:
           toolchain: stable
           override: true
       - uses: actions-rs/cargo@v1
+        name: Check all targets
         with:
           command: check
           args: --all-targets
       - uses: actions-rs/cargo@v1
+        name: Run tests
         with:
           command: test
 
@@ -43,6 +45,7 @@ jobs:
           toolchain: stable
           override: true
       - uses: actions-rs/cargo@v1
+        name: Run tests
         with:
           use-cross: true
           command: test
