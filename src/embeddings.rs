@@ -353,6 +353,7 @@ impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(ExplicitSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(FloretSubwordVocab, NdArray, StorageWrap);
+impl_embeddings_from!(FloretSubwordVocab, NdArray, StorageViewWrap);
 impl_embeddings_from!(FloretSubwordVocab, QuantizedArray, StorageWrap);
 impl_embeddings_from!(VocabWrap, QuantizedArray, StorageWrap);
 
