@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io;
-use std::io::{Read, Seek, Write};
+use std::io::{ErrorKind, Read, Seek, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -16,6 +16,7 @@ use crate::subword::{
     BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer,
     SubwordIndices as StrSubwordIndices,
 };
+use crate::vocab::{read_string, write_string};
 
 /// fastText vocabulary with hashed n-grams.
 pub type FastTextSubwordVocab = SubwordVocab<FastTextIndexer>;
@@ -272,6 +273,15 @@ impl ReadChunk for ExplicitSubwordVocab {
     }
 }
 
+impl ReadChunk for FloretSubwordVocab {
+    fn read_chunk<R>(read: &mut R) -> Result<Self>
+    where
+        R: Read + Seek,
+    {
+        Self::read_floret_chunk(read, ChunkIdentifier::FloretSubwordVocab)
+    }
+}
+
 impl WriteChunk for FastTextSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::FastTextSubwordVocab
@@ -308,6 +318,19 @@ impl WriteChunk for ExplicitSubwordVocab {
         W: Write + Seek,
     {
         self.write_ngram_chunk(write, self.chunk_identifier())
+    }
+}
+
+impl WriteChunk for FloretSubwordVocab {
+    fn chunk_identifier(&self) -> ChunkIdentifier {
+        ChunkIdentifier::FloretSubwordVocab
+    }
+
+    fn write_chunk<W>(&self, write: &mut W) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        self.write_floret_chunk(write, self.chunk_identifier())
     }
 }
 
@@ -442,7 +465,7 @@ where
     }
 }
 
-impl SubwordVocab<ExplicitIndexer> {
+impl ExplicitSubwordVocab {
     fn read_ngram_chunk<R>(
         read: &mut R,
         chunk_identifier: ChunkIdentifier,
@@ -524,6 +547,105 @@ impl SubwordVocab<ExplicitIndexer> {
     }
 }
 
+impl FloretSubwordVocab {
+    fn read_floret_chunk<R>(
+        read: &mut R,
+        chunk_identifier: ChunkIdentifier,
+    ) -> Result<SubwordVocab<FloretIndexer>>
+    where
+        R: Read + Seek,
+    {
+        ChunkIdentifier::ensure_chunk_type(read, chunk_identifier)?;
+
+        // Read and discard chunk length.
+        read.read_u64::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
+
+        let min_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read minimum n-gram length", e))?;
+        let max_n = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read maximum n-gram length", e))?;
+        let n_buckets = read
+            .read_u64::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read number of buckets", e))?;
+        let n_hashes: u32 = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read number of hashes", e))?;
+        if !(1..=4).contains(&n_hashes) {
+            return Err(Error::io_error(
+                format!(
+                    "Number of hashes should be in be more than 0 and less than 5, was: {}",
+                    n_hashes
+                ),
+                ErrorKind::InvalidData.into(),
+            ));
+        }
+        let seed: u32 = read
+            .read_u32::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read hasher seed", e))?;
+        let bow = read_string(read).map_err(|e| e.context("Cannot read begin of word marker"))?;
+        let eow = read_string(read).map_err(|e| e.context("Cannot read end of word marker"))?;
+
+        Ok(SubwordVocab::new_with_boundaries(
+            Vec::new(),
+            min_n,
+            max_n,
+            FloretIndexer::new(n_buckets, n_hashes, seed),
+            bow,
+            eow,
+        ))
+    }
+
+    fn write_floret_chunk<W>(&self, write: &mut W, chunk_identifier: ChunkIdentifier) -> Result<()>
+    where
+        W: Write + Seek,
+    {
+        // Chunk size: minimum n-gram length (u32), maximum n-gram length (u32),
+        // number of buckets (u64), number of hashes (u32), hash seed (u32),
+        // bow and row (variable length).
+
+        let chunk_len = size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self.bow.len()
+            + size_of::<u32>()
+            + self.eow.len()
+            + size_of::<u32>();
+
+        write
+            .write_u32::<LittleEndian>(chunk_identifier as u32)
+            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk identifier", e))?;
+        write
+            .write_u64::<LittleEndian>(chunk_len as u64)
+            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.min_n)
+            .map_err(|e| Error::io_error("Cannot write minimum n-gram length", e))?;
+        write
+            .write_u32::<LittleEndian>(self.max_n)
+            .map_err(|e| Error::io_error("Cannot write maximum n-gram length", e))?;
+        write
+            .write_u64::<LittleEndian>(self.indexer.n_buckets())
+            .map_err(|e| Error::io_error("Cannot write number of buckets", e))?;
+        write
+            .write_u32::<LittleEndian>(self.indexer.n_hashes())
+            .map_err(|e| Error::io_error("Cannot write number of hashes", e))?;
+        write
+            .write_u32::<LittleEndian>(self.indexer().seed())
+            .map_err(|e| Error::io_error("Cannot write hasher seed", e))?;
+        write_string(write, self.bow())
+            .map_err(|e| e.context("Cannot write begin of word marker"))?;
+        write_string(write, self.eow())
+            .map_err(|e| e.context("Cannot write end of word marker"))?;
+
+        Ok(())
+    }
+}
+
 fn read_ngrams_with_indices<R>(read: &mut R, len: usize) -> Result<Vec<(String, u64)>>
 where
     R: Read + Seek,
@@ -596,9 +718,11 @@ mod tests {
     use crate::chunks::io::{ReadChunk, WriteChunk};
     use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, Vocab};
     use crate::compat::fasttext::FastTextIndexer;
+    use crate::compat::floret::FloretIndexer;
     use crate::subword::{
         BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, StrWithCharLen,
     };
+    use crate::vocab::FloretSubwordVocab;
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
         let words = vec![
@@ -609,6 +733,12 @@ mod tests {
         ];
         let indexer = FastTextIndexer::new(20);
         SubwordVocab::new(words, 3, 6, indexer)
+    }
+
+    fn test_floret_subword_vocab() -> FloretSubwordVocab {
+        let words = vec![];
+        let indexer = FloretIndexer::new(65535, 3, 42);
+        SubwordVocab::new_with_boundaries(words, 3, 6, indexer, "[", "]")
     }
 
     fn test_subword_vocab() -> BucketSubwordVocab {
@@ -668,6 +798,16 @@ mod tests {
     }
 
     #[test]
+    fn floret_subword_vocab_write_read_roundtrip() {
+        let check_vocab = test_floret_subword_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
+        assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
     fn subword_vocab_write_read_roundtrip() {
         let check_vocab = test_subword_vocab();
         let mut cursor = Cursor::new(Vec::new());
@@ -675,6 +815,20 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn floret_subword_vocab_correct_chunk_size() {
+        let check_vocab = test_floret_subword_vocab();
+        let mut cursor = Cursor::new(Vec::new());
+        check_vocab.write_chunk(&mut cursor).unwrap();
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+
+        let chunk_size = read_chunk_size(&mut cursor);
+        assert_eq!(
+            cursor.read_to_end(&mut Vec::new()).unwrap(),
+            chunk_size as usize
+        );
     }
 
     #[test]

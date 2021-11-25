@@ -23,6 +23,7 @@ pub enum ChunkIdentifier {
     NdNorms = 6,
     FastTextSubwordVocab = 7,
     ExplicitSubwordVocab = 8,
+    FloretSubwordVocab = 9,
 }
 
 impl ChunkIdentifier {
@@ -56,6 +57,7 @@ impl Display for ChunkIdentifier {
             NdArray => write!(f, "NdArray"),
             FastTextSubwordVocab => write!(f, "FastTextSubwordVocab"),
             ExplicitSubwordVocab => write!(f, "ExplicitSubwordVocab"),
+            FloretSubwordVocab => write!(f, "FloretSubwordVocab"),
             BucketSubwordVocab => write!(f, "BucketSubwordVocab"),
             QuantizedArray => write!(f, "QuantizedArray"),
             Metadata => write!(f, "Metadata"),
@@ -79,6 +81,7 @@ impl TryFrom<u32> for ChunkIdentifier {
             6 => Ok(NdNorms),
             7 => Ok(FastTextSubwordVocab),
             8 => Ok(ExplicitSubwordVocab),
+            9 => Ok(FloretSubwordVocab),
             unknown => Err(Error::UnknownChunkIdentifier(unknown)),
         }
     }
