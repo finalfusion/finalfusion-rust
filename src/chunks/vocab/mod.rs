@@ -75,24 +75,43 @@ pub(crate) fn create_indices(words: &[String]) -> HashMap<String, usize> {
     indices
 }
 
+pub(crate) fn read_string<R>(read: &mut R) -> Result<String>
+where
+    R: Read,
+{
+    let string_len =
+        read.read_u32::<LittleEndian>()
+            .map_err(|e| Error::io_error("Cannot read string length", e))? as usize;
+    let mut bytes = vec![0; string_len];
+    read.read_exact(&mut bytes)
+        .map_err(|e| Error::io_error("Cannot read item", e))?;
+    String::from_utf8(bytes)
+        .map_err(|e| Error::Format(format!("Item contains invalid UTF-8: {}", e)))
+        .map_err(Error::from)
+}
+
 pub(crate) fn read_vocab_items<R>(read: &mut R, len: usize) -> Result<Vec<String>>
 where
-    R: Read + Seek,
+    R: Read,
 {
     let mut items = Vec::with_capacity(len);
     for _ in 0..len {
-        let item_len =
-            read.read_u32::<LittleEndian>()
-                .map_err(|e| Error::io_error("Cannot read item length", e))? as usize;
-        let mut bytes = vec![0; item_len];
-        read.read_exact(&mut bytes)
-            .map_err(|e| Error::io_error("Cannot read item", e))?;
-        let item = String::from_utf8(bytes)
-            .map_err(|e| Error::Format(format!("Item contains invalid UTF-8: {}", e)))
-            .map_err(Error::from)?;
+        let item = read_string(read)?;
         items.push(item);
     }
     Ok(items)
+}
+
+pub(crate) fn write_string<W>(write: &mut W, s: &str) -> Result<()>
+where
+    W: Write,
+{
+    write
+        .write_u32::<LittleEndian>(s.len() as u32)
+        .map_err(|e| Error::io_error("Cannot write string length", e))?;
+    write
+        .write_all(s.as_bytes())
+        .map_err(|e| Error::io_error("Cannot write string", e))
 }
 
 pub(crate) fn write_vocab_items<W>(write: &mut W, items: &[String]) -> Result<()>
@@ -100,12 +119,7 @@ where
     W: Write + Seek,
 {
     for word in items {
-        write
-            .write_u32::<LittleEndian>(word.len() as u32)
-            .map_err(|e| Error::io_error("Cannot write token length", e))?;
-        write
-            .write_all(word.as_bytes())
-            .map_err(|e| Error::io_error("Cannot write token", e))?;
+        write_string(write, word)?;
     }
     Ok(())
 }

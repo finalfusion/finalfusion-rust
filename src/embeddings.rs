@@ -338,7 +338,7 @@ macro_rules! impl_embeddings_from(
     }
 );
 
-// Hmpf. We with the blanket From<T> for T implementation, we need
+// Hmpf. With the blanket From<T> for T implementation, we need
 // specialization to generalize this.
 impl_embeddings_from!(SimpleVocab, NdArray, StorageWrap);
 impl_embeddings_from!(SimpleVocab, NdArray, StorageViewWrap);
@@ -388,6 +388,7 @@ mod mmap {
     };
     use crate::error::{Error, Result};
     use crate::io::MmapEmbeddings;
+    use crate::vocab::FloretSubwordVocab;
 
     impl_embeddings_from!(SimpleVocab, MmapArray, StorageWrap);
     #[cfg(target_endian = "little")]
@@ -397,6 +398,10 @@ mod mmap {
     #[cfg(target_endian = "little")]
     impl_embeddings_from!(BucketSubwordVocab, MmapArray, StorageViewWrap);
     impl_embeddings_from!(BucketSubwordVocab, MmapQuantizedArray, StorageWrap);
+    impl_embeddings_from!(FloretSubwordVocab, MmapArray, StorageWrap);
+    #[cfg(target_endian = "little")]
+    impl_embeddings_from!(FloretSubwordVocab, MmapArray, StorageViewWrap);
+    impl_embeddings_from!(FloretSubwordVocab, MmapQuantizedArray, StorageWrap);
     impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageWrap);
     #[cfg(target_endian = "little")]
     impl_embeddings_from!(FastTextSubwordVocab, MmapArray, StorageViewWrap);

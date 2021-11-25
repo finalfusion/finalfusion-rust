@@ -133,11 +133,15 @@ impl ReadChunk for VocabWrap {
             ChunkIdentifier::ExplicitSubwordVocab => {
                 SubwordVocab::read_chunk(read).map(VocabWrap::ExplicitSubwordVocab)
             }
+            ChunkIdentifier::FloretSubwordVocab => {
+                SubwordVocab::read_chunk(read).map(VocabWrap::FloretSubwordVocab)
+            }
             _ => Err(Error::Format(format!(
-                "Invalid chunk identifier, expected one of: {}, {}, {} or {}, got: {}",
+                "Invalid chunk identifier, expected one of: {}, {}, {}, {} or {}, got: {}",
                 ChunkIdentifier::SimpleVocab,
                 ChunkIdentifier::ExplicitSubwordVocab,
                 ChunkIdentifier::FastTextSubwordVocab,
+                ChunkIdentifier::FloretSubwordVocab,
                 ChunkIdentifier::BucketSubwordVocab,
                 chunk_id
             ))),
@@ -151,9 +155,7 @@ impl WriteChunk for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.chunk_identifier(),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.chunk_identifier(),
             VocabWrap::FastTextSubwordVocab(inner) => inner.chunk_identifier(),
-            VocabWrap::FloretSubwordVocab(_inner) => unimplemented!(
-                "floret chunks are currently not supported in the finalfusion format"
-            ),
+            VocabWrap::FloretSubwordVocab(inner) => inner.chunk_identifier(),
             VocabWrap::BucketSubwordVocab(inner) => inner.chunk_identifier(),
         }
     }
@@ -166,9 +168,7 @@ impl WriteChunk for VocabWrap {
             VocabWrap::SimpleVocab(inner) => inner.write_chunk(write),
             VocabWrap::ExplicitSubwordVocab(inner) => inner.write_chunk(write),
             VocabWrap::FastTextSubwordVocab(inner) => inner.write_chunk(write),
-            VocabWrap::FloretSubwordVocab(_inner) => unimplemented!(
-                "floret chunks are currently not supported in the finalfusion format"
-            ),
+            VocabWrap::FloretSubwordVocab(inner) => inner.write_chunk(write),
             VocabWrap::BucketSubwordVocab(inner) => inner.write_chunk(write),
         }
     }

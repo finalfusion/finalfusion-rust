@@ -13,6 +13,10 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Add more context to an error.
+    #[error("{context:?}: {error:?}")]
+    Context { context: String, error: Box<Error> },
+
     /// Invalid file format.
     #[error("Invalid file format {0}")]
     Format(String),
@@ -43,6 +47,13 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn context(self, context: impl Into<String>) -> Self {
+        Error::Context {
+            context: context.into(),
+            error: self.into(),
+        }
+    }
+
     pub fn ngram_conversion_error(desc: impl Into<String>) -> Self {
         Error::NGramConversionError(desc.into())
     }

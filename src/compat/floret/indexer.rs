@@ -33,6 +33,10 @@ impl FloretIndexer {
         }
     }
 
+    pub fn n_buckets(&self) -> u64 {
+        self.n_buckets
+    }
+
     pub fn n_hashes(&self) -> u32 {
         self.n_hashes
     }
