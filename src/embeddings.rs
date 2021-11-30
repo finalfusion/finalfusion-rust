@@ -1,11 +1,12 @@
 //! Word embeddings.
 
+use std::collections::HashMap;
 use std::io::{Read, Seek, Write};
 use std::iter::Enumerate;
 use std::mem;
 use std::slice;
 
-use ndarray::{Array1, ArrayViewMut1, Axis, CowArray, Ix1};
+use ndarray::{s, Array1, Array2, ArrayViewMut1, ArrayViewMut2, Axis, CowArray, Ix1};
 use rand::{CryptoRng, RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
 use reductive::pq::TrainPq;
@@ -186,6 +187,68 @@ where
         }
 
         true
+    }
+
+    /// Get a batch of embeddings.
+    ///
+    /// The embeddings of all `words` are computed and returned. This method also
+    /// return a `Vec` indicating for each word if an embedding could be found.
+    pub fn embedding_batch(&self, words: &[impl AsRef<str>]) -> (Array2<f32>, Vec<bool>) {
+        let mut embeddings = Array2::zeros((words.len(), self.dims()));
+        let found = self.embedding_batch_into(words, embeddings.view_mut());
+        (embeddings, found)
+    }
+
+    /// Get a batch of embeddings.
+    ///
+    /// The embeddings of all `words` are computed and written to `output`. A `Vec` is
+    /// returned that indicates for each word if an embedding could be found.
+    ///
+    /// This method panics when `output` does not have the correct shape.
+    pub fn embedding_batch_into(
+        &self,
+        words: &[impl AsRef<str>],
+        mut output: ArrayViewMut2<f32>,
+    ) -> Vec<bool> {
+        assert_eq!(
+            output.len_of(Axis(0)),
+            words.len(),
+            "Expected embedding matrix for batch size {}, got {}",
+            words.len(),
+            output.len_of(Axis(0))
+        );
+        assert_eq!(
+            output.len_of(Axis(1)),
+            self.dims(),
+            "Expected embedding matrix for embeddings with dimensionality {}, got {}",
+            self.dims(),
+            output.len_of(Axis(1))
+        );
+
+        let mut found = vec![false; words.len()];
+
+        let mut word_indices: HashMap<_, Vec<_>> = HashMap::new();
+        for (idx, word) in words.iter().enumerate() {
+            let indices = word_indices.entry(word.as_ref()).or_default();
+            indices.push(idx);
+        }
+
+        for (word, indices) in word_indices {
+            // Look up the embedding for the first occurence of the word and
+            // then copy to other occurences.
+            let idx_first = indices[0];
+            if self.embedding_into(word, output.index_axis_mut(Axis(0), idx_first)) {
+                found[idx_first] = true;
+
+                for &idx in indices.iter().skip(1) {
+                    let (first, mut cur) = output.multi_slice_mut((s![idx_first, ..], s![idx, ..]));
+                    cur.assign(&first);
+                    found[idx] = true;
+                }
+            }
+        }
+
+        found
     }
 
     /// Get the embedding and original norm of a word.
@@ -714,6 +777,25 @@ mod tests {
         // Unknown word, non-zero vector
         assert!(embeds.embedding_into("idspispopd", target.view_mut()));
         assert_eq!(target, embeds.embedding("idspispopd").unwrap());
+    }
+
+    #[test]
+    fn embedding_batch_returns_correct_embeddings() {
+        let embeds = test_embeddings();
+        let (lookups, found) = embeds.embedding_batch(&[
+            "Berlin",
+            "Bremen",
+            "Groningen",
+            "Bremen",
+            "Berlin",
+            "Amsterdam",
+        ]);
+
+        assert_eq!(lookups.row(0), embeds.embedding("Berlin").unwrap());
+        assert_eq!(lookups.row(1), embeds.embedding("Bremen").unwrap());
+        assert_eq!(lookups.row(3), embeds.embedding("Bremen").unwrap());
+        assert_eq!(lookups.row(4), embeds.embedding("Berlin").unwrap());
+        assert_eq!(found, &[true, true, false, true, true, false]);
     }
 
     #[test]
