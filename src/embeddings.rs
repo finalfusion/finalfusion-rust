@@ -8,7 +8,7 @@ use std::slice;
 use ndarray::{Array1, ArrayViewMut1, Axis, CowArray, Ix1};
 use rand::{CryptoRng, RngCore, SeedableRng};
 use rand_chacha::ChaChaRng;
-use reductive::pq::TrainPQ;
+use reductive::pq::TrainPq;
 
 use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
 use crate::chunks::metadata::Metadata;
@@ -541,7 +541,7 @@ pub trait Quantize<V> {
         normalize: bool,
     ) -> Result<Embeddings<V, QuantizedArray>>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
     {
         self.quantize_using::<T, _>(
             n_subquantizers,
@@ -567,7 +567,7 @@ pub trait Quantize<V> {
         rng: R,
     ) -> Result<Embeddings<V, QuantizedArray>>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
         R: CryptoRng + RngCore + SeedableRng + Send;
 }
 
@@ -586,7 +586,7 @@ where
         rng: R,
     ) -> Result<Embeddings<V, QuantizedArray>>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
         R: CryptoRng + RngCore + SeedableRng + Send,
     {
         let quantized_storage = self.storage().quantize_using::<T, R>(

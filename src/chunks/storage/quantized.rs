@@ -5,7 +5,7 @@ use std::mem::size_of;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Axis, CowArray, IntoDimension, Ix1};
 use rand::{CryptoRng, RngCore, SeedableRng};
-use reductive::pq::{QuantizeVector, ReconstructVector, TrainPQ, PQ};
+use reductive::pq::{Pq, QuantizeVector, Reconstruct as _, TrainPq};
 
 use super::{sealed::CloneFromMapping, Storage, StorageView};
 use crate::chunks::io::{ChunkIdentifier, ReadChunk, TypeId, WriteChunk};
@@ -15,14 +15,14 @@ use crate::util::padding;
 
 /// Quantized embedding matrix.
 pub struct QuantizedArray {
-    quantizer: PQ<f32>,
+    quantizer: Pq<f32>,
     quantized_embeddings: Array2<u8>,
     norms: Option<Array1<f32>>,
 }
 
-struct PQRead {
+struct PqRead {
     n_embeddings: usize,
-    quantizer: PQ<f32>,
+    quantizer: Pq<f32>,
     read_norms: bool,
 }
 
@@ -36,11 +36,11 @@ impl QuantizedArray {
     }
 
     /// Get the quantizer.
-    pub fn quantizer(&self) -> &PQ<f32> {
+    pub fn quantizer(&self) -> &Pq<f32> {
         &self.quantizer
     }
 
-    fn read_product_quantizer<R>(read: &mut R) -> Result<PQRead>
+    fn read_product_quantizer<R>(read: &mut R) -> Result<PqRead>
     where
         R: Read + Seek,
     {
@@ -104,16 +104,16 @@ impl QuantizedArray {
         read.read_f32_into::<LittleEndian>(quantizers.as_slice_mut().unwrap())
             .map_err(|e| Error::io_error("Cannot read subquantizer", e))?;
 
-        Ok(PQRead {
+        Ok(PqRead {
             n_embeddings,
-            quantizer: PQ::new(projection, quantizers),
+            quantizer: Pq::new(projection, quantizers),
             read_norms,
         })
     }
 
     fn write_chunk<W>(
         write: &mut W,
-        quantizer: &PQ<f32>,
+        quantizer: &Pq<f32>,
         quantized: ArrayView2<u8>,
         norms: Option<ArrayView1<f32>>,
     ) -> Result<()>
@@ -248,7 +248,7 @@ impl Storage for QuantizedArray {
     fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
         let mut reconstructed = self
             .quantizer
-            .reconstruct_vector(self.quantized_embeddings.row(idx));
+            .reconstruct(self.quantized_embeddings.row(idx));
         if let Some(ref norms) = self.norms {
             reconstructed *= norms[idx];
         }
@@ -305,7 +305,7 @@ impl ReadChunk for QuantizedArray {
             Error::io_error("Cannot read quantized embedding matrix chunk length", e)
         })?;
 
-        let PQRead {
+        let PqRead {
             n_embeddings,
             quantizer,
             read_norms,
@@ -368,7 +368,7 @@ pub trait Quantize {
         normalize: bool,
     ) -> Result<QuantizedArray>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
     {
         self.quantize_using::<T, _>(
             n_subquantizers,
@@ -394,7 +394,7 @@ pub trait Quantize {
         rng: R,
     ) -> Result<QuantizedArray>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
         R: CryptoRng + RngCore + SeedableRng + Send;
 }
 
@@ -416,7 +416,7 @@ where
         mut rng: R,
     ) -> Result<QuantizedArray>
     where
-        T: TrainPQ<f32>,
+        T: TrainPq<f32>,
         R: CryptoRng + RngCore + SeedableRng + Send,
     {
         let (embeds, norms) = if normalize {
@@ -480,9 +480,9 @@ mod mmap {
 
     use memmap2::{Mmap, MmapOptions};
     use ndarray::{Array1, Array2, ArrayView2, Axis, CowArray, Ix1};
-    use reductive::pq::{QuantizeVector, ReconstructVector, PQ};
+    use reductive::pq::{Pq, QuantizeVector, Reconstruct as _};
 
-    use super::{PQRead, QuantizedArray, Storage};
+    use super::{PqRead, QuantizedArray, Storage};
     use crate::chunks::io::MmapChunk;
     use crate::chunks::io::{ChunkIdentifier, WriteChunk};
     use crate::chunks::storage::{sealed::CloneFromMapping, NdArray};
@@ -493,7 +493,7 @@ mod mmap {
 
     /// Memory-mapped quantized embedding matrix.
     pub struct MmapQuantizedArray {
-        quantizer: PQ<f32>,
+        quantizer: Pq<f32>,
         quantized_embeddings: Mmap,
         norms: Option<Array1<f32>>,
     }
@@ -541,7 +541,7 @@ mod mmap {
         }
 
         /// Get the quantizer.
-        pub fn quantizer(&self) -> &PQ<f32> {
+        pub fn quantizer(&self) -> &Pq<f32> {
             &self.quantizer
         }
     }
@@ -550,7 +550,7 @@ mod mmap {
         fn embedding(&self, idx: usize) -> CowArray<f32, Ix1> {
             let quantized = unsafe { self.quantized_embeddings() };
 
-            let mut reconstructed = self.quantizer.reconstruct_vector(quantized.row(idx));
+            let mut reconstructed = self.quantizer.reconstruct(quantized.row(idx));
             if let Some(norms) = &self.norms {
                 reconstructed *= norms[idx];
             }
@@ -607,7 +607,7 @@ mod mmap {
                 Error::io_error("Cannot read quantized embedding matrix chunk length", e)
             })?;
 
-            let PQRead {
+            let PqRead {
                 n_embeddings,
                 quantizer,
                 read_norms,
@@ -678,7 +678,7 @@ mod tests {
 
     use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
-    use reductive::pq::PQ;
+    use reductive::pq::Pq;
 
     use crate::chunks::io::{ReadChunk, WriteChunk};
     use crate::chunks::storage::{NdArray, Quantize, QuantizedArray, Reconstruct, Storage};
@@ -696,7 +696,7 @@ mod tests {
 
     fn test_quantized_array(norms: bool) -> QuantizedArray {
         let ndarray = test_ndarray();
-        ndarray.quantize::<PQ<f32>>(10, 4, 5, 1, norms).unwrap()
+        ndarray.quantize::<Pq<f32>>(10, 4, 5, 1, norms).unwrap()
     }
 
     fn read_chunk_size(read: &mut impl Read) -> u64 {
