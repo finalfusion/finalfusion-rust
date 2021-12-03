@@ -61,11 +61,11 @@ impl ReadChunk for SimpleVocab {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read vocabulary chunk length", e))?;
 
         let vocab_len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary length", e))?
+            .map_err(|e| Error::read_error("Cannot read vocabulary length", e))?
             .try_into()
             .map_err(|_| Error::Overflow)?;
 
@@ -95,13 +95,13 @@ impl WriteChunk for SimpleVocab {
 
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)
-            .map_err(|e| Error::io_error("Cannot write vocabulary chunk identifier", e))?;
+            .map_err(|e| Error::write_error("Cannot write vocabulary chunk identifier", e))?;
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write vocabulary chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
-            .map_err(|e| Error::io_error("Cannot write vocabulary length", e))?;
+            .map_err(|e| Error::write_error("Cannot write vocabulary length", e))?;
 
         write_vocab_items(write, self.words())?;
 

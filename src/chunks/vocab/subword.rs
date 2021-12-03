@@ -349,21 +349,21 @@ where
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read vocabulary chunk length", e))?;
 
         let vocab_len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary length", e))?
+            .map_err(|e| Error::read_error("Cannot read vocabulary length", e))?
             as usize;
         let min_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read minimum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read minimum n-gram length", e))?;
         let max_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read maximum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read maximum n-gram length", e))?;
         let buckets = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of buckets", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of buckets", e))?;
 
         let words = read_vocab_items(read, vocab_len as usize)?;
 
@@ -399,22 +399,24 @@ where
 
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk identifier", e))?;
+            .map_err(|e| {
+                Error::write_error("Cannot write subword vocabulary chunk identifier", e)
+            })?;
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
-            .map_err(|e| Error::io_error("Cannot write vocabulary length", e))?;
+            .map_err(|e| Error::write_error("Cannot write vocabulary length", e))?;
         write
             .write_u32::<LittleEndian>(self.min_n)
-            .map_err(|e| Error::io_error("Cannot write minimum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write minimum n-gram length", e))?;
         write
             .write_u32::<LittleEndian>(self.max_n)
-            .map_err(|e| Error::io_error("Cannot write maximum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write maximum n-gram length", e))?;
         write
             .write_u32::<LittleEndian>(self.indexer.buckets() as u32)
-            .map_err(|e| Error::io_error("Cannot write number of buckets", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of buckets", e))?;
 
         write_vocab_items(write, self.words())?;
 
@@ -476,19 +478,19 @@ impl ExplicitSubwordVocab {
         ChunkIdentifier::ensure_chunk_type(read, chunk_identifier)?;
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read vocabulary chunk length", e))?;
         let words_len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of words", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of words", e))?;
         let ngrams_len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of ngrams", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of ngrams", e))?;
         let min_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read minimum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read minimum n-gram length", e))?;
         let max_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read maximum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read maximum n-gram length", e))?;
 
         let words = read_vocab_items(read, words_len as usize)?;
         let ngrams = read_ngrams_with_indices(read, ngrams_len as usize)?;
@@ -523,22 +525,24 @@ impl ExplicitSubwordVocab {
 
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk identifier", e))?;
+            .map_err(|e| {
+                Error::write_error("Cannot write subword vocabulary chunk identifier", e)
+            })?;
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
-            .map_err(|e| Error::io_error("Cannot write vocabulary length", e))?;
+            .map_err(|e| Error::write_error("Cannot write vocabulary length", e))?;
         write
             .write_u64::<LittleEndian>(self.indexer.ngrams().len() as u64)
-            .map_err(|e| Error::io_error("Cannot write ngram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write ngram length", e))?;
         write
             .write_u32::<LittleEndian>(self.min_n)
-            .map_err(|e| Error::io_error("Cannot write minimum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write minimum n-gram length", e))?;
         write
             .write_u32::<LittleEndian>(self.max_n)
-            .map_err(|e| Error::io_error("Cannot write maximum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write maximum n-gram length", e))?;
 
         write_vocab_items(write, self.words())?;
         write_ngrams_with_indices(write, self.indexer())?;
@@ -559,22 +563,22 @@ impl FloretSubwordVocab {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read vocabulary chunk length", e))?;
 
         let min_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read minimum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read minimum n-gram length", e))?;
         let max_n = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read maximum n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read maximum n-gram length", e))?;
         let n_buckets = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of buckets", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of buckets", e))?;
         let n_hashes: u32 = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of hashes", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of hashes", e))?;
         if !(1..=4).contains(&n_hashes) {
-            return Err(Error::io_error(
+            return Err(Error::read_error(
                 format!(
                     "Number of hashes should be in be more than 0 and less than 5, was: {}",
                     n_hashes
@@ -584,7 +588,7 @@ impl FloretSubwordVocab {
         }
         let seed: u32 = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read hasher seed", e))?;
+            .map_err(|e| Error::read_error("Cannot read hasher seed", e))?;
         let bow = read_string(read).map_err(|e| e.context("Cannot read begin of word marker"))?;
         let eow = read_string(read).map_err(|e| e.context("Cannot read end of word marker"))?;
 
@@ -618,25 +622,27 @@ impl FloretSubwordVocab {
 
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk identifier", e))?;
+            .map_err(|e| {
+                Error::write_error("Cannot write subword vocabulary chunk identifier", e)
+            })?;
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write subword vocabulary chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u32::<LittleEndian>(self.min_n)
-            .map_err(|e| Error::io_error("Cannot write minimum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write minimum n-gram length", e))?;
         write
             .write_u32::<LittleEndian>(self.max_n)
-            .map_err(|e| Error::io_error("Cannot write maximum n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write maximum n-gram length", e))?;
         write
             .write_u64::<LittleEndian>(self.indexer.n_buckets())
-            .map_err(|e| Error::io_error("Cannot write number of buckets", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of buckets", e))?;
         write
             .write_u32::<LittleEndian>(self.indexer.n_hashes())
-            .map_err(|e| Error::io_error("Cannot write number of hashes", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of hashes", e))?;
         write
             .write_u32::<LittleEndian>(self.indexer().seed())
-            .map_err(|e| Error::io_error("Cannot write hasher seed", e))?;
+            .map_err(|e| Error::write_error("Cannot write hasher seed", e))?;
         write_string(write, self.bow())
             .map_err(|e| e.context("Cannot write begin of word marker"))?;
         write_string(write, self.eow())
@@ -654,16 +660,16 @@ where
     for _ in 0..len {
         let ngram_len =
             read.read_u32::<LittleEndian>()
-                .map_err(|e| Error::io_error("Cannot read item length", e))? as usize;
+                .map_err(|e| Error::read_error("Cannot read item length", e))? as usize;
         let mut bytes = vec![0; ngram_len];
         read.read_exact(&mut bytes)
-            .map_err(|e| Error::io_error("Cannot read item", e))?;
+            .map_err(|e| Error::read_error("Cannot read item", e))?;
         let item = String::from_utf8(bytes)
             .map_err(|e| Error::Format(format!("Item contains invalid UTF-8: {}", e)))
             .map_err(Error::from)?;
         let idx = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read ngram index.", e))?;
+            .map_err(|e| Error::read_error("Cannot read ngram index.", e))?;
         ngrams.push((item, idx));
     }
     Ok(ngrams)
@@ -676,7 +682,7 @@ where
     for ngram in indexer.ngrams() {
         let indices = indexer.index_ngram(&ngram.as_str().into());
         if indices.is_empty() {
-            return Err(Error::io_error(
+            return Err(Error::write_error(
                 format!(
                     "Indexer could not index n-gram during serialization: {}",
                     ngram
@@ -686,7 +692,7 @@ where
         }
 
         if indices.len() > 1 {
-            return Err(Error::io_error(
+            return Err(Error::write_error(
                 format!(
                     "Indexer maps n-gram to multiple indices during serialization: {}",
                     ngram
@@ -699,13 +705,13 @@ where
 
         write
             .write_u32::<LittleEndian>(ngram.len() as u32)
-            .map_err(|e| Error::io_error("Cannot write ngram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write ngram length", e))?;
         write
             .write_all(ngram.as_bytes())
-            .map_err(|e| Error::io_error("Cannot write ngram", e))?;
+            .map_err(|e| Error::write_error("Cannot write ngram", e))?;
         write
             .write_u64::<LittleEndian>(idx)
-            .map_err(|e| Error::io_error("Cannot write ngram idx", e))?;
+            .map_err(|e| Error::write_error("Cannot write ngram idx", e))?;
     }
     Ok(())
 }

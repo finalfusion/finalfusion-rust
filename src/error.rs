@@ -3,7 +3,6 @@
 use std::io;
 
 use ndarray::ShapeError;
-use rand::Error as RandError;
 use reductive::error::ReductiveError;
 use thiserror::Error;
 
@@ -15,8 +14,12 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     /// Add more context to an error.
-    #[error("{context:?}: {error:?}")]
-    Context { context: String, error: Box<Error> },
+    #[error("{context}")]
+    Context {
+        context: String,
+        #[source]
+        error: Box<Error>,
+    },
 
     /// Invalid file format.
     #[error("Invalid file format {0}")]
@@ -24,18 +27,18 @@ pub enum Error {
 
     /// Conversion of n-grams from implicit to explicit.
     #[error("{0}")]
-    NGramConversionError(String),
+    NGramConversion(String),
 
-    /// Random number generation error.
-    #[error(transparent)]
-    RandError(#[from] RandError),
+    /// Matrix construction shape error
+    #[error("Cannot construct matrix with the given shape")]
+    MatrixShape(#[source] ShapeError),
 
-    /// `ndarray` shape error.
-    #[error(transparent)]
-    Shape(#[from] ShapeError),
-
-    #[error("{desc:?}: {error:?}")]
-    Io { desc: String, error: io::Error },
+    #[error("{desc}")]
+    Read {
+        desc: String,
+        #[source]
+        error: io::Error,
+    },
 
     #[error("Unknown chunk identifier {0}")]
     UnknownChunkIdentifier(u32),
@@ -43,11 +46,18 @@ pub enum Error {
     #[error("Data cannot be represented using native word size")]
     Overflow,
 
-    #[error("Can't convert {from:?} to {to:?}")]
-    ConversionError { from: String, to: String },
+    #[error("Can't convert {from} to {to}")]
+    Conversion { from: String, to: String },
 
     #[error("Cannot quantize embeddings")]
-    QuantizationError(#[source] ReductiveError),
+    Quantization(#[source] ReductiveError),
+
+    #[error("{desc}")]
+    Write {
+        desc: String,
+        #[source]
+        error: io::Error,
+    },
 }
 
 impl Error {
@@ -59,20 +69,27 @@ impl Error {
     }
 
     pub fn ngram_conversion_error(desc: impl Into<String>) -> Self {
-        Error::NGramConversionError(desc.into())
+        Error::NGramConversion(desc.into())
     }
 
-    pub fn io_error(desc: impl Into<String>, error: io::Error) -> Self {
-        Error::Io {
+    pub fn conversion_error(from: impl Into<String>, to: impl Into<String>) -> Self {
+        Error::Conversion {
+            from: from.into(),
+            to: to.into(),
+        }
+    }
+
+    pub fn read_error(desc: impl Into<String>, error: io::Error) -> Self {
+        Error::Read {
             desc: desc.into(),
             error,
         }
     }
 
-    pub fn conversion_error(from: impl Into<String>, to: impl Into<String>) -> Self {
-        Error::ConversionError {
-            from: from.into(),
-            to: to.into(),
+    pub fn write_error(desc: impl Into<String>, error: io::Error) -> Self {
+        Error::Write {
+            desc: desc.into(),
+            error,
         }
     }
 }

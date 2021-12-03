@@ -116,17 +116,17 @@ mod mmap {
 
             // Read and discard chunk length.
             read.read_u64::<LittleEndian>()
-                .map_err(|e| Error::io_error("Cannot read embedding matrix chunk length", e))?;
+                .map_err(|e| Error::read_error("Cannot read embedding matrix chunk length", e))?;
 
             let rows = read
                 .read_u64::<LittleEndian>()
                 .map_err(|e| {
-                    Error::io_error("Cannot read number of rows of the embedding matrix", e)
+                    Error::read_error("Cannot read number of rows of the embedding matrix", e)
                 })?
                 .try_into()
                 .map_err(|_| Error::Overflow)?;
             let cols = read.read_u32::<LittleEndian>().map_err(|e| {
-                Error::io_error("Cannot read number of columns of the embedding matrix", e)
+                Error::read_error("Cannot read number of columns of the embedding matrix", e)
             })? as usize;
             let shape = Ix2(rows, cols);
 
@@ -134,15 +134,15 @@ mod mmap {
             f32::ensure_data_type(read)?;
 
             let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
+                Error::read_error("Cannot get file position for computing padding", e)
             })?);
             read.seek(SeekFrom::Current(n_padding as i64))
-                .map_err(|e| Error::io_error("Cannot skip padding", e))?;
+                .map_err(|e| Error::read_error("Cannot skip padding", e))?;
 
             // Set up memory mapping.
             let matrix_len = shape.size() * size_of::<f32>();
             let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error(
+                Error::read_error(
                     "Cannot get file position for memory mapping embedding matrix",
                     e,
                 )
@@ -153,12 +153,12 @@ mod mmap {
                     .offset(offset)
                     .len(matrix_len)
                     .map(&*read.get_ref())
-                    .map_err(|e| Error::io_error("Cannot memory map embedding matrix", e))?
+                    .map_err(|e| Error::read_error("Cannot memory map embedding matrix", e))?
             };
 
             // Position the reader after the matrix.
             read.seek(SeekFrom::Current(matrix_len as i64))
-                .map_err(|e| Error::io_error("Cannot skip embedding matrix", e))?;
+                .map_err(|e| Error::read_error("Cannot skip embedding matrix", e))?;
 
             Ok(MmapArray { map, shape })
         }
@@ -199,11 +199,10 @@ impl NdArray {
     {
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)
-            .map_err(|e| Error::io_error("Cannot write embedding matrix chunk identifier", e))?;
-        let n_padding =
-            padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
-            })?);
+            .map_err(|e| Error::write_error("Cannot write embedding matrix chunk identifier", e))?;
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            Error::write_error("Cannot get file position for computing padding", e)
+        })?);
         // Chunk size: rows (u64), columns (u32), type id (u32),
         //             padding ([0,4) bytes), matrix.
         let chunk_len = size_of::<u64>()
@@ -213,20 +212,20 @@ impl NdArray {
             + (data.nrows() * data.ncols() * size_of::<f32>());
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write embedding matrix chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write embedding matrix chunk length", e))?;
         write
             .write_u64::<LittleEndian>(data.nrows() as u64)
             .map_err(|e| {
-                Error::io_error("Cannot write number of rows of the embedding matrix", e)
+                Error::write_error("Cannot write number of rows of the embedding matrix", e)
             })?;
         write
             .write_u32::<LittleEndian>(data.ncols() as u32)
             .map_err(|e| {
-                Error::io_error("Cannot write number of columns of the embedding matrix", e)
+                Error::write_error("Cannot write number of columns of the embedding matrix", e)
             })?;
         write
             .write_u32::<LittleEndian>(f32::type_id())
-            .map_err(|e| Error::io_error("Cannot write embedding matrix type identifier", e))?;
+            .map_err(|e| Error::write_error("Cannot write embedding matrix type identifier", e))?;
 
         // Write padding, such that the embedding matrix starts on at
         // a multiple of the size of f32 (4 bytes). This is necessary
@@ -242,13 +241,13 @@ impl NdArray {
         let padding = vec![0; n_padding as usize];
         write
             .write_all(&padding)
-            .map_err(|e| Error::io_error("Cannot write padding", e))?;
+            .map_err(|e| Error::write_error("Cannot write padding", e))?;
 
         for row in data.outer_iter() {
             for col in row.iter() {
-                write
-                    .write_f32::<LittleEndian>(*col)
-                    .map_err(|e| Error::io_error("Cannot write embedding matrix component", e))?;
+                write.write_f32::<LittleEndian>(*col).map_err(|e| {
+                    Error::write_error("Cannot write embedding matrix component", e)
+                })?;
             }
         }
 
@@ -311,15 +310,17 @@ impl ReadChunk for NdArray {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read embedding matrix chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read embedding matrix chunk length", e))?;
 
         let rows = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of rows of the embedding matrix", e))?
+            .map_err(|e| {
+                Error::read_error("Cannot read number of rows of the embedding matrix", e)
+            })?
             .try_into()
             .map_err(|_| Error::Overflow)?;
         let cols = read.read_u32::<LittleEndian>().map_err(|e| {
-            Error::io_error("Cannot read number of columns of the embedding matrix", e)
+            Error::read_error("Cannot read number of columns of the embedding matrix", e)
         })? as usize;
 
         // The components of the embedding matrix should be of type f32.
@@ -327,14 +328,14 @@ impl ReadChunk for NdArray {
 
         let n_padding =
             padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
+                Error::read_error("Cannot get file position for computing padding", e)
             })?);
         read.seek(SeekFrom::Current(n_padding as i64))
-            .map_err(|e| Error::io_error("Cannot skip padding", e))?;
+            .map_err(|e| Error::read_error("Cannot skip padding", e))?;
 
         let mut data = Array2::zeros((rows, cols));
         read.read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
-            .map_err(|e| Error::io_error("Cannot read embedding matrix", e))?;
+            .map_err(|e| Error::read_error("Cannot read embedding matrix", e))?;
 
         Ok(NdArray { inner: data })
     }

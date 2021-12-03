@@ -111,14 +111,14 @@ impl ReadChunk for VocabWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| Error::io_error("Cannot get vocabulary chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot get vocabulary chunk start position", e))?;
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read vocabulary chunk identifier", e))?;
+            .map_err(|e| Error::read_error("Cannot read vocabulary chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| Error::io_error("Cannot seek to vocabulary chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot seek to vocabulary chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::SimpleVocab => {

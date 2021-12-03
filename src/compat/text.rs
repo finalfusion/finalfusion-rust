@@ -206,7 +206,7 @@ where
         let mut buf = Vec::new();
         match reader
             .read_until(b'\n', &mut buf)
-            .map_err(|e| Error::io_error("Cannot read line from embedding file", e))?
+            .map_err(|e| Error::read_error("Cannot read line from embedding file", e))?
         {
             0 => break,
             n => {
@@ -263,7 +263,7 @@ where
         (words.len(), dims)
     };
 
-    let matrix = Array2::from_shape_vec(shape, data).map_err(Error::Shape)?;
+    let matrix = Array2::from_shape_vec(shape, data).map_err(Error::MatrixShape)?;
 
     Ok(Embeddings::new_with_maybe_norms(
         None,
@@ -307,7 +307,7 @@ where
 
             let embed_str = embed.view().iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", word, embed_str)
-                .map_err(|e| Error::io_error("Cannot write word embedding", e))?;
+                .map_err(|e| Error::write_error("Cannot write word embedding", e))?;
         }
 
         Ok(())
@@ -340,7 +340,7 @@ where
 {
     fn write_text_dims(&self, write: &mut W, unnormalize: bool) -> Result<()> {
         writeln!(write, "{} {}", self.vocab().words_len(), self.dims())
-            .map_err(|e| Error::io_error("Cannot write word embedding matrix shape", e))?;
+            .map_err(|e| Error::write_error("Cannot write word embedding matrix shape", e))?;
         self.write_text(write, unnormalize)
     }
 }

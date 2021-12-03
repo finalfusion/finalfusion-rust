@@ -63,7 +63,7 @@ impl ReadFloretText for Embeddings<FloretSubwordVocab, NdArray> {
 
         let mut prev_len = 0;
         for line in reader.lines() {
-            let line = line.map_err(|err| Error::io_error("Cannot read line", err))?;
+            let line = line.map_err(|err| Error::read_error("Cannot read line", err))?;
 
             let parts = line
                 .split(|c: char| c.is_ascii_whitespace())
@@ -87,7 +87,8 @@ impl ReadFloretText for Embeddings<FloretSubwordVocab, NdArray> {
             prev_len += embed_len;
         }
 
-        let matrix = Array2::from_shape_vec((n_buckets, embed_len), data).map_err(Error::Shape)?;
+        let matrix =
+            Array2::from_shape_vec((n_buckets, embed_len), data).map_err(Error::MatrixShape)?;
 
         let indexer = FloretIndexer::new(n_buckets as u64, n_hashes, hash_seed as u32);
 
@@ -123,7 +124,7 @@ impl WriteFloretText for Embeddings<FloretSubwordVocab, NdArray> {
             self.vocab().bow(),
             self.vocab().eow()
         )
-        .map_err(|e| Error::io_error("Cannot write floret embeddings metadata", e))?;
+        .map_err(|e| Error::write_error("Cannot write floret embeddings metadata", e))?;
 
         // Ensure that we are only writing part of the embedding matrix which is
         // used for floret embeddings. The storage may have word embeddings through
@@ -134,7 +135,7 @@ impl WriteFloretText for Embeddings<FloretSubwordVocab, NdArray> {
         for (idx, embed) in hash_matrix.outer_iter().enumerate() {
             let embed_str = embed.view().iter().map(ToString::to_string).join(" ");
             writeln!(write, "{} {}", idx, embed_str)
-                .map_err(|e| Error::io_error("Cannot write embedding", e))?;
+                .map_err(|e| Error::write_error("Cannot write embedding", e))?;
         }
 
         Ok(())

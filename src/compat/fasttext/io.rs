@@ -61,7 +61,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
     fn read_fasttext_private(mut reader: &mut impl BufRead, lossy: bool) -> Result<Self> {
         let magic = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot fastText read magic", e))?;
+            .map_err(|e| Error::read_error("Cannot fastText read magic", e))?;
         if magic != FASTTEXT_FILEFORMAT_MAGIC {
             return Err(Error::Format(format!(
                 "Expected {} as magic, got: {}",
@@ -71,7 +71,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
 
         let version = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read fastText version", e))?;
+            .map_err(|e| Error::read_error("Cannot read fastText version", e))?;
         if version > FASTTEXT_VERSION {
             return Err(Error::Format(format!(
                 "Expected {} as version, got: {}",
@@ -85,7 +85,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
 
         let is_quantized = reader
             .read_u8()
-            .map_err(|e| Error::io_error("Cannot read quantization information", e))?;
+            .map_err(|e| Error::read_error("Cannot read quantization information", e))?;
         if is_quantized == 1 {
             return Err(Error::Format(
                 "Quantized fastText models are not supported".into(),
@@ -102,7 +102,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
 
         // Verify that vocab and storage shapes match.
         if storage.shape().0 != vocab.words_len() + config.bucket as usize {
-            return Err(Error::Shape(ShapeError::from_kind(
+            return Err(Error::MatrixShape(ShapeError::from_kind(
                 ShapeErrorKind::IncompatibleShape,
             )));
         }
@@ -159,10 +159,10 @@ where
 
         write
             .write_u32::<LittleEndian>(FASTTEXT_FILEFORMAT_MAGIC)
-            .map_err(|e| Error::io_error("Cannot write fastText magic", e))?;
+            .map_err(|e| Error::write_error("Cannot write fastText magic", e))?;
         write
             .write_u32::<LittleEndian>(FASTTEXT_VERSION)
-            .map_err(|e| Error::io_error("Cannot write fastText version", e))?;
+            .map_err(|e| Error::write_error("Cannot write fastText version", e))?;
 
         config.write(write)?;
 
@@ -170,7 +170,7 @@ where
 
         write
             .write_u8(0)
-            .map_err(|e| Error::io_error("Cannot write quantization status", e))?;
+            .map_err(|e| Error::write_error("Cannot write quantization status", e))?;
 
         write_embeddings(write, self)
     }
@@ -222,39 +222,39 @@ impl Config {
     {
         let dims = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of dimensions", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of dimensions", e))?;
         let window_size = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read window size", e))?;
+            .map_err(|e| Error::read_error("Cannot read window size", e))?;
         let epoch = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of epochs", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of epochs", e))?;
         let min_count = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read minimum count", e))?;
+            .map_err(|e| Error::read_error("Cannot read minimum count", e))?;
         let neg = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read negative samples", e))?;
+            .map_err(|e| Error::read_error("Cannot read negative samples", e))?;
         let word_ngrams = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read word n-gram length", e))?;
+            .map_err(|e| Error::read_error("Cannot read word n-gram length", e))?;
         let loss = Loss::read(reader)?;
         let model = Model::read(reader)?;
         let bucket = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read number of buckets", e))?;
+            .map_err(|e| Error::read_error("Cannot read number of buckets", e))?;
         let min_n = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read minimum subword length", e))?;
+            .map_err(|e| Error::read_error("Cannot read minimum subword length", e))?;
         let max_n = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read maximum subword length", e))?;
+            .map_err(|e| Error::read_error("Cannot read maximum subword length", e))?;
         let lr_update_rate = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read LR update rate", e))?;
+            .map_err(|e| Error::read_error("Cannot read LR update rate", e))?;
         let sampling_threshold = reader
             .read_f64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read sampling threshold", e))?;
+            .map_err(|e| Error::read_error("Cannot read sampling threshold", e))?;
 
         Ok(Config {
             dims,
@@ -279,39 +279,39 @@ impl Config {
     {
         write
             .write_u32::<LittleEndian>(self.dims)
-            .map_err(|e| Error::io_error("Cannot write number of dimensions", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of dimensions", e))?;
         write
             .write_u32::<LittleEndian>(self.window_size)
-            .map_err(|e| Error::io_error("Cannot write window size", e))?;
+            .map_err(|e| Error::write_error("Cannot write window size", e))?;
         write
             .write_u32::<LittleEndian>(self.epoch)
-            .map_err(|e| Error::io_error("Cannot write number of epochs", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of epochs", e))?;
         write
             .write_u32::<LittleEndian>(self.min_count)
-            .map_err(|e| Error::io_error("Cannot write minimum count", e))?;
+            .map_err(|e| Error::write_error("Cannot write minimum count", e))?;
         write
             .write_u32::<LittleEndian>(self.neg)
-            .map_err(|e| Error::io_error("Cannot write negative samples", e))?;
+            .map_err(|e| Error::write_error("Cannot write negative samples", e))?;
         write
             .write_u32::<LittleEndian>(self.word_ngrams)
-            .map_err(|e| Error::io_error("Cannot write word n-gram length", e))?;
+            .map_err(|e| Error::write_error("Cannot write word n-gram length", e))?;
         self.loss.write(write)?;
         self.model.write(write)?;
         write
             .write_u32::<LittleEndian>(self.bucket)
-            .map_err(|e| Error::io_error("Cannot write number of buckets", e))?;
+            .map_err(|e| Error::write_error("Cannot write number of buckets", e))?;
         write
             .write_u32::<LittleEndian>(self.min_n)
-            .map_err(|e| Error::io_error("Cannot write minimum subword length", e))?;
+            .map_err(|e| Error::write_error("Cannot write minimum subword length", e))?;
         write
             .write_u32::<LittleEndian>(self.max_n)
-            .map_err(|e| Error::io_error("Cannot write maximum subword length", e))?;
+            .map_err(|e| Error::write_error("Cannot write maximum subword length", e))?;
         write
             .write_u32::<LittleEndian>(self.lr_update_rate)
-            .map_err(|e| Error::io_error("Cannot write LR update rate", e))?;
+            .map_err(|e| Error::write_error("Cannot write LR update rate", e))?;
         write
             .write_f64::<LittleEndian>(self.sampling_threshold)
-            .map_err(|e| Error::io_error("Cannot write sampling threshold", e))
+            .map_err(|e| Error::write_error("Cannot write sampling threshold", e))
     }
 }
 
@@ -330,7 +330,7 @@ impl Loss {
     {
         let loss = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read loss type", e))?;
+            .map_err(|e| Error::read_error("Cannot read loss type", e))?;
 
         use self::Loss::*;
         match loss {
@@ -354,7 +354,7 @@ impl Loss {
 
         write
             .write_u32::<LittleEndian>(loss_id)
-            .map_err(|e| Error::io_error("Cannot write loss function", e))
+            .map_err(|e| Error::write_error("Cannot write loss function", e))
     }
 }
 
@@ -373,7 +373,7 @@ impl Model {
     {
         let model = reader
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read model type", e))?;
+            .map_err(|e| Error::read_error("Cannot read model type", e))?;
 
         use self::Model::*;
         match model {
@@ -397,7 +397,7 @@ impl Model {
 
         write
             .write_u32::<LittleEndian>(model_id)
-            .map_err(|e| Error::io_error("Cannot write loss function", e))
+            .map_err(|e| Error::write_error("Cannot write loss function", e))
     }
 }
 
@@ -431,12 +431,12 @@ where
 {
     let m = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of embedding matrix rows", e))?
+        .map_err(|e| Error::read_error("Cannot read number of embedding matrix rows", e))?
         .try_into()
         .map_err(|_| Error::Overflow)?;
     let n = reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of embedding matrix columns", e))?
+        .map_err(|e| Error::read_error("Cannot read number of embedding matrix columns", e))?
         .try_into()
         .map_err(|_| Error::Overflow)?;
 
@@ -444,7 +444,7 @@ where
     let mut data = Array2::zeros((m, n));
     reader
         .read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
-        .map_err(|e| Error::io_error("Cannot read embeddings", e))?;
+        .map_err(|e| Error::read_error("Cannot read embeddings", e))?;
 
     Ok(NdArray::new(data))
 }
@@ -463,10 +463,10 @@ where
 
     write
         .write_u64::<LittleEndian>(storage.shape().0 as u64)
-        .map_err(|e| Error::io_error("Cannot write number of embedding matrix rows", e))?;
+        .map_err(|e| Error::write_error("Cannot write number of embedding matrix rows", e))?;
     write
         .write_u64::<LittleEndian>(storage.shape().1 as u64)
-        .map_err(|e| Error::io_error("Cannot write number of embedding matrix columns", e))?;
+        .map_err(|e| Error::write_error("Cannot write number of embedding matrix columns", e))?;
 
     for (word, embedding_with_norm) in embeddings.iter_with_norms() {
         let mut unnormalized_embedding =
@@ -483,7 +483,7 @@ where
         for v in &unnormalized_embedding {
             write
                 .write_f32::<LittleEndian>(*v)
-                .map_err(|e| Error::io_error("Cannot write embedding", e))?;
+                .map_err(|e| Error::write_error("Cannot write embedding", e))?;
         }
     }
 
@@ -492,7 +492,7 @@ where
         for v in storage.embedding(idx).view() {
             write
                 .write_f32::<LittleEndian>(*v)
-                .map_err(|e| Error::io_error("Cannot write subword embedding", e))?;
+                .map_err(|e| Error::write_error("Cannot write subword embedding", e))?;
         }
     }
 
@@ -506,14 +506,14 @@ where
 {
     let size = reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read vocabulary size", e))?;
+        .map_err(|e| Error::read_error("Cannot read vocabulary size", e))?;
     reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of words", e))?;
+        .map_err(|e| Error::read_error("Cannot read number of words", e))?;
 
     let n_labels = reader
         .read_u32::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot number of labels", e))?;
+        .map_err(|e| Error::read_error("Cannot read number of labels", e))?;
     if n_labels > 0 {
         return Err(Error::Format(
             "fastText prediction models are not supported".into(),
@@ -522,11 +522,11 @@ where
 
     reader
         .read_u64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read number of tokens", e))?;
+        .map_err(|e| Error::read_error("Cannot read number of tokens", e))?;
 
     let prune_idx_size = reader
         .read_i64::<LittleEndian>()
-        .map_err(|e| Error::io_error("Cannot read pruned vocabulary size", e))?;
+        .map_err(|e| Error::read_error("Cannot read pruned vocabulary size", e))?;
     if prune_idx_size >= 0 {
         return Err(Error::Format(
             "Pruned vocabularies are not supported".into(),
@@ -538,10 +538,10 @@ where
         let word = read_string(reader, 0, lossy)?;
         reader
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read word frequency", e))?;
+            .map_err(|e| Error::read_error("Cannot read word frequency", e))?;
         let entry_type = reader
             .read_u8()
-            .map_err(|e| Error::io_error("Cannot read entry type", e))?;
+            .map_err(|e| Error::read_error("Cannot read entry type", e))?;
         if entry_type != 0 {
             return Err(Error::Format("Non-word entry".into()));
         }
@@ -565,33 +565,33 @@ where
     let words_len = vocab.words_len().try_into().map_err(|_| Error::Overflow)?;
     write
         .write_u32::<LittleEndian>(words_len)
-        .map_err(|e| Error::io_error("Cannot write vocabulary size", e))?;
+        .map_err(|e| Error::write_error("Cannot write vocabulary size", e))?;
     write
         .write_u32::<LittleEndian>(words_len)
-        .map_err(|e| Error::io_error("Cannot write number of words", e))?;
+        .map_err(|e| Error::write_error("Cannot write number of words", e))?;
     write
         .write_u32::<LittleEndian>(0)
-        .map_err(|e| Error::io_error("Cannot write number of labels", e))?;
+        .map_err(|e| Error::write_error("Cannot write number of labels", e))?;
     write
         .write_u64::<LittleEndian>(0)
-        .map_err(|e| Error::io_error("Cannot write number of tokens", e))?;
+        .map_err(|e| Error::write_error("Cannot write number of tokens", e))?;
     write
         .write_i64::<LittleEndian>(-1)
-        .map_err(|e| Error::io_error("Cannot write pruned vocabulary size", e))?;
+        .map_err(|e| Error::write_error("Cannot write pruned vocabulary size", e))?;
 
     for word in vocab.words() {
         write
             .write_all(word.as_bytes())
-            .map_err(|e| Error::io_error("Cannot write word", e))?;
+            .map_err(|e| Error::write_error("Cannot write word", e))?;
         write
             .write_u8(0)
-            .map_err(|e| Error::io_error("Cannot write word terminator", e))?;
+            .map_err(|e| Error::write_error("Cannot write word terminator", e))?;
         write
             .write_u64::<LittleEndian>(0)
-            .map_err(|e| Error::io_error("Cannot write word frequency", e))?;
+            .map_err(|e| Error::write_error("Cannot write word frequency", e))?;
         write
             .write_u8(0)
-            .map_err(|e| Error::io_error("Cannot read entry type", e))?;
+            .map_err(|e| Error::read_error("Cannot read entry type", e))?;
     }
 
     Ok(())

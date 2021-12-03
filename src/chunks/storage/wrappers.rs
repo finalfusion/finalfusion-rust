@@ -127,15 +127,15 @@ impl ReadChunk for StorageWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+            .map_err(|e| Error::read_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageWrap::NdArray),
@@ -157,15 +157,15 @@ impl MmapChunk for StorageWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+            .map_err(|e| Error::read_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => MmapArray::mmap_chunk(read).map(StorageWrap::MmapArray),
@@ -294,15 +294,15 @@ impl ReadChunk for StorageViewWrap {
     {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+            .map_err(|e| Error::read_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             ChunkIdentifier::NdArray => NdArray::read_chunk(read).map(StorageViewWrap::NdArray),
@@ -341,15 +341,15 @@ impl MmapChunk for StorageViewWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
             .seek(SeekFrom::Current(0))
-            .map_err(|e| Error::io_error("Cannot get storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
             .read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read storage chunk identifier", e))?;
+            .map_err(|e| Error::read_error("Cannot read storage chunk identifier", e))?;
         let chunk_id = ChunkIdentifier::try_from(chunk_id)?;
 
         read.seek(SeekFrom::Start(chunk_start_pos))
-            .map_err(|e| Error::io_error("Cannot seek to storage chunk start position", e))?;
+            .map_err(|e| Error::read_error("Cannot seek to storage chunk start position", e))?;
 
         match chunk_id {
             #[cfg(target_endian = "little")]

@@ -102,7 +102,7 @@ pub fn read_string(reader: &mut dyn BufRead, delim: u8, lossy: bool) -> Result<S
     let mut buf = Vec::new();
     reader
         .read_until(delim, &mut buf)
-        .map_err(|e| Error::io_error("Cannot read string", e))?;
+        .map_err(|e| Error::read_error("Cannot read string", e))?;
     buf.pop();
 
     let s = if lossy {

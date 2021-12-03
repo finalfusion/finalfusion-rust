@@ -81,10 +81,10 @@ where
 {
     let string_len =
         read.read_u32::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read string length", e))? as usize;
+            .map_err(|e| Error::read_error("Cannot read string length", e))? as usize;
     let mut bytes = vec![0; string_len];
     read.read_exact(&mut bytes)
-        .map_err(|e| Error::io_error("Cannot read item", e))?;
+        .map_err(|e| Error::read_error("Cannot read item", e))?;
     String::from_utf8(bytes)
         .map_err(|e| Error::Format(format!("Item contains invalid UTF-8: {}", e)))
         .map_err(Error::from)
@@ -108,10 +108,10 @@ where
 {
     write
         .write_u32::<LittleEndian>(s.len() as u32)
-        .map_err(|e| Error::io_error("Cannot write string length", e))?;
+        .map_err(|e| Error::write_error("Cannot write string length", e))?;
     write
         .write_all(s.as_bytes())
-        .map_err(|e| Error::io_error("Cannot write string", e))
+        .map_err(|e| Error::write_error("Cannot write string", e))
 }
 
 pub(crate) fn write_vocab_items<W>(write: &mut W, items: &[String]) -> Result<()>

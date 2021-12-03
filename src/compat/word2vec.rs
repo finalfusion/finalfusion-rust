@@ -104,7 +104,7 @@ where
                 .read_f32_into::<LittleEndian>(
                     embedding.as_slice_mut().expect("Matrix not contiguous"),
                 )
-                .map_err(|e| Error::io_error("Cannot read word embedding", e))?;
+                .map_err(|e| Error::read_error("Cannot read word embedding", e))?;
         }
 
         Ok(Embeddings::new_with_maybe_norms(
@@ -142,10 +142,10 @@ where
         W: Write,
     {
         writeln!(w, "{} {}", self.vocab().words_len(), self.dims())
-            .map_err(|e| Error::io_error("Cannot write word embedding matrix shape", e))?;
+            .map_err(|e| Error::write_error("Cannot write word embedding matrix shape", e))?;
 
         for (word, embed_norm) in self.iter_with_norms() {
-            write!(w, "{} ", word).map_err(|e| Error::io_error("Cannot write token", e))?;
+            write!(w, "{} ", word).map_err(|e| Error::write_error("Cannot write token", e))?;
 
             let embed = if unnormalize {
                 CowArray::from(embed_norm.into_unnormalized())
@@ -155,11 +155,11 @@ where
 
             for v in embed.view() {
                 w.write_f32::<LittleEndian>(*v)
-                    .map_err(|e| Error::io_error("Cannot write embedding component", e))?;
+                    .map_err(|e| Error::write_error("Cannot write embedding component", e))?;
             }
 
             w.write_all(&[0x0a])
-                .map_err(|e| Error::io_error("Cannot write embedding separator", e))?;
+                .map_err(|e| Error::write_error("Cannot write embedding separator", e))?;
         }
 
         Ok(())
