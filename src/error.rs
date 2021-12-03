@@ -4,6 +4,7 @@ use std::io;
 
 use ndarray::ShapeError;
 use rand::Error as RandError;
+use reductive::error::ReductiveError;
 use thiserror::Error;
 
 /// `Result` type alias for operations that can lead to I/O errors.
@@ -44,6 +45,9 @@ pub enum Error {
 
     #[error("Can't convert {from:?} to {to:?}")]
     ConversionError { from: String, to: String },
+
+    #[error("Cannot quantize embeddings")]
+    QuantizationError(#[source] ReductiveError),
 }
 
 impl Error {
