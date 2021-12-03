@@ -3,8 +3,12 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+#[cfg(feature = "memmap")]
+pub use mmap::MmapQuantizedArray;
 use ndarray::{Array, Array1, Array2, ArrayView1, ArrayView2, Axis, CowArray, IntoDimension, Ix1};
 use rand::{CryptoRng, RngCore, SeedableRng};
+use rand_chacha::ChaChaRng;
+use reductive::error::ReductiveError;
 use reductive::pq::{Pq, QuantizeVector, Reconstruct as _, TrainPq};
 
 use super::{sealed::CloneFromMapping, Storage, StorageView};
@@ -419,6 +423,17 @@ where
         T: TrainPq<f32>,
         R: CryptoRng + RngCore + SeedableRng + Send,
     {
+        // Since we are storing quantized values in an u8 array, we have a stricter
+        // upper bound than reductive.
+        let max_subquantizer_bits = std::cmp::min(8, (self.shape().0 as f64).log2().trunc() as u32);
+        if n_subquantizer_bits > max_subquantizer_bits {
+            return Err(Error::QuantizationError(
+                ReductiveError::IncorrectNSubquantizerBits {
+                    max_subquantizer_bits,
+                },
+            ));
+        }
+
         let (embeds, norms) = if normalize {
             let norms = self.view().outer_iter().map(|e| e.dot(&e).sqrt()).collect();
             let mut normalized = self.view().to_owned();
@@ -437,7 +452,8 @@ where
             n_attempts,
             embeds.view(),
             &mut rng,
-        )?;
+        )
+        .map_err(Error::QuantizationError)?;
 
         let quantized_embeddings = quantizer.quantize_batch(embeds.view());
 
@@ -667,10 +683,6 @@ mod mmap {
         }
     }
 }
-
-#[cfg(feature = "memmap")]
-pub use mmap::MmapQuantizedArray;
-use rand_chacha::ChaChaRng;
 
 #[cfg(test)]
 mod tests {

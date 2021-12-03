@@ -24,7 +24,7 @@ ndarray = "0.15"
 ordered-float = "2"
 rand = "0.8"
 rand_chacha = "0.3"
-reductive = "0.8"
+reductive = "0.9"
 serde = { version = "1", features = ["derive"] }
 smallvec = "1.7"
 thiserror = "1"
