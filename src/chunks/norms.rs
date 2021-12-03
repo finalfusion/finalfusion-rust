@@ -59,11 +59,11 @@ impl ReadChunk for NdNorms {
 
         // Read and discard chunk length.
         read.read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read norms chunk length", e))?;
+            .map_err(|e| Error::read_error("Cannot read norms chunk length", e))?;
 
         let len = read
             .read_u64::<LittleEndian>()
-            .map_err(|e| Error::io_error("Cannot read norms vector length", e))?
+            .map_err(|e| Error::read_error("Cannot read norms vector length", e))?
             .try_into()
             .map_err(|_| Error::Overflow)?;
 
@@ -71,14 +71,14 @@ impl ReadChunk for NdNorms {
 
         let n_padding =
             padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
+                Error::read_error("Cannot get file position for computing padding", e)
             })?);
         read.seek(SeekFrom::Current(n_padding as i64))
-            .map_err(|e| Error::io_error("Cannot skip padding", e))?;
+            .map_err(|e| Error::read_error("Cannot skip padding", e))?;
 
         let mut data = Array1::zeros((len,));
         read.read_f32_into::<LittleEndian>(data.as_slice_mut().unwrap())
-            .map_err(|e| Error::io_error("Cannot read norms", e))?;
+            .map_err(|e| Error::read_error("Cannot read norms", e))?;
 
         Ok(NdNorms::new(data))
     }
@@ -95,11 +95,10 @@ impl WriteChunk for NdNorms {
     {
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::NdNorms as u32)
-            .map_err(|e| Error::io_error("Cannot write norms chunk identifier", e))?;
-        let n_padding =
-            padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
-                Error::io_error("Cannot get file position for computing padding", e)
-            })?);
+            .map_err(|e| Error::write_error("Cannot write norms chunk identifier", e))?;
+        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            Error::write_error("Cannot get file position for computing padding", e)
+        })?);
 
         // Chunk size: len (u64), type id (u32), padding ([0,4) bytes), vector.
         let chunk_len = size_of::<u64>()
@@ -108,23 +107,23 @@ impl WriteChunk for NdNorms {
             + (self.len() * size_of::<f32>());
         write
             .write_u64::<LittleEndian>(chunk_len as u64)
-            .map_err(|e| Error::io_error("Cannot write norms chunk length", e))?;
+            .map_err(|e| Error::write_error("Cannot write norms chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.len() as u64)
-            .map_err(|e| Error::io_error("Cannot write norms vector length", e))?;
+            .map_err(|e| Error::write_error("Cannot write norms vector length", e))?;
         write
             .write_u32::<LittleEndian>(f32::type_id())
-            .map_err(|e| Error::io_error("Cannot write norms vector type identifier", e))?;
+            .map_err(|e| Error::write_error("Cannot write norms vector type identifier", e))?;
 
         let padding = vec![0; n_padding as usize];
         write
             .write_all(&padding)
-            .map_err(|e| Error::io_error("Cannot write padding", e))?;
+            .map_err(|e| Error::write_error("Cannot write padding", e))?;
 
         for &val in self.iter() {
             write
                 .write_f32::<LittleEndian>(val)
-                .map_err(|e| Error::io_error("Cannot write norm", e))?;
+                .map_err(|e| Error::write_error("Cannot write norm", e))?;
         }
 
         Ok(())
