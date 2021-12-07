@@ -584,6 +584,40 @@ where
 
         Ok(())
     }
+
+    fn write_embeddings_len(&self, offset: u64) -> u64 {
+        let mut len = 0;
+
+        let mut chunks = match self.metadata {
+            Some(ref metadata) => vec![metadata.chunk_identifier()],
+            None => vec![],
+        };
+
+        chunks.extend_from_slice(&[
+            self.vocab.chunk_identifier(),
+            self.storage.chunk_identifier(),
+        ]);
+
+        if let Some(ref norms) = self.norms {
+            chunks.push(norms.chunk_identifier());
+        }
+
+        let header = Header::new(chunks);
+        len += header.chunk_len(offset + len);
+
+        if let Some(ref metadata) = self.metadata {
+            len += metadata.chunk_len(offset + len);
+        }
+
+        len += self.vocab.chunk_len(offset + len);
+        len += self.storage.chunk_len(offset + len);
+
+        if let Some(ref norms) = self.norms {
+            len += norms.chunk_len(offset + len);
+        }
+
+        len
+    }
 }
 
 /// Quantizable embedding matrix.
@@ -736,15 +770,34 @@ mod tests {
     use crate::chunks::metadata::Metadata;
     use crate::chunks::norms::NdNorms;
     use crate::chunks::storage::{NdArray, Storage, StorageView};
-    use crate::chunks::vocab::{SimpleVocab, Vocab};
+    use crate::chunks::vocab::{FastTextSubwordVocab, SimpleVocab, Vocab};
     use crate::compat::fasttext::ReadFastText;
     use crate::compat::word2vec::ReadWord2VecRaw;
     use crate::io::{ReadEmbeddings, WriteEmbeddings};
+    use crate::prelude::StorageWrap;
+    use crate::storage::QuantizedArray;
     use crate::subword::Indexer;
+    use crate::vocab::VocabWrap;
 
     fn test_embeddings() -> Embeddings<SimpleVocab, NdArray> {
         let mut reader = BufReader::new(File::open("testdata/similarity.bin").unwrap());
         Embeddings::read_word2vec_binary_raw(&mut reader, false).unwrap()
+    }
+
+    fn test_embeddings_with_metadata() -> Embeddings<SimpleVocab, NdArray> {
+        let mut embeds = test_embeddings();
+        embeds.set_metadata(Some(test_metadata()));
+        embeds
+    }
+
+    fn test_embeddings_fasttext() -> Embeddings<FastTextSubwordVocab, NdArray> {
+        let mut reader = BufReader::new(File::open("testdata/fasttext.bin").unwrap());
+        Embeddings::read_fasttext(&mut reader).unwrap()
+    }
+
+    fn test_embeddings_quantized() -> Embeddings<SimpleVocab, QuantizedArray> {
+        let mut reader = BufReader::new(File::open("testdata/quantized.fifu").unwrap());
+        Embeddings::read_embeddings(&mut reader).unwrap()
     }
 
     fn test_metadata() -> Metadata {
@@ -867,12 +920,15 @@ mod tests {
             Embeddings::read_embeddings(&mut cursor).unwrap();
         assert_eq!(embeds.storage().view(), check_embeds.storage().view());
         assert_eq!(embeds.vocab(), check_embeds.vocab());
+        assert_eq!(
+            cursor.into_inner().len() as u64,
+            check_embeds.write_embeddings_len(0)
+        );
     }
 
     #[test]
     fn write_read_simple_metadata_roundtrip() {
-        let mut check_embeds = test_embeddings();
-        check_embeds.set_metadata(Some(test_metadata()));
+        let check_embeds = test_embeddings_with_metadata();
 
         let mut cursor = Cursor::new(Vec::new());
         check_embeds.write_embeddings(&mut cursor).unwrap();
@@ -881,5 +937,31 @@ mod tests {
             Embeddings::read_embeddings(&mut cursor).unwrap();
         assert_eq!(embeds.storage().view(), check_embeds.storage().view());
         assert_eq!(embeds.vocab(), check_embeds.vocab());
+        assert_eq!(
+            cursor.into_inner().len() as u64,
+            check_embeds.write_embeddings_len(0)
+        );
+    }
+
+    #[test]
+    fn embeddings_write_length_different_offsets() {
+        let embeddings: Vec<Embeddings<VocabWrap, StorageWrap>> = vec![
+            test_embeddings().into(),
+            test_embeddings_with_metadata().into(),
+            test_embeddings_fasttext().into(),
+            test_embeddings_quantized().into(),
+        ];
+
+        for check_embeddings in &embeddings {
+            for offset in 0..16u64 {
+                let mut cursor = Cursor::new(Vec::new());
+                cursor.seek(SeekFrom::Start(offset)).unwrap();
+                check_embeddings.write_embeddings(&mut cursor).unwrap();
+                assert_eq!(
+                    cursor.into_inner().len() as u64 - offset,
+                    check_embeddings.write_embeddings_len(offset)
+                );
+            }
+        }
     }
 }
