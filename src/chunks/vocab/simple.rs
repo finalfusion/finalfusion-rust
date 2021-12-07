@@ -80,6 +80,20 @@ impl WriteChunk for SimpleVocab {
         ChunkIdentifier::SimpleVocab
     }
 
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        // Chunk size: chunk identifier (u32) + chunk len (u64) +
+        // vocabulary size (u64) + for each word: word length in bytes (4 bytes) +
+        // word bytes (variable-length).
+        (size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u64>()
+            + self
+                .words
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>()) as u64
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -111,11 +125,11 @@ impl WriteChunk for SimpleVocab {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::io::{Cursor, Seek, SeekFrom};
 
     use super::SimpleVocab;
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::read_chunk_size;
+    use crate::vocab::tests::test_vocab_chunk_len;
 
     fn test_simple_vocab() -> SimpleVocab {
         let words = vec![
@@ -140,15 +154,6 @@ mod tests {
 
     #[test]
     fn simple_vocab_correct_chunk_size() {
-        let check_vocab = test_simple_vocab();
-        let mut cursor = Cursor::new(Vec::new());
-        check_vocab.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+        test_vocab_chunk_len(test_simple_vocab().into());
     }
 }

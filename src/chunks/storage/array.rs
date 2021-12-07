@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem;
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -170,6 +171,10 @@ mod mmap {
             ChunkIdentifier::NdArray
         }
 
+        fn chunk_len(&self, offset: u64) -> u64 {
+            NdArray::chunk_len(self.view(), offset)
+        }
+
         fn write_chunk<W>(&self, write: &mut W) -> Result<()>
         where
             W: Write + Seek,
@@ -191,6 +196,19 @@ pub struct NdArray {
 impl NdArray {
     pub fn new(arr: Array2<f32>) -> Self {
         NdArray { inner: arr }
+    }
+
+    fn chunk_len(data: ArrayView2<f32>, offset: u64) -> u64 {
+        let n_padding = padding::<f32>(offset + mem::size_of::<u32>() as u64);
+
+        // Chunk identifier (u32) + chunk len (u64) + rows (u64) + cols (u32) + type id (u32) + padding + matrix.
+        (mem::size_of::<u32>()
+            + mem::size_of::<u64>()
+            + mem::size_of::<u64>()
+            + mem::size_of::<u32>()
+            + mem::size_of::<u32>()
+            + data.len() * mem::size_of::<f32>()) as u64
+            + n_padding
     }
 
     fn write_ndarray_chunk<W>(data: ArrayView2<f32>, write: &mut W) -> Result<()>
@@ -346,6 +364,10 @@ impl WriteChunk for NdArray {
         ChunkIdentifier::NdArray
     }
 
+    fn chunk_len(&self, offset: u64) -> u64 {
+        Self::chunk_len(self.inner.view(), offset)
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -356,13 +378,13 @@ impl WriteChunk for NdArray {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::io::{Cursor, Seek, SeekFrom};
 
-    use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
 
     use crate::chunks::io::{ReadChunk, WriteChunk};
     use crate::chunks::storage::{NdArray, Storage, StorageView};
+    use crate::storage::tests::test_storage_chunk_len;
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -373,14 +395,6 @@ mod tests {
         });
 
         NdArray::new(test_data)
-    }
-
-    fn read_chunk_size(read: &mut impl Read) -> u64 {
-        // Skip identifier.
-        read.read_u32::<LittleEndian>().unwrap();
-
-        // Return chunk length.
-        read.read_u64::<LittleEndian>().unwrap()
     }
 
     #[test]
@@ -398,16 +412,7 @@ mod tests {
 
     #[test]
     fn ndarray_correct_chunk_size() {
-        let check_arr = test_ndarray();
-        let mut cursor = Cursor::new(Vec::new());
-        check_arr.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+        test_storage_chunk_len(test_ndarray().into());
     }
 
     #[test]

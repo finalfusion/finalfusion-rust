@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem;
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -37,6 +38,40 @@ impl QuantizedArray {
         }
 
         Ok(())
+    }
+
+    fn chunk_len_(
+        quantizer: &Pq<f32>,
+        quantized: ArrayView2<u8>,
+        norms: Option<ArrayView1<f32>>,
+        offset: u64,
+    ) -> u64 {
+        let n_padding = padding::<f32>(offset + mem::size_of::<u32>() as u64);
+
+        // Chunk identifier (u32) + chunk len (u64) +  projection (u32) + use_norms (u32) +
+        // quantized_len (u32) + reconstructed_len (u32) + n_centroids (u32) + rows (u64) +
+        // types (2 x u32 bytes) + padding + projection matrix +
+        // centroids + norms + quantized data.
+        (size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u64>()
+            + 2 * size_of::<u32>()
+            + quantizer.projection().is_some() as usize
+                * quantizer.reconstructed_len()
+                * quantizer.reconstructed_len()
+                * size_of::<f32>()
+            + quantizer.quantized_len()
+                * quantizer.n_quantizer_centroids()
+                * (quantizer.reconstructed_len() / quantizer.quantized_len())
+                * size_of::<f32>()
+            + norms.is_some() as usize * quantized.nrows() * size_of::<f32>()
+            + quantized.nrows() * quantizer.quantized_len()) as u64
+            + n_padding
     }
 
     /// Get the quantizer.
@@ -339,6 +374,15 @@ impl ReadChunk for QuantizedArray {
 impl WriteChunk for QuantizedArray {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::QuantizedArray
+    }
+
+    fn chunk_len(&self, offset: u64) -> u64 {
+        Self::chunk_len_(
+            &self.quantizer,
+            self.quantized_embeddings.view(),
+            self.norms.as_ref().map(Array1::view),
+            offset,
+        )
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
@@ -654,6 +698,15 @@ mod mmap {
             ChunkIdentifier::QuantizedArray
         }
 
+        fn chunk_len(&self, offset: u64) -> u64 {
+            QuantizedArray::chunk_len_(
+                &self.quantizer,
+                unsafe { self.quantized_embeddings() },
+                self.norms.as_ref().map(Array1::view),
+                offset,
+            )
+        }
+
         fn write_chunk<W>(&self, write: &mut W) -> Result<()>
         where
             W: Write + Seek,
@@ -686,14 +739,14 @@ mod mmap {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::io::{Cursor, Seek, SeekFrom};
 
-    use byteorder::{LittleEndian, ReadBytesExt};
     use ndarray::Array2;
     use reductive::pq::Pq;
 
     use crate::chunks::io::{ReadChunk, WriteChunk};
     use crate::chunks::storage::{NdArray, Quantize, QuantizedArray, Reconstruct, Storage};
+    use crate::storage::tests::test_storage_chunk_len;
 
     const N_ROWS: usize = 100;
     const N_COLS: usize = 100;
@@ -709,14 +762,6 @@ mod tests {
     fn test_quantized_array(norms: bool) -> QuantizedArray {
         let ndarray = test_ndarray();
         ndarray.quantize::<Pq<f32>>(10, 4, 5, 1, norms).unwrap()
-    }
-
-    fn read_chunk_size(read: &mut impl Read) -> u64 {
-        // Skip identifier.
-        read.read_u32::<LittleEndian>().unwrap();
-
-        // Return chunk length.
-        read.read_u64::<LittleEndian>().unwrap()
     }
 
     // Compare storage for which Eq is not implemented.
@@ -742,30 +787,12 @@ mod tests {
 
     #[test]
     fn quantized_array_correct_chunk_size() {
-        let check_arr = test_quantized_array(false);
-        let mut cursor = Cursor::new(Vec::new());
-        check_arr.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+        test_storage_chunk_len(test_quantized_array(false).into());
     }
 
     #[test]
     fn quantized_array_norms_correct_chunk_size() {
-        let check_arr = test_quantized_array(true);
-        let mut cursor = Cursor::new(Vec::new());
-        check_arr.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+        test_storage_chunk_len(test_quantized_array(true).into());
     }
 
     #[test]

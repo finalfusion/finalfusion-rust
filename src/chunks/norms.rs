@@ -2,6 +2,7 @@
 
 use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem;
 use std::mem::size_of;
 use std::ops::Deref;
 
@@ -89,6 +90,18 @@ impl WriteChunk for NdNorms {
         ChunkIdentifier::NdNorms
     }
 
+    fn chunk_len(&self, offset: u64) -> u64 {
+        let n_padding = padding::<f32>(offset + mem::size_of::<u32>() as u64);
+
+        // Chunk identifier (u32) + chunk len (u64) + len (u64) + type id (u32) + padding + vector.
+        (mem::size_of::<u32>()
+            + mem::size_of::<u64>()
+            + mem::size_of::<u64>()
+            + mem::size_of::<u32>()
+            + self.len() * mem::size_of::<f32>()) as u64
+            + n_padding
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -156,16 +169,26 @@ mod tests {
 
     #[test]
     fn ndnorms_correct_chunk_size() {
-        let check_arr = test_ndnorms();
-        let mut cursor = Cursor::new(Vec::new());
-        check_arr.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
+        for offset in 0..16u64 {
+            let check_arr = test_ndnorms();
+            let mut cursor = Cursor::new(Vec::new());
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
+            check_arr.write_chunk(&mut cursor).unwrap();
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
 
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+            // Check size remained chunk against embedded chunk size.
+            let chunk_size = read_chunk_size(&mut cursor);
+            assert_eq!(
+                cursor.read_to_end(&mut Vec::new()).unwrap(),
+                chunk_size as usize
+            );
+
+            // Check overall chunk size.
+            assert_eq!(
+                cursor.into_inner().len() as u64 - offset,
+                check_arr.chunk_len(offset)
+            );
+        }
     }
 
     #[test]
