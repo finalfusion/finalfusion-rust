@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};
+use std::mem;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
@@ -154,6 +155,12 @@ pub trait WriteChunk {
     /// Get the identifier of a chunk.
     fn chunk_identifier(&self) -> ChunkIdentifier;
 
+    /// Get the serialized length of a chunk.
+    ///
+    /// The `offset` of the chunk in the serialized data is required
+    /// because some chunks store arrays aligned.
+    fn chunk_len(&self, offset: u64) -> u64;
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek;
@@ -179,6 +186,14 @@ impl Header {
 impl WriteChunk for Header {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::Header
+    }
+
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        // magic + model version (u32) + chunk ids len (u32), chunk ids (len * u32)
+        (MAGIC.len()
+            + mem::size_of_val(&MODEL_VERSION)
+            + mem::size_of::<u32>()
+            + self.chunk_identifiers.len() * mem::size_of::<u32>()) as u64
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
@@ -255,6 +270,17 @@ mod tests {
     use std::io::{Cursor, Seek, SeekFrom};
 
     use super::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
+
+    #[test]
+    fn header_chunk_len_is_correct() {
+        let check_header =
+            Header::new(vec![ChunkIdentifier::SimpleVocab, ChunkIdentifier::NdArray]);
+        let mut cursor = Cursor::new(Vec::new());
+        check_header.write_chunk(&mut cursor).unwrap();
+
+        let data = cursor.into_inner();
+        assert_eq!(data.len() as u64, check_header.chunk_len(0));
+    }
 
     #[test]
     fn header_write_read_roundtrip() {

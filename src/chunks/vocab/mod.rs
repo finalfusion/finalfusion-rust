@@ -125,10 +125,40 @@ where
 }
 
 #[cfg(test)]
-pub(crate) fn read_chunk_size(read: &mut impl Read) -> u64 {
-    // Skip identifier.
-    read.read_u32::<LittleEndian>().unwrap();
+mod tests {
+    use std::io::{Cursor, Read, Seek, SeekFrom};
 
-    // Return chunk length.
-    read.read_u64::<LittleEndian>().unwrap()
+    use byteorder::{LittleEndian, ReadBytesExt};
+
+    use crate::chunks::io::WriteChunk;
+    use crate::vocab::VocabWrap;
+
+    fn read_chunk_size(read: &mut impl Read) -> u64 {
+        // Skip identifier.
+        read.read_u32::<LittleEndian>().unwrap();
+
+        // Return chunk length.
+        read.read_u64::<LittleEndian>().unwrap()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_vocab_chunk_len(check_vocab: VocabWrap) {
+        for offset in 0..16u64 {
+            let mut cursor = Cursor::new(Vec::new());
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
+            check_vocab.write_chunk(&mut cursor).unwrap();
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
+
+            let chunk_size = read_chunk_size(&mut cursor);
+            assert_eq!(
+                cursor.read_to_end(&mut Vec::new()).unwrap(),
+                chunk_size as usize
+            );
+
+            assert_eq!(
+                cursor.into_inner().len() as u64 - offset,
+                check_vocab.chunk_len(offset)
+            );
+        }
+    }
 }

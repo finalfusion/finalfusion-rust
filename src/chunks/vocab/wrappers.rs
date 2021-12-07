@@ -160,6 +160,16 @@ impl WriteChunk for VocabWrap {
         }
     }
 
+    fn chunk_len(&self, offset: u64) -> u64 {
+        match self {
+            VocabWrap::SimpleVocab(inner) => inner.chunk_len(offset),
+            VocabWrap::ExplicitSubwordVocab(inner) => inner.chunk_len(offset),
+            VocabWrap::FastTextSubwordVocab(inner) => inner.chunk_len(offset),
+            VocabWrap::FloretSubwordVocab(inner) => inner.chunk_len(offset),
+            VocabWrap::BucketSubwordVocab(inner) => inner.chunk_len(offset),
+        }
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,

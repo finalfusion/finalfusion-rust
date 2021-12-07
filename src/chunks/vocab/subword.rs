@@ -287,6 +287,10 @@ impl WriteChunk for FastTextSubwordVocab {
         ChunkIdentifier::FastTextSubwordVocab
     }
 
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        self.chunk_len_()
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -298,6 +302,10 @@ impl WriteChunk for FastTextSubwordVocab {
 impl WriteChunk for BucketSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::BucketSubwordVocab
+    }
+
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        self.chunk_len_()
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
@@ -313,6 +321,10 @@ impl WriteChunk for ExplicitSubwordVocab {
         ChunkIdentifier::ExplicitSubwordVocab
     }
 
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        self.chunk_len_()
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -324,6 +336,10 @@ impl WriteChunk for ExplicitSubwordVocab {
 impl WriteChunk for FloretSubwordVocab {
     fn chunk_identifier(&self) -> ChunkIdentifier {
         ChunkIdentifier::FloretSubwordVocab
+    }
+
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        self.chunk_len_()
     }
 
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
@@ -338,6 +354,25 @@ impl<I> SubwordVocab<I>
 where
     I: BucketIndexer,
 {
+    fn chunk_len_(&self) -> u64 {
+        // Chunk size: chunk identifier (u32) + chunk len (u64) +
+        // vocab size (u64) + minimum n-gram length (u32) +
+        // maximum n-gram length (u32) + bucket exponent (u32) +
+        // for each word: word length in bytes (u32) +
+        // word bytes (variable-length).
+        (size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self
+                .words()
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>()) as u64
+    }
+
     fn read_bucketed_chunk<R>(
         read: &mut R,
         chunk_identifier: ChunkIdentifier,
@@ -468,6 +503,32 @@ where
 }
 
 impl ExplicitSubwordVocab {
+    fn chunk_len_(&self) -> u64 {
+        // Chunk size: chunk identifier (u32) + chunk len (u64) +
+        // word vocab size (u64) + ngram vocab size (u64) +
+        // minimum n-gram length (u32) + maximum n-gram length (u32) +
+        // for each word and ngram: length in bytes (u32) +
+        // number of bytes (variable-length) +
+        // each ngram is followed by its index (u64)
+        (size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u64>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self
+                .words()
+                .iter()
+                .map(|w| w.len() + size_of::<u32>())
+                .sum::<usize>()
+            + self
+                .indexer
+                .ngrams()
+                .iter()
+                .map(|ngram| ngram.len() + size_of::<u32>() + size_of::<u64>())
+                .sum::<usize>()) as u64
+    }
+
     fn read_ngram_chunk<R>(
         read: &mut R,
         chunk_identifier: ChunkIdentifier,
@@ -552,6 +613,24 @@ impl ExplicitSubwordVocab {
 }
 
 impl FloretSubwordVocab {
+    fn chunk_len_(&self) -> u64 {
+        // Chunk size: chunk identifier (u32) + chunk len (u64) +
+        // minimum n-gram length (u32) + maximum n-gram length (u32) +
+        // number of buckets (u64) + number of hashes (u32) + hash seed (u32) +
+        // bow and row (variable length).
+        (size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + size_of::<u64>()
+            + size_of::<u32>()
+            + size_of::<u32>()
+            + self.bow.len()
+            + size_of::<u32>()
+            + self.eow.len()
+            + size_of::<u32>()) as u64
+    }
+
     fn read_floret_chunk<R>(
         read: &mut R,
         chunk_identifier: ChunkIdentifier,
@@ -718,16 +797,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, Read, Seek, SeekFrom};
+    use std::io::{Cursor, Seek, SeekFrom};
 
     use super::{BucketSubwordVocab, FastTextSubwordVocab, SubwordVocab};
     use crate::chunks::io::{ReadChunk, WriteChunk};
-    use crate::chunks::vocab::{read_chunk_size, ExplicitSubwordVocab, Vocab};
+    use crate::chunks::vocab::{ExplicitSubwordVocab, Vocab};
     use crate::compat::fasttext::FastTextIndexer;
     use crate::compat::floret::FloretIndexer;
     use crate::subword::{
         BucketIndexer, ExplicitIndexer, FinalfusionHashIndexer, Indexer, StrWithCharLen,
     };
+    use crate::vocab::tests::test_vocab_chunk_len;
     use crate::vocab::FloretSubwordVocab;
 
     fn test_fasttext_subword_vocab() -> FastTextSubwordVocab {
@@ -804,6 +884,11 @@ mod tests {
     }
 
     #[test]
+    fn fasttext_subword_vocab_correct_chunk_size() {
+        test_vocab_chunk_len(test_fasttext_subword_vocab().into());
+    }
+
+    #[test]
     fn floret_subword_vocab_write_read_roundtrip() {
         let check_vocab = test_floret_subword_vocab();
         let mut cursor = Cursor::new(Vec::new());
@@ -811,6 +896,11 @@ mod tests {
         cursor.seek(SeekFrom::Start(0)).unwrap();
         let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
         assert_eq!(vocab, check_vocab);
+    }
+
+    #[test]
+    fn floret_subword_vocab_correct_chunk_size() {
+        test_vocab_chunk_len(test_floret_subword_vocab().into());
     }
 
     #[test]
@@ -824,31 +914,8 @@ mod tests {
     }
 
     #[test]
-    fn floret_subword_vocab_correct_chunk_size() {
-        let check_vocab = test_floret_subword_vocab();
-        let mut cursor = Cursor::new(Vec::new());
-        check_vocab.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
-    }
-
-    #[test]
     fn subword_vocab_correct_chunk_size() {
-        let check_vocab = test_subword_vocab();
-        let mut cursor = Cursor::new(Vec::new());
-        check_vocab.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+        test_vocab_chunk_len(test_subword_vocab().into());
     }
 
     #[test]
@@ -863,12 +930,7 @@ mod tests {
 
     #[test]
     fn ngram_vocab_correct_chunk_size() {
-        let check_vocab = test_ngram_vocab();
-        let mut cursor = Cursor::new(Vec::new());
-        check_vocab.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
-        let vocab = SubwordVocab::read_chunk(&mut cursor).unwrap();
-        assert_eq!(vocab, check_vocab);
+        test_vocab_chunk_len(test_ngram_vocab().into());
     }
 
     #[test]

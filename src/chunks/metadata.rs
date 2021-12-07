@@ -1,6 +1,7 @@
 //! Metadata chunks
 
 use std::io::{Read, Seek, Write};
+use std::mem;
 use std::ops::{Deref, DerefMut};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -80,6 +81,11 @@ impl WriteChunk for Metadata {
         ChunkIdentifier::Metadata
     }
 
+    fn chunk_len(&self, _offset: u64) -> u64 {
+        // chunk identifier (u32) + metadata length (u64) + metadata
+        (mem::size_of::<u32>() + mem::size_of::<u64>() + self.to_string().len()) as u64
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -154,16 +160,24 @@ mod tests {
 
     #[test]
     fn metadata_correct_chunk_size() {
-        let check_metadata = test_metadata();
-        let mut cursor = Cursor::new(Vec::new());
-        check_metadata.write_chunk(&mut cursor).unwrap();
-        cursor.seek(SeekFrom::Start(0)).unwrap();
+        for offset in 0..16u64 {
+            let check_metadata = test_metadata();
+            let mut cursor = Cursor::new(Vec::new());
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
+            check_metadata.write_chunk(&mut cursor).unwrap();
+            cursor.seek(SeekFrom::Start(offset)).unwrap();
 
-        let chunk_size = read_chunk_size(&mut cursor);
-        assert_eq!(
-            cursor.read_to_end(&mut Vec::new()).unwrap(),
-            chunk_size as usize
-        );
+            // Check remaining chunk size against size written into the chunk.
+            let chunk_size = read_chunk_size(&mut cursor);
+            assert_eq!(
+                cursor.read_to_end(&mut Vec::new()).unwrap() as u64,
+                chunk_size
+            );
+
+            // Check overall chunk size.
+            let data = cursor.into_inner();
+            assert_eq!(data.len() as u64 - offset, check_metadata.chunk_len(offset));
+        }
     }
 
     #[test]

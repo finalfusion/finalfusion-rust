@@ -195,6 +195,19 @@ impl WriteChunk for StorageWrap {
         }
     }
 
+    fn chunk_len(&self, offset: u64) -> u64 {
+        match self {
+            #[cfg(all(feature = "memmap", target_endian = "little"))]
+            StorageWrap::MmapArray(inner) => inner.chunk_len(offset),
+            #[cfg(target_endian = "big")]
+            StorageWrap::MmapArray(_inner) => unimplemented!(),
+            #[cfg(feature = "memmap")]
+            StorageWrap::MmapQuantizedArray(inner) => inner.chunk_len(offset),
+            StorageWrap::NdArray(inner) => inner.chunk_len(offset),
+            StorageWrap::QuantizedArray(inner) => inner.chunk_len(offset),
+        }
+    }
+
     fn write_chunk<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek,
@@ -321,6 +334,14 @@ impl WriteChunk for StorageViewWrap {
             #[cfg(all(feature = "memmap", target_endian = "little"))]
             StorageViewWrap::MmapArray(inner) => inner.chunk_identifier(),
             StorageViewWrap::NdArray(inner) => inner.chunk_identifier(),
+        }
+    }
+
+    fn chunk_len(&self, offset: u64) -> u64 {
+        match self {
+            #[cfg(all(feature = "memmap", target_endian = "little"))]
+            StorageViewWrap::MmapArray(inner) => inner.chunk_len(offset),
+            StorageViewWrap::NdArray(inner) => inner.chunk_len(offset),
         }
     }
 
