@@ -221,15 +221,16 @@ impl NdArray {
         let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
             Error::write_error("Cannot get file position for computing padding", e)
         })?);
-        // Chunk size: rows (u64), columns (u32), type id (u32),
-        //             padding ([0,4) bytes), matrix.
-        let chunk_len = size_of::<u64>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + n_padding as usize
-            + (data.nrows() * data.ncols() * size_of::<f32>());
+
+        let remaining_chunk_len = Self::chunk_len(
+            data.view(),
+            write.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::read_error("Cannot get file position for computing padding", e)
+            })?,
+        ) - (size_of::<u32>() + size_of::<u64>()) as u64;
+
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write embedding matrix chunk length", e))?;
         write
             .write_u64::<LittleEndian>(data.nrows() as u64)

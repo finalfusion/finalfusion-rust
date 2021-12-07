@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -98,20 +98,17 @@ impl WriteChunk for SimpleVocab {
     where
         W: Write + Seek,
     {
-        // Chunk size: vocabulary size (u64), for each word:
-        // word length in bytes (4 bytes), word bytes (variable-length).
-        let chunk_len = size_of::<u64>()
-            + self
-                .words
-                .iter()
-                .map(|w| w.len() + size_of::<u32>())
-                .sum::<usize>();
-
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::SimpleVocab as u32)
             .map_err(|e| Error::write_error("Cannot write vocabulary chunk identifier", e))?;
+
+        let remaining_chunk_len =
+            self.chunk_len(write.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::read_error("Cannot get file position for computing padding", e)
+            })?) - (size_of::<u32>() + size_of::<u64>()) as u64;
+
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
