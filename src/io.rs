@@ -85,4 +85,6 @@ pub trait WriteEmbeddings {
     fn write_embeddings<W>(&self, write: &mut W) -> Result<()>
     where
         W: Write + Seek;
+
+    fn write_embeddings_len(&self, offset: u64) -> u64;
 }
