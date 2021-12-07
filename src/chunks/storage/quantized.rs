@@ -167,34 +167,21 @@ impl QuantizedArray {
                 )
             })?;
 
-        // projection (u32), use_norms (u32), quantized_len (u32),
-        // reconstructed_len (u32), n_centroids (u32), rows (u64),
-        // types (2 x u32 bytes), padding, projection matrix,
-        // centroids, norms, quantized data.
+        let remaining_chunk_len = Self::chunk_len_(
+            quantizer,
+            quantized.view(),
+            norms,
+            write.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::read_error("Cannot get file position for computing padding", e)
+            })?,
+        ) - (size_of::<u32>() + size_of::<u64>()) as u64;
+
         let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
             Error::write_error("Cannot get file position for computing padding", e)
         })?);
-        let chunk_size = size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u64>()
-            + 2 * size_of::<u32>()
-            + n_padding as usize
-            + quantizer.projection().is_some() as usize
-                * quantizer.reconstructed_len()
-                * quantizer.reconstructed_len()
-                * size_of::<f32>()
-            + quantizer.quantized_len()
-                * quantizer.n_quantizer_centroids()
-                * (quantizer.reconstructed_len() / quantizer.quantized_len())
-                * size_of::<f32>()
-            + norms.is_some() as usize * quantized.nrows() * size_of::<f32>()
-            + quantized.nrows() * quantizer.quantized_len();
 
         write
-            .write_u64::<LittleEndian>(chunk_size as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| {
                 Error::write_error("Cannot write quantized embedding matrix chunk length", e)
             })?;

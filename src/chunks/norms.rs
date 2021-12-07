@@ -113,13 +113,13 @@ impl WriteChunk for NdNorms {
             Error::write_error("Cannot get file position for computing padding", e)
         })?);
 
-        // Chunk size: len (u64), type id (u32), padding ([0,4) bytes), vector.
-        let chunk_len = size_of::<u64>()
-            + size_of::<u32>()
-            + n_padding as usize
-            + (self.len() * size_of::<f32>());
+        let remaining_chunk_len =
+            self.chunk_len(write.seek(SeekFrom::Current(0)).map_err(|e| {
+                Error::read_error("Cannot get file position for computing padding", e)
+            })?) - (size_of::<u32>() + size_of::<u64>()) as u64;
+
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write norms chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.len() as u64)

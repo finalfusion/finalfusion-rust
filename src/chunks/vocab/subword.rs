@@ -418,27 +418,16 @@ where
     where
         W: Write + Seek,
     {
-        // Chunk size: vocab size (u64), minimum n-gram length (u32),
-        // maximum n-gram length (u32), bucket exponent (u32), for
-        // each word: word length in bytes (u32), word bytes
-        // (variable-length).
-        let chunk_len = size_of::<u64>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + self
-                .words()
-                .iter()
-                .map(|w| w.len() + size_of::<u32>())
-                .sum::<usize>();
-
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
             .map_err(|e| {
                 Error::write_error("Cannot write subword vocabulary chunk identifier", e)
             })?;
+
+        let remaining_chunk_len = self.chunk_len_() - (size_of::<u32>() + size_of::<u64>()) as u64;
+
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
@@ -563,26 +552,7 @@ impl ExplicitSubwordVocab {
     where
         W: Write + Seek,
     {
-        // Chunk size: word vocab size (u64), ngram vocab size (u64)
-        // minimum n-gram length (u32), maximum n-gram length (u32),
-        // for each word and ngram:
-        // length in bytes (u32), number of bytes (variable-length).
-        // each ngram is followed by its index (u64)
-        let chunk_len = size_of::<u64>()
-            + size_of::<u64>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + self
-                .words()
-                .iter()
-                .map(|w| w.len() + size_of::<u32>())
-                .sum::<usize>()
-            + self
-                .indexer
-                .ngrams()
-                .iter()
-                .map(|ngram| ngram.len() + size_of::<u32>() + size_of::<u64>())
-                .sum::<usize>();
+        let remaining_chunk_len = self.chunk_len_() - (size_of::<u32>() + size_of::<u64>()) as u64;
 
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
@@ -590,7 +560,7 @@ impl ExplicitSubwordVocab {
                 Error::write_error("Cannot write subword vocabulary chunk identifier", e)
             })?;
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u64::<LittleEndian>(self.words.len() as u64)
@@ -685,19 +655,7 @@ impl FloretSubwordVocab {
     where
         W: Write + Seek,
     {
-        // Chunk size: minimum n-gram length (u32), maximum n-gram length (u32),
-        // number of buckets (u64), number of hashes (u32), hash seed (u32),
-        // bow and row (variable length).
-
-        let chunk_len = size_of::<u32>()
-            + size_of::<u32>()
-            + size_of::<u64>()
-            + size_of::<u32>()
-            + size_of::<u32>()
-            + self.bow.len()
-            + size_of::<u32>()
-            + self.eow.len()
-            + size_of::<u32>();
+        let remaining_chunk_len = self.chunk_len_() - (size_of::<u32>() + size_of::<u64>()) as u64;
 
         write
             .write_u32::<LittleEndian>(chunk_identifier as u32)
@@ -705,7 +663,7 @@ impl FloretSubwordVocab {
                 Error::write_error("Cannot write subword vocabulary chunk identifier", e)
             })?;
         write
-            .write_u64::<LittleEndian>(chunk_len as u64)
+            .write_u64::<LittleEndian>(remaining_chunk_len)
             .map_err(|e| Error::write_error("Cannot write subword vocabulary chunk length", e))?;
         write
             .write_u32::<LittleEndian>(self.min_n)
