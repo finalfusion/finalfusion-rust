@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn test_read_fasttext() {
         let embeddings = read_fasttext();
-        let results = embeddings.word_similarity("über", 3).unwrap();
+        let results = embeddings.word_similarity("über", 3, None).unwrap();
         assert_eq!(results[0].word(), "auf");
         assert_abs_diff_eq!(results[0].cosine_similarity(), 0.568513, epsilon = 1e-6);
         assert_eq!(results[1].word(), "vor");
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn test_read_fasttext_unknown() {
         let embeddings = read_fasttext();
-        let results = embeddings.word_similarity("unknown", 3).unwrap();
+        let results = embeddings.word_similarity("unknown", 3, None).unwrap();
         assert_eq!(results[0].word(), "einer");
         assert_abs_diff_eq!(results[0].cosine_similarity(), 0.691177, epsilon = 1e-6);
         assert_eq!(results[1].word(), "und");

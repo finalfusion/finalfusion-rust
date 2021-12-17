@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 use std::f32;
 
-use ndarray::{s, ArrayView1, CowArray, Ix1};
+use ndarray::{s, ArrayView1, Axis, CowArray, Ix1};
 use ordered_float::NotNan;
 
 use crate::chunks::storage::{Storage, StorageView};
@@ -82,12 +82,20 @@ pub trait Analogy {
     /// At most, `limit` results are returned. `Result::Err` is returned
     /// when no embedding could be computed for one or more of the tokens,
     /// indicating which of the tokens were present.
+    ///
+    /// If `batch_size` is `None`, the query will be performed on all
+    /// word embeddings at once. This is typically the most efficient, but
+    /// can require a large amount of memory. The query is performed on batches
+    /// of size `n` when `batch_size` is `Some(n)`. Setting this to a smaller
+    /// value than the number of word embeddings reduces memory use at the
+    /// cost of computational efficiency.
     fn analogy(
         &self,
         query: [&str; 3],
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
-        self.analogy_masked(query, [true, true, true], limit)
+        self.analogy_masked(query, [true, true, true], limit, batch_size)
     }
 
     /// Perform an analogy query.
@@ -104,6 +112,13 @@ pub trait Analogy {
     /// output candidates. If `remove[0]` is `true`, `word1` cannot be
     /// returned as an answer to the query.
     ///
+    /// If `batch_size` is `None`, the query will be performed on all
+    /// word embeddings at once. This is typically the most efficient, but
+    /// can require a large amount of memory. The query is performed on batches
+    /// of size `n` when `batch_size` is `Some(n)`. Setting this to a smaller
+    /// value than the number of word embeddings reduces memory use at the
+    /// cost of computational efficiency.
+    ///
     ///`Result::Err` is returned when no embedding could be computed
     /// for one or more of the tokens, indicating which of the tokens
     /// were present.
@@ -112,6 +127,7 @@ pub trait Analogy {
         query: [&str; 3],
         remove: [bool; 3],
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]>;
 }
 
@@ -125,6 +141,7 @@ where
         query: [&str; 3],
         remove: [bool; 3],
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Result<Vec<WordSimilarityResult>, [bool; 3]> {
         {
             let [embedding1, embedding2, embedding3] = lookup_words3(self, query)?;
@@ -139,7 +156,7 @@ where
                 .map(|(word, _)| word.to_owned())
                 .collect();
 
-            Ok(self.similarity_(embedding.view(), &skip, limit))
+            Ok(self.similarity_(embedding.view(), &skip, limit, batch_size))
         }
     }
 }
@@ -152,7 +169,19 @@ pub trait WordSimilarity {
     /// the embeddings. If the vectors are unit vectors (e.g. by virtue of
     /// calling `normalize`), this is the cosine similarity. At most, `limit`
     /// results are returned.
-    fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>>;
+    ///
+    /// If `batch_size` is `None`, the query will be performed on all
+    /// word embeddings at once. This is typically the most efficient, but
+    /// can require a large amount of memory. The query is performed on batches
+    /// of size `n` when `batch_size` is `Some(n)`. Setting this to a smaller
+    /// value than the number of word embeddings reduces memory use at the
+    /// cost of computational efficiency.
+    fn word_similarity(
+        &self,
+        word: &str,
+        limit: usize,
+        batch_size: Option<usize>,
+    ) -> Option<Vec<WordSimilarityResult>>;
 }
 
 impl<V, S> WordSimilarity for Embeddings<V, S>
@@ -160,12 +189,17 @@ where
     V: Vocab,
     S: StorageView,
 {
-    fn word_similarity(&self, word: &str, limit: usize) -> Option<Vec<WordSimilarityResult>> {
+    fn word_similarity(
+        &self,
+        word: &str,
+        limit: usize,
+        batch_size: Option<usize>,
+    ) -> Option<Vec<WordSimilarityResult>> {
         let embed = self.embedding(word)?;
         let mut skip = HashSet::new();
         skip.insert(word);
 
-        Some(self.similarity_(embed.view(), &skip, limit))
+        Some(self.similarity_(embed.view(), &skip, limit, batch_size))
     }
 }
 
@@ -177,12 +211,20 @@ pub trait EmbeddingSimilarity {
     /// defined by the dot product of the embeddings. The embeddings in the
     /// storage are l2-normalized, this method l2-normalizes the input query,
     /// therefore the dot product is equivalent to the cosine similarity.
+    ///
+    /// If `batch_size` is `None`, the query will be performed on all
+    /// word embeddings at once. This is typically the most efficient, but
+    /// can require a large amount of memory. The query is performed on batches
+    /// of size `n` when `batch_size` is `Some(n)`. Setting this to a smaller
+    /// value than the number of word embeddings reduces memory use at the
+    /// cost of computational efficiency.
     fn embedding_similarity(
         &self,
         query: ArrayView1<f32>,
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Option<Vec<WordSimilarityResult>> {
-        self.embedding_similarity_masked(query, limit, &HashSet::new())
+        self.embedding_similarity_masked(query, limit, &HashSet::new(), batch_size)
     }
 
     /// Find words that are similar to the query embedding while skipping
@@ -192,11 +234,19 @@ pub trait EmbeddingSimilarity {
     /// defined by the dot product of the embeddings. The embeddings in the
     /// storage are l2-normalized, this method l2-normalizes the input query,
     /// therefore the dot product is equivalent to the cosine similarity.
+    ///
+    /// If `batch_size` is `None`, the query will be performed on all
+    /// word embeddings at once. This is typically the most efficient, but
+    /// can require a large amount of memory. The query is performed on batches
+    /// of size `n` when `batch_size` is `Some(n)`. Setting this to a smaller
+    /// value than the number of word embeddings reduces memory use at the
+    /// cost of computational efficiency.
     fn embedding_similarity_masked(
         &self,
         query: ArrayView1<f32>,
         limit: usize,
         skips: &HashSet<&str>,
+        batch_size: Option<usize>,
     ) -> Option<Vec<WordSimilarityResult>>;
 }
 
@@ -210,10 +260,11 @@ where
         query: ArrayView1<f32>,
         limit: usize,
         skip: &HashSet<&str>,
+        batch_size: Option<usize>,
     ) -> Option<Vec<WordSimilarityResult>> {
         let mut query = query.to_owned();
         l2_normalize(query.view_mut());
-        Some(self.similarity_(query.view(), skip, limit))
+        Some(self.similarity_(query.view(), skip, limit, batch_size))
     }
 }
 
@@ -223,6 +274,7 @@ trait SimilarityPrivate {
         embed: ArrayView1<f32>,
         skip: &HashSet<&str>,
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Vec<WordSimilarityResult>;
 }
 
@@ -236,35 +288,41 @@ where
         embed: ArrayView1<f32>,
         skip: &HashSet<&str>,
         limit: usize,
+        batch_size: Option<usize>,
     ) -> Vec<WordSimilarityResult> {
-        // ndarray#474
-        #[allow(clippy::deref_addrof)]
-        let sims = self
+        let batch_size = batch_size.unwrap_or_else(|| self.vocab().words_len());
+
+        let mut results = BinaryHeap::with_capacity(limit);
+
+        for (batch_idx, batch) in self
             .storage()
             .view()
             .slice(s![0..self.vocab().words_len(), ..])
-            .dot(&embed.view());
+            .axis_chunks_iter(Axis(0), batch_size)
+            .enumerate()
+        {
+            let sims = batch.dot(&embed.view());
 
-        let mut results = BinaryHeap::with_capacity(limit);
-        for (idx, &sim) in sims.iter().enumerate() {
-            let word = &self.vocab().words()[idx];
+            for (idx, &sim) in sims.iter().enumerate() {
+                let word = &self.vocab().words()[(batch_idx * batch_size) + idx];
 
-            // Don't add words that we are explicitly asked to skip.
-            if skip.contains(word.as_str()) {
-                continue;
-            }
+                // Don't add words that we are explicitly asked to skip.
+                if skip.contains(word.as_str()) {
+                    continue;
+                }
 
-            let word_similarity = WordSimilarityResult {
-                word,
-                similarity: NotNan::new(sim).expect("Encountered NaN"),
-            };
+                let word_similarity = WordSimilarityResult {
+                    word,
+                    similarity: NotNan::new(sim).expect("Encountered NaN"),
+                };
 
-            if results.len() < limit {
-                results.push(word_similarity);
-            } else {
-                let mut peek = results.peek_mut().expect("Cannot peek non-empty heap");
-                if word_similarity < *peek {
-                    *peek = word_similarity
+                if results.len() < limit {
+                    results.push(word_similarity);
+                } else {
+                    let mut peek = results.peek_mut().expect("Cannot peek non-empty heap");
+                    if word_similarity < *peek {
+                        *peek = word_similarity
+                    }
                 }
             }
         }
@@ -504,7 +562,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.word_similarity("Berlin", 40);
+        let result = embeddings.word_similarity("Berlin", 40, None);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(40, result.len());
@@ -513,10 +571,19 @@ mod tests {
             assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
         }
 
-        let result = embeddings.word_similarity("Berlin", 10);
+        let result = embeddings.word_similarity("Berlin", 10, None);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
+
+        for (idx, word_similarity) in result.iter().enumerate() {
+            assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
+        }
+
+        let result = embeddings.word_similarity("Berlin", 40, Some(17));
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert_eq!(40, result.len());
 
         for (idx, word_similarity) in result.iter().enumerate() {
             assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
@@ -529,7 +596,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
         let embedding = embeddings.embedding("Berlin").unwrap();
-        let result = embeddings.embedding_similarity(embedding.view(), 10);
+        let result = embeddings.embedding_similarity(embedding.view(), 10, None);
         assert!(result.is_some());
         let mut result = result.unwrap().into_iter();
         assert_eq!(10, result.len());
@@ -546,7 +613,7 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.word_similarity("Stuttgart", 10);
+        let result = embeddings.word_similarity("Stuttgart", 10, None);
         assert!(result.is_some());
         let result = result.unwrap();
         assert_eq!(10, result.len());
@@ -562,7 +629,16 @@ mod tests {
         let mut reader = BufReader::new(f);
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
-        let result = embeddings.analogy(["Paris", "Frankreich", "Berlin"], 40);
+        let result = embeddings.analogy(["Paris", "Frankreich", "Berlin"], 40, None);
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(40, result.len());
+
+        for (idx, word_similarity) in result.iter().enumerate() {
+            assert_eq!(ANALOGY_ORDER[idx], word_similarity.word)
+        }
+
+        let result = embeddings.analogy(["Paris", "Frankreich", "Berlin"], 40, Some(17));
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(40, result.len());
@@ -579,15 +655,15 @@ mod tests {
         let embeddings = Embeddings::read_word2vec_binary(&mut reader).unwrap();
 
         assert_eq!(
-            embeddings.analogy(["Foo", "Frankreich", "Berlin"], 40),
+            embeddings.analogy(["Foo", "Frankreich", "Berlin"], 40, None),
             Err([false, true, true])
         );
         assert_eq!(
-            embeddings.analogy(["Paris", "Foo", "Berlin"], 40),
+            embeddings.analogy(["Paris", "Foo", "Berlin"], 40, None),
             Err([true, false, true])
         );
         assert_eq!(
-            embeddings.analogy(["Paris", "Frankreich", "Foo"], 40),
+            embeddings.analogy(["Paris", "Frankreich", "Foo"], 40, None),
             Err([true, true, false])
         );
     }
