@@ -40,7 +40,7 @@ memmap = ["memmap2"]
 
 [dev-dependencies]
 approx = "0.5"
-criterion = "0.3"
+criterion = "0.5"
 lazy_static = "1"
 maplit = "1"
 tempfile = "3"
