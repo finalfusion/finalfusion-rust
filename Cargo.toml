@@ -31,7 +31,7 @@ thiserror = "1"
 toml = "0.5"
 
 [dependencies.memmap2]
-version = "0.5"
+version = "0.9"
 optional = true
 
 [features]
