@@ -126,7 +126,7 @@ impl ReadChunk for StorageWrap {
         R: Read + Seek,
     {
         let chunk_start_pos = read
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
@@ -156,7 +156,7 @@ impl ReadChunk for StorageWrap {
 impl MmapChunk for StorageWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
@@ -306,7 +306,7 @@ impl ReadChunk for StorageViewWrap {
         R: Read + Seek,
     {
         let chunk_start_pos = read
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read
@@ -361,7 +361,7 @@ impl WriteChunk for StorageViewWrap {
 impl MmapChunk for StorageViewWrap {
     fn mmap_chunk(read: &mut BufReader<File>) -> Result<Self> {
         let chunk_start_pos = read
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .map_err(|e| Error::read_error("Cannot get storage chunk start position", e))?;
 
         let chunk_id = read

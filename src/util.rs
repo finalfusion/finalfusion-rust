@@ -20,7 +20,7 @@ impl<T> FromIteratorWithCapacity<T> for Vec<T> {
         I: IntoIterator<Item = T>,
     {
         let mut v = Vec::with_capacity(capacity);
-        v.extend(iter.into_iter());
+        v.extend(iter);
         v
     }
 }
@@ -31,7 +31,7 @@ impl<T> FromIteratorWithCapacity<T> for VecDeque<T> {
         I: IntoIterator<Item = T>,
     {
         let mut v = VecDeque::with_capacity(capacity);
-        v.extend(iter.into_iter());
+        v.extend(iter);
         v
     }
 }

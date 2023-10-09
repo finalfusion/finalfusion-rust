@@ -110,7 +110,7 @@ impl ReadChunk for VocabWrap {
         R: Read + Seek,
     {
         let chunk_start_pos = read
-            .seek(SeekFrom::Current(0))
+            .stream_position()
             .map_err(|e| Error::read_error("Cannot get vocabulary chunk start position", e))?;
         let chunk_id = read
             .read_u32::<LittleEndian>()

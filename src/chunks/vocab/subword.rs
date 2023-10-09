@@ -400,7 +400,7 @@ where
             .read_u32::<LittleEndian>()
             .map_err(|e| Error::read_error("Cannot read number of buckets", e))?;
 
-        let words = read_vocab_items(read, vocab_len as usize)?;
+        let words = read_vocab_items(read, vocab_len)?;
 
         Ok(SubwordVocab::new(
             words,
