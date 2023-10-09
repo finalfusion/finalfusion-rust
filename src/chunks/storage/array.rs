@@ -134,7 +134,7 @@ mod mmap {
             // The components of the embedding matrix should be of type f32.
             f32::ensure_data_type(read)?;
 
-            let n_padding = padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+            let n_padding = padding::<f32>(read.stream_position().map_err(|e| {
                 Error::read_error("Cannot get file position for computing padding", e)
             })?);
             read.seek(SeekFrom::Current(n_padding as i64))
@@ -142,7 +142,7 @@ mod mmap {
 
             // Set up memory mapping.
             let matrix_len = shape.size() * size_of::<f32>();
-            let offset = read.seek(SeekFrom::Current(0)).map_err(|e| {
+            let offset = read.stream_position().map_err(|e| {
                 Error::read_error(
                     "Cannot get file position for memory mapping embedding matrix",
                     e,
@@ -153,7 +153,7 @@ mod mmap {
                 mmap_opts
                     .offset(offset)
                     .len(matrix_len)
-                    .map(&*read.get_ref())
+                    .map(read.get_ref())
                     .map_err(|e| Error::read_error("Cannot memory map embedding matrix", e))?
             };
 
@@ -218,13 +218,13 @@ impl NdArray {
         write
             .write_u32::<LittleEndian>(ChunkIdentifier::NdArray as u32)
             .map_err(|e| Error::write_error("Cannot write embedding matrix chunk identifier", e))?;
-        let n_padding = padding::<f32>(write.seek(SeekFrom::Current(0)).map_err(|e| {
+        let n_padding = padding::<f32>(write.stream_position().map_err(|e| {
             Error::write_error("Cannot get file position for computing padding", e)
         })?);
 
         let remaining_chunk_len = Self::chunk_len(
             data.view(),
-            write.seek(SeekFrom::Current(0)).map_err(|e| {
+            write.stream_position().map_err(|e| {
                 Error::read_error("Cannot get file position for computing padding", e)
             })?,
         ) - (size_of::<u32>() + size_of::<u64>()) as u64;
@@ -346,7 +346,7 @@ impl ReadChunk for NdArray {
         f32::ensure_data_type(read)?;
 
         let n_padding =
-            padding::<f32>(read.seek(SeekFrom::Current(0)).map_err(|e| {
+            padding::<f32>(read.stream_position().map_err(|e| {
                 Error::read_error("Cannot get file position for computing padding", e)
             })?);
         read.seek(SeekFrom::Current(n_padding as i64))

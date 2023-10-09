@@ -25,18 +25,18 @@ fn allround_iter() -> impl Iterator<Item = String> + Clone {
     corpus.into_iter()
 }
 
-fn known_iter<'a>(
-    embeds: &'a Embeddings<VocabWrap, StorageWrap>,
-) -> impl 'a + Iterator<Item = String> + Clone {
+fn known_iter(
+    embeds: &Embeddings<VocabWrap, StorageWrap>,
+) -> impl '_ + Iterator<Item = String> + Clone {
     allround_iter().filter_map(move |w| match embeds.vocab().idx(&w) {
         Some(WordIndex::Word(_)) => Some(w),
         _ => None,
     })
 }
 
-fn unknown_iter<'a>(
-    embeds: &'a Embeddings<VocabWrap, StorageWrap>,
-) -> impl 'a + Iterator<Item = String> + Clone {
+fn unknown_iter(
+    embeds: &Embeddings<VocabWrap, StorageWrap>,
+) -> impl '_ + Iterator<Item = String> + Clone {
     allround_iter().filter_map(move |w| match embeds.vocab().idx(&w) {
         Some(WordIndex::Subword(_)) => Some(w),
         _ => None,

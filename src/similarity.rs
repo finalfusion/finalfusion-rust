@@ -362,7 +362,7 @@ where
 
 #[cfg(test)]
 mod tests {
-
+    use std::f32;
     use std::fs::File;
     use std::io::BufReader;
 
@@ -482,7 +482,7 @@ mod tests {
         .abs_diff_eq(&1f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: NotNan::new(0.70710678).unwrap()
+            similarity: NotNan::new(f32::consts::FRAC_1_SQRT_2).unwrap()
         })
         .angular_similarity()
         .abs_diff_eq(&0.75, 1e-5));
@@ -510,7 +510,7 @@ mod tests {
         .abs_diff_eq(&0f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: NotNan::new(0.70710678).unwrap()
+            similarity: NotNan::new(f32::consts::FRAC_1_SQRT_2).unwrap()
         })
         .euclidean_distance()
         .abs_diff_eq(&0.76537, 1e-5));
@@ -538,7 +538,7 @@ mod tests {
         .abs_diff_eq(&1f32, 1e-5));
         assert!((WordSimilarityResult {
             word: "test",
-            similarity: NotNan::new(0.70710678).unwrap()
+            similarity: NotNan::new(f32::consts::FRAC_1_SQRT_2).unwrap()
         })
         .euclidean_similarity()
         .abs_diff_eq(&0.61732, 1e-5));
@@ -602,7 +602,7 @@ mod tests {
         assert_eq!(10, result.len());
         assert_eq!(result.next().unwrap().word, "Berlin");
 
-        for (idx, word_similarity) in result.into_iter().enumerate() {
+        for (idx, word_similarity) in result.enumerate() {
             assert_eq!(SIMILARITY_ORDER[idx], word_similarity.word)
         }
     }

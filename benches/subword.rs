@@ -13,7 +13,6 @@ fn subwords(string: &str, min_n: usize, max_n: usize, indexer: &impl Indexer) ->
     // evaluates them.
     string
         .subword_indices(min_n, max_n, indexer)
-        .into_iter()
         .fold(0, |sum, v| sum.wrapping_add(v))
 }
 

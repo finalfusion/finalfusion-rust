@@ -86,17 +86,13 @@ where
     }
 
     fn buckets(&self) -> usize {
-        self.buckets_exp as usize
+        self.buckets_exp
     }
 }
 
 impl<H> Clone for HashIndexer<H> {
     fn clone(&self) -> Self {
-        HashIndexer {
-            buckets_exp: self.buckets_exp,
-            mask: self.mask,
-            _phantom: PhantomData,
-        }
+        *self
     }
 }
 
@@ -699,8 +695,7 @@ mod tests {
                 .subword_indices_with_ngrams(3, 6, &indexer)
                 .collect::<Vec<_>>();
             ngrams_indices_test.sort_by_key(|ngrams_indices_pairs| ngrams_indices_pairs.1.clone());
-            for (iter_check, iter_test) in ngrams_indices_check.into_iter().zip(ngrams_indices_test)
-            {
+            for (iter_check, iter_test) in ngrams_indices_check.iter().zip(ngrams_indices_test) {
                 assert_eq!(iter_check.0, iter_test.0);
             }
         }

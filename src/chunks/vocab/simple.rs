@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, Write};
 use std::mem::size_of;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -103,7 +103,7 @@ impl WriteChunk for SimpleVocab {
             .map_err(|e| Error::write_error("Cannot write vocabulary chunk identifier", e))?;
 
         let remaining_chunk_len =
-            self.chunk_len(write.seek(SeekFrom::Current(0)).map_err(|e| {
+            self.chunk_len(write.stream_position().map_err(|e| {
                 Error::read_error("Cannot get file position for computing padding", e)
             })?) - (size_of::<u32>() + size_of::<u64>()) as u64;
 
