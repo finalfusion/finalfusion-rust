@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::mem::size_of;
@@ -13,7 +12,6 @@ use crate::util::padding;
 
 #[cfg(feature = "memmap")]
 mod mmap {
-    use std::convert::TryInto;
     use std::fs::File;
     #[cfg(target_endian = "little")]
     use std::io::Write;

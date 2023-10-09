@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt};

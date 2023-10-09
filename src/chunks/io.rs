@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, Write};

@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::mem::size_of;
