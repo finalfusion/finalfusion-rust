@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::io;
 use std::io::{ErrorKind, Read, Seek, Write};
 use std::mem::size_of;

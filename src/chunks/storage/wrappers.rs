@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 #[cfg(feature = "memmap")]
 use std::fs::File;
 #[cfg(feature = "memmap")]
