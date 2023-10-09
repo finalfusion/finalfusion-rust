@@ -28,7 +28,7 @@ reductive = "0.9"
 serde = { version = "1", features = ["derive"] }
 smallvec = "1.7"
 thiserror = "1"
-toml = "0.5"
+toml = "0.8"
 
 [dependencies.memmap2]
 version = "0.9"
