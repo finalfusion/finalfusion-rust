@@ -5,7 +5,7 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use toml::Value;
+use toml::Table;
 
 use crate::chunks::io::{ChunkIdentifier, Header, ReadChunk, WriteChunk};
 use crate::error::{Error, Result};
@@ -16,18 +16,18 @@ use crate::io::ReadMetadata;
 /// finalfusion metadata in TOML format.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Metadata {
-    inner: Value,
+    inner: Table,
 }
 
 impl Metadata {
     /// Construct new `Metadata`.
-    pub fn new(data: Value) -> Self {
-        Metadata { inner: data }
+    pub fn new(inner: Table) -> Self {
+        Metadata { inner }
     }
 }
 
 impl Deref for Metadata {
-    type Target = Value;
+    type Target = Table;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -40,9 +40,9 @@ impl DerefMut for Metadata {
     }
 }
 
-impl From<Value> for Metadata {
-    fn from(value: Value) -> Self {
-        Metadata { inner: value }
+impl From<Table> for Metadata {
+    fn from(inner: Table) -> Self {
+        Metadata { inner }
     }
 }
 
@@ -69,7 +69,7 @@ impl ReadChunk for Metadata {
 
         Ok(Metadata::new(
             buf_str
-                .parse::<Value>()
+                .parse::<Table>()
                 .map_err(|e| Error::Format(format!("Cannot deserialize TOML metadata: {}", e)))
                 .map_err(Error::from)?,
         ))

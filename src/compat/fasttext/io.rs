@@ -5,7 +5,7 @@ use std::ops::Mul;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ndarray::{s, Array2, ErrorKind as ShapeErrorKind, ShapeError};
 use serde::Serialize;
-use toml::Value;
+use toml::Table;
 
 use crate::chunks::metadata::Metadata;
 use crate::chunks::norms::NdNorms;
@@ -107,7 +107,7 @@ impl ReadFastTextPrivate for Embeddings<FastTextSubwordVocab, NdArray> {
             )));
         }
 
-        let metadata = Value::try_from(config).map_err(|e| {
+        let metadata = Table::try_from(config).map_err(|e| {
             Error::Format(format!("Cannot serialize model metadata to TOML: {}", e))
         })?;
 
