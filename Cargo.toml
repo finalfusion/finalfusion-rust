@@ -11,10 +11,7 @@ homepage = "https://github.com/finalfusion/finalfusion-rust"
 repository = "https://github.com/finalfusion/finalfusion-rust"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-exclude = [
-  ".gitignore",
-  ".travis.yml"
-]
+exclude = [".gitignore"]
 
 [dependencies]
 byteorder = "1"
